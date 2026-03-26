@@ -1,6 +1,6 @@
 {
-  "name": "borgiq",
-  "version": "0.1.0",
+  "name": "@borgiq/cli",
+  "version": "0.0.1",
   "description": "Command-line interface for the BorgIQ workflow automation platform",
   "type": "module",
   "bin": {
