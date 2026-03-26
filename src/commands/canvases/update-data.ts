@@ -1,0 +1,22 @@
+import { createClientWithContext } from '../../lib/context.js';
+import type { GlobalOptions } from '../../lib/context.js';
+import { readJsonInput } from '../../lib/input.js';
+import { output } from '../../output/index.js';
+import { handleError } from '../../lib/errors.js';
+
+export const canvasesUpdateData = async (id: string, options: { file?: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+  try {
+    const globalOpts = command.parent.parent.opts();
+    const { client, ctx } = createClientWithContext(globalOpts);
+
+    const body = await readJsonInput(options.file);
+    const result = await client.updateCanvasData(ctx.org, ctx.workspace, id, body);
+
+    if (!globalOpts.json && process.stderr.isTTY) {
+      process.stderr.write('Canvas data updated.\n');
+    }
+    output(result, globalOpts);
+  } catch (error) {
+    handleError(error);
+  }
+};
