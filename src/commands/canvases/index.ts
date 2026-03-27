@@ -60,8 +60,9 @@ export const registerCanvasesCommands = (program: Command): void => {
 
   canvases
     .command('update-data <id>')
-    .description('Replace full canvas data')
+    .description('Import canvas data (merge, insert, or replace actors)')
     .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
+    .option('--mode <mode>', 'Import mode: merge (default), insert, or replace', 'merge')
     .action(canvasesUpdateData);
 
   canvases

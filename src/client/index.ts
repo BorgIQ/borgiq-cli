@@ -214,8 +214,8 @@ export class BorgIQClient {
     return this.request('PATCH', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/actors`, body);
   }
 
-  async updateCanvasData(org: string, workspace: string, canvasId: string, body: unknown): Promise<unknown> {
-    return this.request('PUT', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/data`, body);
+  async importCanvasData(org: string, workspace: string, canvasId: string, body: unknown): Promise<unknown> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/import`, body);
   }
 
   async validateCanvas(org: string, workspace: string, canvasId: string): Promise<BIQCanvasValidation> {

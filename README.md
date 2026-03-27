@@ -93,11 +93,17 @@ Values are resolved in this order (highest priority first):
 | Command | Description |
 |---------|-------------|
 | `borgiq canvases list` | List canvases in a workspace |
-| `borgiq canvases get <id>` | Get canvas details |
-| `borgiq canvases create` | Create a new canvas |
+| `borgiq canvases get <id>` | Get canvas details (`--include-data` for full flow data) |
+| `borgiq canvases create` | Create an empty canvas |
+| `borgiq canvases create-with-data` | Create a canvas with full flow data |
 | `borgiq canvases update <id>` | Update canvas metadata |
+| `borgiq canvases update-data <id>` | Import canvas data (`--mode merge\|insert\|replace`) |
+| `borgiq canvases patch-actors <id>` | Incrementally add, update, or remove actors |
 | `borgiq canvases delete <id>` | Delete a canvas |
 | `borgiq canvases export <id>` | Export canvas data as JSON |
+| `borgiq canvases validate <id>` | Validate canvas configuration |
+| `borgiq canvases layout <id>` | Auto-layout actors |
+| `borgiq canvases verify-import` | Verify import data before creating |
 
 ### Flow Runs
 
