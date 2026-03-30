@@ -89,7 +89,7 @@ export const registerCanvasesCommands = (program: Command): void => {
   canvases
     .command('layout <id>')
     .description('Auto-layout canvas actors using ELK algorithm')
-    .option('--source-actor-id <actorId>', 'Layout only downstream of this actor')
+    .option('--source-actor-id <actorId...>', 'Layout only downstream of these actors')
     .action(canvasesLayout);
 
   canvases

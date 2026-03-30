@@ -3,12 +3,14 @@ import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
 
-export const canvasesLayout = async (id: string, options: { sourceActorId?: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+export const canvasesLayout = async (id: string, options: { sourceActorId?: string[] }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
-    const result = await client.layoutCanvas(ctx.org, ctx.workspace, id, options.sourceActorId);
+    const result = await client.layoutCanvas(ctx.org, ctx.workspace, id, {
+      sourceActorIds: options.sourceActorId?.length ? options.sourceActorId : undefined,
+    });
 
     if (!globalOpts.json && process.stderr.isTTY) {
       const actorCount = Object.keys(result.actors || {}).length;

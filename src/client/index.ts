@@ -222,9 +222,8 @@ export class BorgIQClient {
     return this.request('GET', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/validate`);
   }
 
-  async layoutCanvas(org: string, workspace: string, canvasId: string, sourceActorId?: string): Promise<BIQCanvasLayout> {
-    const qs = sourceActorId ? `?sourceActorId=${sourceActorId}` : '';
-    return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/layout${qs}`);
+  async layoutCanvas(org: string, workspace: string, canvasId: string, options?: { sourceActorIds?: string[]; pinnedActorPositions?: Record<string, { x?: number; y?: number }> }): Promise<BIQCanvasLayout> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/layout`, options);
   }
 
   async verifyImportData(org: string, workspace: string, body: unknown): Promise<unknown> {
