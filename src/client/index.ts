@@ -18,13 +18,16 @@ import type {
   BIQActorActionSchema,
   BIQCanvasValidation,
   BIQCanvasLayout,
-  PatchActorsResponse,
+  BatchActorOperationsResponse,
   BIQFlowrunJob,
   BIQFlowrunJobResultSummary,
   BIQFlowrunMessage,
   BIQAssetMetadata,
   BIQConnectionType,
   RuntimeDataRootPath,
+  BIQCanvasActor,
+  BIQCanvasActorFlow,
+  BIQActorVerification,
 } from './types.js';
 
 export class BorgIQClient {
@@ -210,7 +213,7 @@ export class BorgIQClient {
     return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/data`, body);
   }
 
-  async patchActors(org: string, workspace: string, canvasId: string, body: unknown): Promise<PatchActorsResponse> {
+  async batchActorOperations(org: string, workspace: string, canvasId: string, body: unknown): Promise<BatchActorOperationsResponse> {
     return this.request('PATCH', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/actors`, body);
   }
 
@@ -304,6 +307,47 @@ export class BorgIQClient {
 
   async deleteAsset(org: string, workspace: string, id: string): Promise<void> {
     return this.request('DELETE', `${this.wkspPath(org, workspace)}/assets/${id}`);
+  }
+
+  // ── Canvas Actors ──────────────────────────────────────
+
+  async listCanvasActors(org: string, workspace: string, canvasId: string, params?: ListFilterParams & { actorType?: string; isActive?: string }): Promise<{ total: number; actors: BIQCanvasActor[] }> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    if (params?.actorType) searchParams.set('actorType', params.actorType);
+    if (params?.isActive) searchParams.set('isActive', params.isActive);
+    const qs = searchParams.toString();
+    return this.request('GET', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/actors${qs ? `?${qs}` : ''}`);
+  }
+
+  async getCanvasActor(org: string, workspace: string, canvasId: string, actorId: string): Promise<BIQCanvasActor> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/actors/${actorId}`);
+  }
+
+  async getCanvasActorFlow(org: string, workspace: string, canvasId: string, actorId: string): Promise<BIQCanvasActorFlow> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/actors/${actorId}/flow`);
+  }
+
+  async verifyCanvasActor(org: string, workspace: string, canvasId: string, body: unknown): Promise<BIQActorVerification> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/actors/verify`, body);
+  }
+
+  async createCanvasActor(org: string, workspace: string, canvasId: string, actorId: string, body: unknown): Promise<BatchActorOperationsResponse> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/actors/${actorId}`, body);
+  }
+
+  async updateCanvasActor(org: string, workspace: string, canvasId: string, actorId: string, body: unknown, editVersion?: number): Promise<BatchActorOperationsResponse> {
+    const qs = editVersion !== undefined ? `?editVersion=${editVersion}` : '';
+    return this.request('PATCH', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/actors/${actorId}${qs}`, body);
+  }
+
+  async deleteCanvasActor(org: string, workspace: string, canvasId: string, actorId: string, editVersion?: number): Promise<BatchActorOperationsResponse> {
+    const qs = editVersion !== undefined ? `?editVersion=${editVersion}` : '';
+    return this.request('DELETE', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/actors/${actorId}${qs}`);
   }
 }
 

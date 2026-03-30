@@ -6,7 +6,7 @@ import { canvasesCreate } from './create.js';
 import { canvasesCreateWithData } from './create-with-data.js';
 import { canvasesUpdate } from './update.js';
 import { canvasesUpdateData } from './update-data.js';
-import { canvasesPatchActors } from './patch-actors.js';
+
 import { canvasesDelete } from './delete.js';
 import { canvasesExport } from './export.js';
 import { canvasesValidate } from './validate.js';
@@ -64,12 +64,6 @@ export const registerCanvasesCommands = (program: Command): void => {
     .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
     .option('--mode <mode>', 'Import mode: merge (default), insert, or replace', 'merge')
     .action(canvasesUpdateData);
-
-  canvases
-    .command('patch-actors <id>')
-    .description('Incrementally add, update, or remove actors')
-    .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
-    .action(canvasesPatchActors);
 
   canvases
     .command('delete <id>')

@@ -5,6 +5,7 @@ import { registerOrgsCommands } from './commands/orgs/index.js';
 import { registerWorkspacesCommands } from './commands/workspaces/index.js';
 import { registerActorsCommands } from './commands/actors/index.js';
 import { registerCanvasesCommands } from './commands/canvases/index.js';
+import { registerCanvasActorsCommands } from './commands/canvas-actors/index.js';
 import { registerFlowrunsCommands } from './commands/flowruns/index.js';
 import { registerFlowrunJobsCommands } from './commands/flowrun-jobs/index.js';
 import { registerFlowrunResultsCommands } from './commands/flowrun-results/index.js';
@@ -35,6 +36,7 @@ export const createProgram = (): Command => {
   registerWorkspacesCommands(program);
   registerActorsCommands(program);
   registerCanvasesCommands(program);
+  registerCanvasActorsCommands(program);
   registerFlowrunsCommands(program);
   registerFlowrunJobsCommands(program);
   registerFlowrunResultsCommands(program);

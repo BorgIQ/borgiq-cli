@@ -98,12 +98,24 @@ Values are resolved in this order (highest priority first):
 | `borgiq canvases create-with-data` | Create a canvas with full flow data |
 | `borgiq canvases update <id>` | Update canvas metadata |
 | `borgiq canvases update-data <id>` | Import canvas data (`--mode merge\|insert\|replace`) |
-| `borgiq canvases patch-actors <id>` | Incrementally add, update, or remove actors |
 | `borgiq canvases delete <id>` | Delete a canvas |
 | `borgiq canvases export <id>` | Export canvas data as JSON |
 | `borgiq canvases validate <id>` | Validate canvas configuration |
 | `borgiq canvases layout <id>` | Auto-layout actors |
 | `borgiq canvases verify-import` | Verify import data before creating |
+
+### Canvas Actors
+
+| Command | Description |
+|---------|-------------|
+| `borgiq canvas-actors list <canvasId>` | List actors in a canvas with filters |
+| `borgiq canvas-actors get <canvasId> <actorId>` | Get a single actor by ID |
+| `borgiq canvas-actors flow <canvasId> <actorId>` | Get actor and downstream actors |
+| `borgiq canvas-actors verify <canvasId>` | Verify actor options against type schema |
+| `borgiq canvas-actors create <canvasId> <actorId>` | Create a single actor |
+| `borgiq canvas-actors update <canvasId> <actorId>` | Update a single actor (partial) |
+| `borgiq canvas-actors delete <canvasId> <actorId>` | Delete a single actor |
+| `borgiq canvas-actors batch <canvasId>` | Apply batch actor operations (add, update, remove) |
 
 ### Flow Runs
 

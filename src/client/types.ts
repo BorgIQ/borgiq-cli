@@ -192,7 +192,7 @@ export interface BIQCanvasLayout {
 }
 
 /** Patch actors operation */
-export interface PatchActorsOperation {
+export interface BatchActorOperation {
   type: 'add' | 'update' | 'remove';
   actorId: string;
   editVersion?: number;
@@ -200,7 +200,7 @@ export interface PatchActorsOperation {
 }
 
 /** Patch actors response */
-export interface PatchActorsResponse {
+export interface BatchActorOperationsResponse {
   appliedOperations: { type: string; actorId: string; status: string }[];
   conflicts: unknown[];
   updatedAt: string;
@@ -257,4 +257,40 @@ export interface BIQConnectionType {
   type: string;
   name: string;
   [key: string]: unknown;
+}
+
+/** Canvas actor instance */
+export interface BIQCanvasActor {
+  id: string;
+  name: string;
+  type: string;
+  isActive: boolean;
+  msgVar: string;
+  description: string;
+  version: number;
+  continueOnError: boolean;
+  enableLTM: boolean;
+  enableSTM: boolean;
+  showInWorkspaceApps: boolean;
+  configuration: Record<string, unknown>;
+  schemas: Record<string, unknown>;
+  sourcePorts: { id: string; name?: string; description?: string }[];
+  edges: Record<string, unknown>;
+  position: { x: number; y: number };
+  runtimeSlug?: string;
+  icon?: Record<string, unknown>;
+  template?: Record<string, unknown>;
+}
+
+/** Canvas actor flow response */
+export interface BIQCanvasActorFlow {
+  sourceActorId: string;
+  actors: BIQCanvasActor[];
+  actorCount: number;
+}
+
+/** Actor options verification response */
+export interface BIQActorVerification {
+  valid: boolean;
+  errors: { path: (string | number)[]; message: string }[];
 }
