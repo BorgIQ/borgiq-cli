@@ -66,6 +66,95 @@ Values are resolved in this order (highest priority first):
 2. Environment variables (`BORGIQ_API_URL`, `BORGIQ_API_TOKEN`, `BORGIQ_ORG`, `BORGIQ_WORKSPACE`)
 3. Config file (`~/.config/borgiq/config.json`)
 
+## Commands
+
+### Auth
+
+| Command | Description |
+|---------|-------------|
+| `borgiq auth login` | Configure API key and base URL |
+| `borgiq auth logout` | Remove stored credentials |
+| `borgiq auth status` | Show current authentication status |
+
+### Organizations
+
+| Command | Description |
+|---------|-------------|
+| `borgiq orgs list` | List organizations and workspaces |
+
+### Workspaces
+
+| Command | Description |
+|---------|-------------|
+| `borgiq workspaces list` | List workspaces in an organization |
+
+### Canvases
+
+| Command | Description |
+|---------|-------------|
+| `borgiq canvases list` | List canvases in a workspace |
+| `borgiq canvases get <id>` | Get canvas details (`--include-data` for full flow data) |
+| `borgiq canvases create` | Create an empty canvas |
+| `borgiq canvases create-with-data` | Create a canvas with full flow data |
+| `borgiq canvases update <id>` | Update canvas metadata |
+| `borgiq canvases update-data <id>` | Import canvas data (`--mode merge\|insert\|replace`) |
+| `borgiq canvases delete <id>` | Delete a canvas |
+| `borgiq canvases export <id>` | Export canvas data as JSON |
+| `borgiq canvases validate <id>` | Validate canvas configuration |
+| `borgiq canvases layout <id>` | Auto-layout actors |
+| `borgiq canvases verify-import` | Verify import data before creating |
+
+### Canvas Actors
+
+| Command | Description |
+|---------|-------------|
+| `borgiq canvas-actors list <canvasId>` | List actors in a canvas with filters |
+| `borgiq canvas-actors get <canvasId> <actorId>` | Get a single actor by ID |
+| `borgiq canvas-actors flow <canvasId> <actorId>` | Get actor and downstream actors |
+| `borgiq canvas-actors verify <canvasId>` | Verify actor options against type schema |
+| `borgiq canvas-actors create <canvasId> <actorId>` | Create a single actor |
+| `borgiq canvas-actors update <canvasId> <actorId>` | Update a single actor (partial) |
+| `borgiq canvas-actors delete <canvasId> <actorId>` | Delete a single actor |
+| `borgiq canvas-actors batch <canvasId>` | Apply batch actor operations (add, update, remove) |
+
+### Flow Runs
+
+| Command | Description |
+|---------|-------------|
+| `borgiq flowruns list` | List flow runs |
+| `borgiq flowruns get <id>` | Get flow run details |
+| `borgiq flowruns status <id>` | Get flow run execution status |
+| `borgiq flowruns summary <id>` | Get flow run summary |
+| `borgiq flowruns interrupt <id>` | Interrupt a running flow |
+
+### Triggers
+
+| Command | Description |
+|---------|-------------|
+| `borgiq triggers run` | Manually trigger a flow |
+
+### Connections
+
+| Command | Description |
+|---------|-------------|
+| `borgiq connections list` | List connections |
+| `borgiq connections delete <id>` | Delete a connection |
+
+### Secrets
+
+| Command | Description |
+|---------|-------------|
+| `borgiq secrets list` | List secrets |
+| `borgiq secrets delete <id>` | Delete a secret |
+
+### API Tokens
+
+| Command | Description |
+|---------|-------------|
+| `borgiq tokens list` | List API tokens |
+| `borgiq tokens create` | Create a new API token |
+| `borgiq tokens revoke <id>` | Revoke an API token |
+
 ## Global Options
 
 These options are available on all commands:
