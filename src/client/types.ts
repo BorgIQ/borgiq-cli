@@ -143,15 +143,36 @@ export interface BIQActorType {
   [key: string]: unknown;
 }
 
-/** Actor type schema */
+/** Actor type schema (base response) */
 export interface BIQActorSchema {
   actorType: string;
   name: string;
   description: string;
   category: string;
-  configurationSchema: Record<string, unknown>;
-  sourcePorts: { id: string; name: string; description?: string }[];
-  features: Record<string, boolean>;
+  optionsSchema: Record<string, unknown> | null;
+  actions: { selectorSchema: Record<string, unknown> } | null;
+  defaultOptions: Record<string, unknown> | null;
+  sourcePorts: {
+    type: 'none' | 'singleDefault' | 'fixedMulti' | 'dynamic';
+    fixedPorts: Array<{ id: string; name?: string }>;
+    canAddPorts: boolean;
+  };
+  code: { supported: boolean; language: 'typescript' | 'python' | null };
+  canReceiveMessage: boolean;
+  canEmitMessage: boolean;
+  supportsConnection: boolean;
+  enableLTM: boolean;
+  enableSTM: boolean;
+}
+
+/** Actor action schema (response for ?action=<action>) */
+export interface BIQActorActionSchema {
+  actorType: string;
+  action: string;
+  label: string;
+  group?: string;
+  optionsSchema: Record<string, unknown>;
+  memory: { ltm?: boolean; stm?: boolean };
 }
 
 /** Canvas validation result */

@@ -14,5 +14,6 @@ export const registerActorsCommands = (program: Command): void => {
   actors
     .command('schema <actorType>')
     .description('Get configuration schema for an actor type')
+    .option('--action <action>', 'Get schema for a specific action (for action-based actors like DataStoreActor)')
     .action(actorsSchema);
 };

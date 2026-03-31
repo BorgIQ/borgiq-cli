@@ -15,6 +15,7 @@ import type {
   ManualTriggerRequest,
   BIQActorType,
   BIQActorSchema,
+  BIQActorActionSchema,
   BIQCanvasValidation,
   BIQCanvasLayout,
   PatchActorsResponse,
@@ -198,8 +199,9 @@ export class BorgIQClient {
     return this.request('GET', '/actors');
   }
 
-  async getActorSchema(actorType: string): Promise<BIQActorSchema> {
-    return this.request('GET', `/actors/${actorType}/schema`);
+  async getActorSchema(actorType: string, action?: string): Promise<BIQActorSchema | BIQActorActionSchema> {
+    const qs = action ? `?action=${action}` : '';
+    return this.request('GET', `/actors/${actorType}/schema${qs}`);
   }
 
   // ── Canvas Data Operations ────────────────────────────
