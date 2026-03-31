@@ -10,7 +10,7 @@ export const flowrunJobsReRun = async (options: { jobId: string; publish?: boole
 
     const result = await client.reRunJob(ctx.org, ctx.workspace, {
       flowrunJobId: options.jobId,
-      publishEmittedMessagesToConnectedActors: options.publish ?? true,
+      publishEmittedMessageToConnectedActors: options.publish ?? true,
     });
 
     if (!globalOpts.json && process.stderr.isTTY) {

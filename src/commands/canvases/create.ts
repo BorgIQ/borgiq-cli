@@ -3,7 +3,7 @@ import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
 
-export const canvasesCreate = async (options: { name: string; slug: string; description?: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+export const canvasesCreate = async (options: { name: string; slug: string; description?: string; messageTtl: string; tags?: string; runtimeSlug?: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
@@ -12,6 +12,9 @@ export const canvasesCreate = async (options: { name: string; slug: string; desc
       name: options.name,
       slug: options.slug,
       description: options.description,
+      messageTTLInDays: parseInt(options.messageTtl, 10),
+      tags: options.tags,
+      runtimeSlug: options.runtimeSlug,
     });
 
     if (!globalOpts.json && process.stderr.isTTY) {

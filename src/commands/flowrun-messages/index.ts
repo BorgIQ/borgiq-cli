@@ -11,10 +11,9 @@ export const registerFlowrunMessagesCommands = (program: Command): void => {
     .description('List emitted messages for a flow run')
     .option('--page <page>', 'Page number')
     .option('--page-size <size>', 'Results per page')
-    .option('--canvas-id <id>', 'Filter by canvas ID')
+    .requiredOption('--canvas-id <id>', 'Canvas ID')
     .option('--flowrun-id <id>', 'Filter by flowrun ID')
-    .option('--actor-id <id>', 'Filter by actor ID')
-    .option('--port-id <id>', 'Filter by port ID')
+    .requiredOption('--actor-id <id>', 'Actor ID')
     .action(flowrunMessagesList);
 
   messages

@@ -3,7 +3,7 @@ import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
 
-export const flowrunMessagesList = async (options: { page?: string; pageSize?: string; canvasId?: string; flowrunId?: string; actorId?: string; portId?: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+export const flowrunMessagesList = async (options: { page?: string; pageSize?: string; canvasId: string; flowrunId?: string; actorId: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
@@ -14,7 +14,6 @@ export const flowrunMessagesList = async (options: { page?: string; pageSize?: s
       canvasId: options.canvasId,
       flowrunId: options.flowrunId,
       actorId: options.actorId,
-      portId: options.portId,
     });
 
     output(result, globalOpts, {

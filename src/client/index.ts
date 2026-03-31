@@ -24,6 +24,7 @@ import type {
   BIQFlowrunMessage,
   BIQAssetMetadata,
   BIQConnectionType,
+  RuntimeDataRootPath,
 } from './types.js';
 
 export class BorgIQClient {
@@ -108,11 +109,11 @@ export class BorgIQClient {
     return this.request('GET', `${this.wkspPath(org, workspace)}/canvases/${id}${qs}`);
   }
 
-  async createCanvas(org: string, workspace: string, body: { name: string; slug: string; description?: string }): Promise<BIQCanvasMetadata> {
+  async createCanvas(org: string, workspace: string, body: { name: string; slug: string; messageTTLInDays: number; description?: string; tags?: string; runtimeSlug?: string }): Promise<BIQCanvasMetadata> {
     return this.request('POST', `${this.wkspPath(org, workspace)}/canvases`, body);
   }
 
-  async updateCanvas(org: string, workspace: string, id: string, body: { name?: string; description?: string }): Promise<BIQCanvasMetadata> {
+  async updateCanvas(org: string, workspace: string, id: string, body: { name?: string; slug?: string; description?: string; tags?: string; messageTTLInDays?: number; runtimeSlug?: string }): Promise<BIQCanvasMetadata> {
     return this.request('PUT', `${this.wkspPath(org, workspace)}/canvases/${id}`, body);
   }
 
@@ -126,11 +127,10 @@ export class BorgIQClient {
 
   // ── Flow Runs ─────────────────────────────────────────
 
-  async listFlowruns(org: string, workspace: string, params?: ListFilterParams & { canvasId?: string }): Promise<PaginatedResponse<BIQFlowrun>> {
+  async listFlowruns(org: string, workspace: string, canvasId: string, params?: ListFilterParams): Promise<PaginatedResponse<BIQFlowrun>> {
     const base = this.buildQueryString(params);
     const sep = base ? '&' : '?';
-    const canvasFilter = params?.canvasId ? `${sep}canvasId=${params.canvasId}` : '';
-    return this.request('GET', `${this.wkspPath(org, workspace)}/flowruns${base}${canvasFilter}`);
+    return this.request('GET', `${this.wkspPath(org, workspace)}/flowruns${base}${sep}canvasId=${canvasId}`);
   }
 
   async getFlowrun(org: string, workspace: string, id: string): Promise<BIQFlowrun> {
@@ -233,28 +233,27 @@ export class BorgIQClient {
 
   // ── Flowrun Jobs ──────────────────────────────────────
 
-  async listFlowrunJobs(org: string, workspace: string, params: { canvasId?: string; actorId?: string; flowrunId?: string } & ListFilterParams): Promise<PaginatedResponse<BIQFlowrunJob>> {
+  async listFlowrunJobs(org: string, workspace: string, params: { canvasId: string; actorId: string; flowrunId?: string } & ListFilterParams): Promise<PaginatedResponse<BIQFlowrunJob>> {
     const searchParams = new URLSearchParams();
     if (params.page) searchParams.set('page', String(params.page));
     if (params.pageSize) searchParams.set('pageSize', String(params.pageSize));
-    if (params.canvasId) searchParams.set('canvasId', params.canvasId);
-    if (params.actorId) searchParams.set('actorId', params.actorId);
+    searchParams.set('canvasId', params.canvasId);
+    searchParams.set('actorId', params.actorId);
     if (params.flowrunId) searchParams.set('flowrunId', params.flowrunId);
     const qs = searchParams.toString();
     return this.request('GET', `${this.wkspPath(org, workspace)}/flowrunJobs${qs ? `?${qs}` : ''}`);
   }
 
-  async testRunJob(org: string, workspace: string, body: { canvasId: string; actorId: string; publishEmittedMessageToConnectedActors?: boolean }): Promise<unknown> {
+  async testRunJob(org: string, workspace: string, body: { canvasId: string; actorId: string; publishEmittedMessageToConnectedActors: boolean }): Promise<unknown> {
     return this.request('POST', `${this.wkspPath(org, workspace)}/flowrunJobs/testRun`, body);
   }
 
-  async reRunJob(org: string, workspace: string, body: { flowrunJobId: string; publishEmittedMessagesToConnectedActors?: boolean }): Promise<unknown> {
+  async reRunJob(org: string, workspace: string, body: { flowrunJobId: string; publishEmittedMessageToConnectedActors: boolean }): Promise<unknown> {
     return this.request('POST', `${this.wkspPath(org, workspace)}/flowrunJobs/reRun`, body);
   }
 
-  async getJobRuntimeData(org: string, workspace: string, jobId: string, rootPath?: string): Promise<unknown> {
-    const qs = rootPath ? `?rootPath=${rootPath}` : '';
-    return this.request('GET', `${this.wkspPath(org, workspace)}/flowrunJobs/${jobId}/runtimeData${qs}`);
+  async getJobRuntimeData(org: string, workspace: string, jobId: string, rootPath: RuntimeDataRootPath): Promise<unknown> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/flowrunJobs/${jobId}/runtimeData?rootPath=${rootPath}`);
   }
 
   async getJobAiTimeline(org: string, workspace: string, jobId: string): Promise<unknown> {
@@ -277,14 +276,13 @@ export class BorgIQClient {
 
   // ── Flowrun Messages ──────────────────────────────────
 
-  async listFlowrunMessages(org: string, workspace: string, params: { canvasId?: string; flowrunId?: string; actorId?: string; portId?: string } & ListFilterParams): Promise<PaginatedResponse<BIQFlowrunMessage>> {
+  async listFlowrunMessages(org: string, workspace: string, params: { canvasId: string; actorId: string; flowrunId?: string } & ListFilterParams): Promise<PaginatedResponse<BIQFlowrunMessage>> {
     const searchParams = new URLSearchParams();
     if (params.page) searchParams.set('page', String(params.page));
     if (params.pageSize) searchParams.set('pageSize', String(params.pageSize));
-    if (params.canvasId) searchParams.set('canvasId', params.canvasId);
+    searchParams.set('canvasId', params.canvasId);
+    searchParams.set('actorId', params.actorId);
     if (params.flowrunId) searchParams.set('flowrunId', params.flowrunId);
-    if (params.actorId) searchParams.set('actorId', params.actorId);
-    if (params.portId) searchParams.set('portId', params.portId);
     const qs = searchParams.toString();
     return this.request('GET', `${this.wkspPath(org, workspace)}/flowrunMessages${qs ? `?${qs}` : ''}`);
   }

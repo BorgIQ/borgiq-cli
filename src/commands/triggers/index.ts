@@ -10,6 +10,5 @@ export const registerTriggersCommands = (program: Command): void => {
     .description('Manually trigger a flow')
     .requiredOption('--canvas-id <id>', 'Canvas ID')
     .requiredOption('--actor-id <id>', 'Trigger actor ID')
-    .option('--data <json>', 'Trigger data as JSON string')
     .action(triggersRun);
 };

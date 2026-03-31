@@ -14,7 +14,7 @@ export const registerFlowrunsCommands = (program: Command): void => {
     .description('List flow runs')
     .option('--page <page>', 'Page number')
     .option('--page-size <size>', 'Results per page')
-    .option('--canvas-id <id>', 'Filter by canvas ID')
+    .requiredOption('--canvas-id <id>', 'Canvas ID')
     .action(flowrunsList);
 
   flowruns

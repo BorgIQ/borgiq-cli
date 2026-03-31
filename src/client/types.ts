@@ -131,8 +131,10 @@ export interface BIQFlowrunSummary {
 export interface ManualTriggerRequest {
   canvasId: string;
   actorId: string;
-  data?: Record<string, unknown>;
 }
+
+/** Valid root paths for job runtime data */
+export type RuntimeDataRootPath = 'ctx' | 'request' | 'inputs' | 'user';
 
 /** Actor type definition */
 export interface BIQActorType {

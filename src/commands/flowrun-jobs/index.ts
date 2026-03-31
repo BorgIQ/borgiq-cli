@@ -15,8 +15,8 @@ export const registerFlowrunJobsCommands = (program: Command): void => {
     .description('List flow run jobs')
     .option('--page <page>', 'Page number')
     .option('--page-size <size>', 'Results per page')
-    .option('--canvas-id <id>', 'Filter by canvas ID')
-    .option('--actor-id <id>', 'Filter by actor ID')
+    .requiredOption('--canvas-id <id>', 'Canvas ID')
+    .requiredOption('--actor-id <id>', 'Actor ID')
     .option('--flowrun-id <id>', 'Filter by flowrun ID')
     .action(flowrunJobsList);
 
@@ -38,7 +38,7 @@ export const registerFlowrunJobsCommands = (program: Command): void => {
   jobs
     .command('runtime-data <jobId>')
     .description('Get runtime data for a job (what the actor received)')
-    .option('--root-path <path>', 'Data root path: ctx, msg, request, user, or inputs')
+    .requiredOption('--root-path <path>', 'Data root path: ctx, request, inputs, or user')
     .action(flowrunJobsRuntimeData);
 
   jobs

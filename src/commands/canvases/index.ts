@@ -36,6 +36,9 @@ export const registerCanvasesCommands = (program: Command): void => {
     .requiredOption('--name <name>', 'Canvas name')
     .requiredOption('--slug <slug>', 'Canvas slug')
     .option('--description <desc>', 'Canvas description')
+    .option('--message-ttl <days>', 'Message TTL in days (1-14)', '7')
+    .option('--tags <tags>', 'Canvas tags')
+    .option('--runtime-slug <slug>', 'Runtime slug')
     .action(canvasesCreate);
 
   canvases
@@ -46,9 +49,13 @@ export const registerCanvasesCommands = (program: Command): void => {
 
   canvases
     .command('update <id>')
-    .description('Update canvas metadata (name, description)')
+    .description('Update canvas metadata')
     .option('--name <name>', 'Canvas name')
+    .option('--slug <slug>', 'Canvas slug')
     .option('--description <desc>', 'Canvas description')
+    .option('--tags <tags>', 'Canvas tags')
+    .option('--message-ttl <days>', 'Message TTL in days (1-14)')
+    .option('--runtime-slug <slug>', 'Runtime slug')
     .action(canvasesUpdate);
 
   canvases
