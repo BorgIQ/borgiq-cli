@@ -28,7 +28,6 @@ import type {
   BIQCanvasActor,
   BIQCanvasActorFlow,
   BIQActorVerification,
-  RuntimeDataRootPath
 } from './types.js';
 
 export class BorgIQClient {
