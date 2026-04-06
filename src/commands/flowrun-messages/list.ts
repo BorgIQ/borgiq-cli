@@ -19,9 +19,9 @@ export const flowrunMessagesList = async (options: { page?: string; pageSize?: s
     output(result, globalOpts, {
       columns: [
         { key: 'id', header: 'ID' },
-        { key: 'actorId', header: 'ACTOR' },
-        { key: 'portId', header: 'PORT' },
-        { key: 'createdAt', header: 'CREATED' },
+        { key: 'sourcePortId', header: 'PORT' },
+        { key: 'flowrunJobId', header: 'JOB' },
+        { key: 'emittedAt', header: 'EMITTED' },
       ],
       title: 'Flow Run Messages',
     });

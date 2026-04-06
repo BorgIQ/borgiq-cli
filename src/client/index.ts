@@ -3,11 +3,13 @@ import type {
   BIQUser,
   BIQUserAccessibleWorkspaceInfo,
   BIQCanvasMetadata,
+  BIQCanvasResponse,
   BIQConnectionMetadata,
   BIQSecretMetadata,
   BIQApiToken,
   BIQApiTokenCreated,
   BIQFlowrun,
+  BIQFlowrunDetail,
   BIQFlowrunStatus,
   BIQFlowrunSummary,
   PaginatedResponse,
@@ -91,23 +93,25 @@ export class BorgIQClient {
     return this.request<BIQUser>('GET', '/apiUser/profile');
   }
 
-  async getOrgsAndWorkspaces(): Promise<BIQUserAccessibleWorkspaceInfo[]> {
-    return this.request<BIQUserAccessibleWorkspaceInfo[]>('GET', '/apiUser/orgsAndWorkspaces');
+  async getOrgsAndWorkspaces(): Promise<{ [orgId: string]: BIQUserAccessibleWorkspaceInfo }> {
+    return this.request<{[orgId: string]: BIQUserAccessibleWorkspaceInfo }>('GET', '/apiUser/orgsAndWorkspaces');
   }
 
   // ── Workspaces ────────────────────────────────────────
 
   async listWorkspaces(org: string, params?: ListFilterParams): Promise<PaginatedResponse<{ id: string; name: string; slug: string; description: string }>> {
-    return this.request('GET', `/orgs/${org}/workspaces${this.buildQueryString(params)}`);
+    const raw = await this.request<{ total: number; workspaces: { id: string; name: string; slug: string; description: string }[] }>('GET', `/orgs/${org}/workspaces${this.buildQueryString(params)}`);
+    return { total: raw.total, data: raw.workspaces };
   }
 
   // ── Canvases ──────────────────────────────────────────
 
   async listCanvases(org: string, workspace: string, params?: ListFilterParams): Promise<PaginatedResponse<BIQCanvasMetadata>> {
-    return this.request('GET', `${this.wkspPath(org, workspace)}/canvases/${this.buildQueryString(params)}`);
+    const raw = await this.request<{ total: number; canvases: BIQCanvasMetadata[] }>('GET', `${this.wkspPath(org, workspace)}/canvases/${this.buildQueryString(params)}`);
+    return { total: raw.total, data: raw.canvases };
   }
 
-  async getCanvas(org: string, workspace: string, id: string, includeData?: boolean): Promise<BIQCanvasMetadata> {
+  async getCanvas(org: string, workspace: string, id: string, includeData?: boolean): Promise<BIQCanvasResponse> {
     const qs = includeData ? '?includeData=true' : '';
     return this.request('GET', `${this.wkspPath(org, workspace)}/canvases/${id}${qs}`);
   }
@@ -133,10 +137,11 @@ export class BorgIQClient {
   async listFlowruns(org: string, workspace: string, canvasId: string, params?: ListFilterParams): Promise<PaginatedResponse<BIQFlowrun>> {
     const base = this.buildQueryString(params);
     const sep = base ? '&' : '?';
-    return this.request('GET', `${this.wkspPath(org, workspace)}/flowruns${base}${sep}canvasId=${canvasId}`);
+    const raw = await this.request<{ flowruns: BIQFlowrun[] }>('GET', `${this.wkspPath(org, workspace)}/flowruns${base}${sep}canvasId=${canvasId}`);
+    return { total: raw.flowruns.length, data: raw.flowruns };
   }
 
-  async getFlowrun(org: string, workspace: string, id: string): Promise<BIQFlowrun> {
+  async getFlowrun(org: string, workspace: string, id: string): Promise<BIQFlowrunDetail> {
     return this.request('GET', `${this.wkspPath(org, workspace)}/flowruns/${id}`);
   }
 
@@ -153,7 +158,8 @@ export class BorgIQClient {
   }
 
   async getChildFlowruns(org: string, workspace: string, id: string): Promise<BIQFlowrun[]> {
-    return this.request('GET', `${this.wkspPath(org, workspace)}/flowruns/${id}/children`);
+    const raw = await this.request<{ flowruns: BIQFlowrun[] }>('GET', `${this.wkspPath(org, workspace)}/flowruns/${id}/children`);
+    return raw.flowruns;
   }
 
   // ── Triggers ──────────────────────────────────────────
@@ -165,7 +171,8 @@ export class BorgIQClient {
   // ── Connections ───────────────────────────────────────
 
   async listConnections(org: string, workspace: string, params?: ListFilterParams): Promise<PaginatedResponse<BIQConnectionMetadata>> {
-    return this.request('GET', `${this.wkspPath(org, workspace)}/connections${this.buildQueryString(params)}`);
+    const raw = await this.request<{ total: number; connections: BIQConnectionMetadata[] }>('GET', `${this.wkspPath(org, workspace)}/connections${this.buildQueryString(params)}`);
+    return { total: raw.total, data: raw.connections };
   }
 
   async deleteConnection(org: string, workspace: string, id: string): Promise<void> {
@@ -175,7 +182,8 @@ export class BorgIQClient {
   // ── Secrets ───────────────────────────────────────────
 
   async listSecrets(org: string, workspace: string, params?: ListFilterParams): Promise<PaginatedResponse<BIQSecretMetadata>> {
-    return this.request('GET', `${this.wkspPath(org, workspace)}/secrets${this.buildQueryString(params)}`);
+    const raw = await this.request<{ total: number; secrets: BIQSecretMetadata[] }>('GET', `${this.wkspPath(org, workspace)}/secrets${this.buildQueryString(params)}`);
+    return { total: raw.total, data: raw.secrets };
   }
 
   async deleteSecret(org: string, workspace: string, id: string): Promise<void> {
@@ -198,7 +206,7 @@ export class BorgIQClient {
 
   // ── Actors ────────────────────────────────────────────
 
-  async listActors(): Promise<BIQActorType[]> {
+  async listActors(): Promise<Record<string, BIQActorType>> {
     return this.request('GET', '/actors');
   }
 
@@ -243,7 +251,8 @@ export class BorgIQClient {
     searchParams.set('actorId', params.actorId);
     if (params.flowrunId) searchParams.set('flowrunId', params.flowrunId);
     const qs = searchParams.toString();
-    return this.request('GET', `${this.wkspPath(org, workspace)}/flowrunJobs${qs ? `?${qs}` : ''}`);
+    const raw = await this.request<{ flowrunJobs: BIQFlowrunJob[] }>('GET', `${this.wkspPath(org, workspace)}/flowrunJobs${qs ? `?${qs}` : ''}`);
+    return { total: raw.flowrunJobs.length, data: raw.flowrunJobs };
   }
 
   async testRunJob(org: string, workspace: string, body: { canvasId: string; actorId: string; publishEmittedMessageToConnectedActors: boolean }): Promise<unknown> {
@@ -269,7 +278,8 @@ export class BorgIQClient {
   // ── Flowrun Job Results ───────────────────────────────
 
   async getJobResultSummaries(org: string, workspace: string, jobId: string): Promise<BIQFlowrunJobResultSummary[]> {
-    return this.request('GET', `${this.wkspPath(org, workspace)}/flowrunJobResults/summaries?flowrunJobId=${jobId}`);
+    const raw = await this.request<{ summary: BIQFlowrunJobResultSummary[] }>('GET', `${this.wkspPath(org, workspace)}/flowrunJobResults/summaries?flowrunJobId=${jobId}`);
+    return raw.summary;
   }
 
   async getJobResultData(org: string, workspace: string, resultId: string): Promise<unknown> {
@@ -286,7 +296,8 @@ export class BorgIQClient {
     searchParams.set('actorId', params.actorId);
     if (params.flowrunId) searchParams.set('flowrunId', params.flowrunId);
     const qs = searchParams.toString();
-    return this.request('GET', `${this.wkspPath(org, workspace)}/flowrunMessages${qs ? `?${qs}` : ''}`);
+    const raw = await this.request<{ flowrunEmittedMessages: BIQFlowrunMessage[] }>('GET', `${this.wkspPath(org, workspace)}/flowrunMessages${qs ? `?${qs}` : ''}`);
+    return { total: raw.flowrunEmittedMessages.length, data: raw.flowrunEmittedMessages };
   }
 
   async getFlowrunMessageData(org: string, workspace: string, messageId: string): Promise<unknown> {
@@ -296,13 +307,15 @@ export class BorgIQClient {
   // ── Connection Types ──────────────────────────────────
 
   async listConnectionTypes(org: string, workspace: string, params?: ListFilterParams): Promise<PaginatedResponse<BIQConnectionType>> {
-    return this.request('GET', `${this.wkspPath(org, workspace)}/connections/types${this.buildQueryString(params)}`);
+    const raw = await this.request<{ types: BIQConnectionType[]; nextPage?: number }>('GET', `${this.wkspPath(org, workspace)}/connections/types${this.buildQueryString(params)}`);
+    return { total: raw.types.length, data: raw.types };
   }
 
   // ── Assets ────────────────────────────────────────────
 
   async listAssets(org: string, workspace: string, params?: ListFilterParams): Promise<PaginatedResponse<BIQAssetMetadata>> {
-    return this.request('GET', `${this.wkspPath(org, workspace)}/assets${this.buildQueryString(params)}`);
+    const raw = await this.request<{ total: number; assets: BIQAssetMetadata[] }>('GET', `${this.wkspPath(org, workspace)}/assets${this.buildQueryString(params)}`);
+    return { total: raw.total, data: raw.assets };
   }
 
   async deleteAsset(org: string, workspace: string, id: string): Promise<void> {
