@@ -11,7 +11,7 @@ export const orgsList = async (_options: unknown, command: { parent: { parent: {
     const orgsAndWorkspaces = await client.getOrgsAndWorkspaces();
 
     // Flatten for table display
-    const rows = orgsAndWorkspaces.map((org) => ({
+    const rows = Object.values(orgsAndWorkspaces).map((org) => ({
       ...org,
       workspaceCount: org.workspaces.length,
     }));

@@ -27,6 +27,7 @@ export interface BIQWorkspace {
 export interface BIQUserWorkspaceAccessInfo extends BIQWorkspace {
   isOwner: boolean;
   role: string;
+  aiSettingsAvailability?: Record<string, boolean>;
 }
 
 /** Org with workspaces the user has access to */
@@ -46,6 +47,15 @@ export interface BIQCanvasMetadata {
   tags: string | null;
   imagePath: string | null;
   runtimeSlug: string | null;
+  triggerActors?: Record<string, number>;
+}
+
+/** Canvas response (returned by getCanvas) */
+export interface BIQCanvasResponse {
+  metadata: BIQCanvasMetadata;
+  version: number;
+  data?: unknown;
+  actorVersions?: Record<string, number>;
 }
 
 /** Connection metadata */
@@ -55,6 +65,8 @@ export interface BIQConnectionMetadata {
   description: string;
   type: string;
   createdAt: string;
+  exposureMode?: string;
+  metadata?: { type: string; value: string }[];
 }
 
 /** Secret metadata */
@@ -64,6 +76,7 @@ export interface BIQSecretMetadata {
   description: string;
   type: string;
   createdAt: string;
+  exposureMode?: string;
 }
 
 /** API token metadata */
@@ -98,33 +111,66 @@ export interface ListFilterParams {
   sortOrder?: 'asc' | 'desc';
 }
 
-/** Flowrun data */
+/** Flowrun list item (returned by list/children endpoints) */
 export interface BIQFlowrun {
   id: string;
-  canvasId: string;
-  canvasName?: string;
   state: string;
   createdAt: string;
   updatedAt?: string;
-  completedAt?: string;
+  [key: string]: unknown;
+}
+
+/** Flowrun detail (returned by getFlowrun) */
+export interface BIQFlowrunDetail {
+  flowrunMetadata: {
+    id: string;
+    createdAt: string;
+    updatedAt?: string;
+    triggerActor: { id: string; type: string };
+    isSubFlowrun: boolean;
+    data?: unknown;
+    parentFlowrun?: { actorId: string; flowrunId: string; canvasId: string; workspaceId: string };
+  };
+  emittedMessageCount: Record<string, Record<string, number>>;
 }
 
 /** Flowrun status */
 export interface BIQFlowrunStatus {
   id: string;
   state: string;
-  actors: Record<string, unknown>[];
+  actors: string[];
   counters?: Record<string, number>;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 /** Flowrun summary */
 export interface BIQFlowrunSummary {
   id: string;
   state: string;
-  actors: Record<string, unknown>[];
-  jobs: Record<string, unknown>[];
-  results: Record<string, unknown>[];
-  errors: Record<string, unknown>[];
+  triggerActor: { id: string; type: string; name: string };
+  createdAt: string;
+  actors: {
+    actorId: string;
+    actorName: string;
+    actorType: string;
+    jobs: {
+      jobId: string;
+      state: string;
+      resultId: string | null;
+      status: string | null;
+      startedAt: string | null;
+      endedAt: string | null;
+      error: unknown;
+      emittedMessageCount: Record<string, number>;
+    }[];
+  }[];
+  errors: {
+    actorId: string;
+    actorName: string;
+    jobId: string;
+    error: unknown;
+  }[];
 }
 
 /** Manual trigger request */
@@ -210,13 +256,9 @@ export interface BatchActorOperationsResponse {
 export interface BIQFlowrunJob {
   id: string;
   flowrunId: string;
-  canvasId: string;
-  actorId: string;
-  actorType: string;
-  actorName: string;
   state: string;
   createdAt: string;
-  updatedAt?: string;
+  sourceFlowrunMessage?: { id: string; messageType: string };
   [key: string]: unknown;
 }
 
@@ -235,11 +277,22 @@ export interface BIQFlowrunJobResultSummary {
 export interface BIQFlowrunMessage {
   id: string;
   flowrunId: string;
-  canvasId: string;
-  actorId: string;
-  portId: string;
-  createdAt: string;
+  emittedAt: string;
+  sourcePortId: string;
+  flowrunJobId: string;
   [key: string]: unknown;
+}
+
+/** File metadata */
+export interface BIQFileMetadata {
+  id: string;
+  fileName: string;
+  sizeInBytes: number;
+  mimeType: string;
+  status: string;
+  storageEngine: string;
+  md5?: string;
+  sha256?: string;
 }
 
 /** Asset metadata */
@@ -250,6 +303,10 @@ export interface BIQAssetMetadata {
   type: string;
   createdAt: string;
   updatedAt?: string;
+  file?: BIQFileMetadata;
+  org?: Record<string, unknown>;
+  workspace?: Record<string, unknown>;
+  data?: string;
 }
 
 /** Connection type */

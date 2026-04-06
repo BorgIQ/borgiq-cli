@@ -60,8 +60,9 @@ export const authLogin = async (options: { apiUrl?: string; token?: string }): P
 
     try {
       const orgsAndWorkspaces = await client.getOrgsAndWorkspaces();
-      if (orgsAndWorkspaces.length === 1) {
-        const org = orgsAndWorkspaces[0];
+      const orgs = Object.values(orgsAndWorkspaces);
+      if (orgs.length === 1) {
+        const org = orgs[0];
         config.defaultOrg = org.slug;
         process.stderr.write(`Default org: ${org.name} (${org.slug})\n`);
 

@@ -19,9 +19,8 @@ export const flowrunJobsList = async (options: { page?: string; pageSize?: strin
     output(result, globalOpts, {
       columns: [
         { key: 'id', header: 'ID' },
-        { key: 'actorName', header: 'ACTOR' },
-        { key: 'actorType', header: 'TYPE' },
         { key: 'state', header: 'STATE' },
+        { key: 'flowrunId', header: 'FLOWRUN' },
         { key: 'createdAt', header: 'CREATED' },
       ],
       title: 'Flow Run Jobs',

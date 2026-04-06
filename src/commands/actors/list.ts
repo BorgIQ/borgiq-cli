@@ -8,9 +8,10 @@ export const actorsList = async (_options: unknown, command: { parent: { parent:
     const globalOpts = command.parent.parent.opts();
     const client = createClient(globalOpts);
 
-    const actors = await client.listActors();
+    const actorsMap = await client.listActors();
+    const actors = Object.entries(actorsMap).map(([, actor]) => actor);
 
-    output(actors, globalOpts, {
+    output(globalOpts.json ? actorsMap : actors, globalOpts, {
       columns: [
         { key: 'type', header: 'TYPE' },
         { key: 'name', header: 'NAME' },
