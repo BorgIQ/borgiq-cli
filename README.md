@@ -5,7 +5,7 @@ Command-line interface for the [BorgIQ](https://borgiq.com) workflow automation 
 ## Installation
 
 ```bash
-npm install -g borgiq
+npm install -g @borgiq/cli
 ```
 
 Requires Node.js 20 or later.
