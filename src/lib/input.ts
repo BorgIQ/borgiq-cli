@@ -1,12 +1,25 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { parse as parseYaml } from 'yaml';
 
-export const readJsonInput = async (filePath?: string): Promise<unknown> => {
+const YAML_EXTENSIONS = new Set(['.yaml', '.yml']);
+
+const parseContent = (raw: string, filePath?: string): unknown => {
+  if (filePath && YAML_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
+    return parseYaml(raw);
+  }
+  return JSON.parse(raw);
+};
+
+export const readInput = async (filePath?: string): Promise<unknown> => {
   if (filePath) {
     const raw = fs.readFileSync(filePath, 'utf-8');
     try {
-      return JSON.parse(raw);
+      return parseContent(raw, filePath);
     } catch {
-      process.stderr.write(`Error: Invalid JSON in file: ${filePath}\n`);
+      const ext = path.extname(filePath).toLowerCase();
+      const format = YAML_EXTENSIONS.has(ext) ? 'YAML' : 'JSON';
+      process.stderr.write(`Error: Invalid ${format} in file: ${filePath}\n`);
       process.exit(1);
     }
   }
@@ -28,3 +41,6 @@ export const readJsonInput = async (filePath?: string): Promise<unknown> => {
   process.stderr.write('Error: Provide input via --file <path> or pipe JSON to stdin.\n');
   process.exit(1);
 };
+
+/** @deprecated Use readInput instead */
+export const readJsonInput = readInput;

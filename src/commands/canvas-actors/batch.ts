@@ -1,6 +1,6 @@
 import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
-import { readJsonInput } from '../../lib/input.js';
+import { readInput } from '../../lib/input.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
 
@@ -9,7 +9,7 @@ export const canvasActorsBatch = async (canvasId: string, options: { file?: stri
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
-    const body = await readJsonInput(options.file);
+    const body = await readInput(options.file);
     const result = await client.batchActorOperations(ctx.org, ctx.workspace, canvasId, body);
 
     if (!globalOpts.json && process.stderr.isTTY) {
