@@ -190,12 +190,17 @@ Paginated list commands return `{ "total": <count>, "data": [...] }` in JSON mod
 Commands that accept structured input (e.g., creating actors, batch operations) support two input methods:
 
 ```bash
-# From a file
+# From a JSON file
 borgiq canvas-actors create <canvasId> <actorId> --file actor.json
 
-# From stdin (pipe)
+# From a YAML file
+borgiq canvas-actors create <canvasId> <actorId> --file actor.yaml
+
+# From stdin (pipe, always parsed as JSON)
 cat actor.json | borgiq canvas-actors create <canvasId> <actorId>
 ```
+
+File format is detected by extension: `.yaml` and `.yml` files are parsed as YAML, all other extensions are parsed as JSON.
 
 If neither `--file` nor piped stdin is provided, the command exits with an error.
 
@@ -273,7 +278,7 @@ List commands support pagination options:
 | `borgiq canvases list` | List canvases in a workspace |
 | `borgiq canvases get <id>` | Get canvas details |
 | `borgiq canvases create` | Create an empty canvas |
-| `borgiq canvases create-with-data` | Create a canvas with full flow data from JSON input |
+| `borgiq canvases create-with-data` | Create a canvas with full flow data from JSON/YAML input |
 | `borgiq canvases update <id>` | Update canvas metadata |
 | `borgiq canvases update-data <id>` | Import canvas data (actors and edges) |
 | `borgiq canvases delete <id>` | Delete a canvas |
@@ -311,7 +316,7 @@ List commands support pagination options:
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON file containing full canvas definition (or pipe via stdin) |
+| `--file <path>` | Path to JSON/YAML file containing full canvas definition (or pipe JSON via stdin) |
 
 **`borgiq canvases update`**
 
@@ -328,7 +333,7 @@ List commands support pagination options:
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON file (or pipe via stdin) |
+| `--file <path>` | Path to JSON/YAML file (or pipe JSON via stdin) |
 | `--mode <mode>` | Update mode: `merge` (default), `insert`, or `replace` |
 
 **`borgiq canvases layout`**
@@ -341,7 +346,7 @@ List commands support pagination options:
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON file (or pipe via stdin) |
+| `--file <path>` | Path to JSON/YAML file (or pipe JSON via stdin) |
 
 ---
 
@@ -372,13 +377,13 @@ List commands support pagination options:
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON file with actor configuration (or pipe via stdin) |
+| `--file <path>` | Path to JSON/YAML file with actor configuration (or pipe JSON via stdin) |
 
 **`borgiq canvas-actors update`**
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON file with actor updates (or pipe via stdin) |
+| `--file <path>` | Path to JSON/YAML file with actor updates (or pipe JSON via stdin) |
 | `--edit-version <version>` | Edit version for conflict detection |
 
 **`borgiq canvas-actors delete`**
@@ -391,13 +396,13 @@ List commands support pagination options:
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON file with actor options to validate (or pipe via stdin) |
+| `--file <path>` | Path to JSON/YAML file with actor options to validate (or pipe JSON via stdin) |
 
 **`borgiq canvas-actors batch`**
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON file with batch operations (or pipe via stdin) |
+| `--file <path>` | Path to JSON/YAML file with batch operations (or pipe JSON via stdin) |
 
 ---
 
