@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
-import { handleError } from '../../lib/errors.js';
+import { handleError, CliUsageError } from '../../lib/errors.js';
 import { computeFileDigest, mimeTypeFromFileName, readStdinBytes } from '../../lib/fileMeta.js';
 import type { BIQAssetUpdateBody } from '../../client/types.js';
 import { readFileInput, runUpload } from './create.js';
@@ -48,8 +48,7 @@ export const assetsEdit = async (id: string, options: EditOptions, command: { pa
     }
 
     if (Object.keys(body).length === 0) {
-      process.stderr.write('Error: At least one field must be provided to edit (--key, --description, --data, --data-file, or --update-file).\n');
-      process.exit(1);
+      throw new CliUsageError('At least one field must be provided to edit (--key, --description, --data, --data-file, or --update-file).');
     }
 
     const response = await client.updateAsset(ctx.org, ctx.workspace, id, body);

@@ -1,7 +1,7 @@
 import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
-import { handleError } from '../../lib/errors.js';
+import { handleError, CliUsageError } from '../../lib/errors.js';
 import { ApiError } from '../../client/errors.js';
 import { prompt, promptRequired } from '../../lib/prompt.js';
 import { encryptWorkspaceData, getWorkspacePublicKey } from '../../lib/crypto.js';
@@ -32,29 +32,30 @@ export const connectionsCreate = async (options: CreateOptions, command: { paren
 
     const key = options.key || (isTty ? await promptRequired('Connection key') : undefined);
     if (!key) {
-      process.stderr.write('Error: --key is required when not running interactively.\n');
-      process.exit(1);
+      throw new CliUsageError('--key is required when not running interactively.');
     }
 
     const type = options.type || (isTty ? await promptRequired('Connection type (e.g. generic-api-key, github-oauth2)') : undefined);
     if (!type) {
-      process.stderr.write('Error: --type is required when not running interactively.\n');
-      process.exit(1);
+      throw new CliUsageError('--type is required when not running interactively.');
     }
 
     const description = options.description ?? (isTty ? await prompt('Description (optional)') : undefined);
     const exposureMode = options.exposureMode || 'HttpOnly';
     if (exposureMode !== 'HttpOnly' && exposureMode !== 'Protected') {
-      process.stderr.write(`Error: --exposure-mode must be 'HttpOnly' or 'Protected', got '${exposureMode}'.\n`);
-      process.exit(1);
+      throw new CliUsageError(`--exposure-mode must be 'HttpOnly' or 'Protected', got '${exposureMode}'.`);
     }
 
-    // Fetch form data to learn authType and schemas.
+    // Fetch form data to learn authType and schemas. Relabel only 404s as a
+    // wrong-type-name error; surface everything else (auth, network, 5xx) as-is
+    // so the user sees the real cause.
     let formData: BIQConnectionFormData;
     try {
       formData = await client.getConnectionFormData(ctx.org, ctx.workspace, type);
     } catch (err) {
-      process.stderr.write(`Error: Could not load form data for connection type '${type}'. Is the type name correct?\n`);
+      if (err instanceof ApiError && err.status === 404) {
+        throw new CliUsageError(`Unknown connection type '${type}'. Run \`borgiq connections types\` to see available types.`);
+      }
       throw err;
     }
 
@@ -118,8 +119,7 @@ const collectFields = async (
     return parsed as Record<string, unknown>;
   }
   if (!isTty) {
-    process.stderr.write(`Error: Provide ${isSecret ? '--secret-inputs-file' : '--inputs-file'} when not running interactively.\n`);
-    process.exit(1);
+    throw new CliUsageError(`Provide ${isSecret ? '--secret-inputs-file' : '--inputs-file'} when not running interactively.`);
   }
   return promptFromSchema(schema, isSecret);
 };
@@ -144,8 +144,7 @@ const handleOauth2Create = async (
   const timeoutSec = params.timeout ? parseInt(params.timeout, 10) : 300;
   const connection = await pollForConnection(client, ctx, globalOpts, params.key, timeoutSec);
   if (!connection) {
-    process.stderr.write(`Error: Timed out after ${timeoutSec}s waiting for connection '${params.key}' to appear.\n`);
-    process.exit(1);
+    throw new Error(`Timed out after ${timeoutSec}s waiting for connection '${params.key}' to appear. Check \`borgiq connections list\` to see if it was created.`);
   }
 
   if (!globalOpts.json && process.stderr.isTTY) {

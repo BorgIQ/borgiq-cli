@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
-import { handleError } from '../../lib/errors.js';
+import { handleError, CliUsageError } from '../../lib/errors.js';
 import { prompt, promptChoice, promptRequired, promptSecret } from '../../lib/prompt.js';
 import { encryptWorkspaceData, getWorkspacePublicKey } from '../../lib/crypto.js';
 import { readInput } from '../../lib/input.js';
@@ -46,8 +46,7 @@ export const secretsCreate = async (options: CreateOptions, command: { parent: {
 
     const key = options.key || (isTty ? await promptRequired('Secret key') : undefined);
     if (!key) {
-      process.stderr.write('Error: --key is required when not running interactively.\n');
-      process.exit(1);
+      throw new CliUsageError('--key is required when not running interactively.');
     }
 
     let type = options.type as SecretType | undefined;
@@ -55,23 +54,19 @@ export const secretsCreate = async (options: CreateOptions, command: { parent: {
       if (isTty) {
         type = (await promptChoice('Secret type', CREATABLE_SECRET_TYPES.map((t) => ({ label: t, value: t })))) as SecretType;
       } else {
-        process.stderr.write('Error: --type is required when not running interactively.\n');
-        process.exit(1);
+        throw new CliUsageError('--type is required when not running interactively.');
       }
     }
     if (!CREATABLE_SECRET_TYPES.includes(type)) {
-      process.stderr.write(`Error: Invalid or unsupported secret type '${type}'. Creatable types: ${CREATABLE_SECRET_TYPES.join(', ')}.\n`);
-      if (type === 'oauth2' as string || type === 'smtpOauth2' as string || type === 'smtpOauth2Token' as string || type === 'oauth1' as string) {
-        process.stderr.write('OAuth-based secrets must be created via the web app. Use `borgiq secrets reauth <id>` to rotate tokens.\n');
-      }
-      process.exit(1);
+      const isOauthType = type === 'oauth2' as string || type === 'smtpOauth2' as string || type === 'smtpOauth2Token' as string || type === 'oauth1' as string;
+      const hint = isOauthType ? ' OAuth-based secrets must be created via the web app.' : '';
+      throw new CliUsageError(`Invalid or unsupported secret type '${type}'. Creatable types: ${CREATABLE_SECRET_TYPES.join(', ')}.${hint}`);
     }
 
     const description = options.description ?? (isTty ? await prompt('Description (optional)') : undefined);
     const exposureMode = options.exposureMode || 'HttpOnly';
     if (exposureMode !== 'HttpOnly' && exposureMode !== 'Protected') {
-      process.stderr.write(`Error: --exposure-mode must be 'HttpOnly' or 'Protected', got '${exposureMode}'.\n`);
-      process.exit(1);
+      throw new CliUsageError(`--exposure-mode must be 'HttpOnly' or 'Protected', got '${exposureMode}'.`);
     }
 
     const plaintext = await buildPlaintext(type, options, client, ctx, isTty);
@@ -114,8 +109,7 @@ const buildPlaintext = async (
     if (options.data !== undefined) return options.data;
     if (options.dataFile) return fs.readFileSync(options.dataFile, 'utf-8').replace(/\n$/, '');
     if (!isTty) {
-      process.stderr.write(`Error: --data or --data-file is required for '${type}' secrets when not running interactively.\n`);
-      process.exit(1);
+      throw new CliUsageError(`--data or --data-file is required for '${type}' secrets when not running interactively.`);
     }
     return promptSecret(`Secret value (${type})`);
   }
@@ -125,16 +119,14 @@ const buildPlaintext = async (
     if (options.data !== undefined) return options.data;
     if (options.dataFile) return JSON.stringify(await readInput(options.dataFile));
     if (!isTty) return JSON.stringify(await readInput());
-    process.stderr.write(`Error: '${type}' secrets require --data-file or piped input.\n`);
-    process.exit(1);
+    throw new CliUsageError(`'${type}' secrets require --data-file or piped input.`);
   }
 
   // awsRoleBased needs interactive lookup of account id + external id.
   if (type === 'awsRoleBased') {
     if (options.dataFile) return JSON.stringify(await readInput(options.dataFile));
     if (!isTty) {
-      process.stderr.write('Error: awsRoleBased secrets require --data-file when not running interactively.\n');
-      process.exit(1);
+      throw new CliUsageError('awsRoleBased secrets require --data-file when not running interactively.');
     }
     const roleData = await client.getAwsRoleData(ctx.org, ctx.workspace);
     process.stderr.write('Configure your AWS trust policy with:\n');
@@ -157,8 +149,7 @@ const buildPlaintext = async (
       return JSON.stringify({ username, password });
     }
     case 'custom':
-      process.stderr.write("Error: 'custom' secrets require --data-file with a JSON/YAML payload.\n");
-      process.exit(1);
+      throw new CliUsageError("'custom' secrets require --data-file with a JSON/YAML payload.");
   }
 
   // Exhaustive fallback — unreachable if CREATABLE_SECRET_TYPES is kept in sync.

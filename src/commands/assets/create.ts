@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
-import { handleError } from '../../lib/errors.js';
+import { handleError, CliUsageError } from '../../lib/errors.js';
 import { prompt, promptChoice, promptRequired } from '../../lib/prompt.js';
 import { computeFileDigest, mimeTypeFromFileName, readStdinBytes } from '../../lib/fileMeta.js';
 import { uploadToPresignedUrl } from '../../lib/upload.js';
@@ -32,8 +32,7 @@ export const assetsCreate = async (options: CreateOptions, command: { parent: { 
 
     const key = options.key || (isTty ? await promptRequired('Asset key') : undefined);
     if (!key) {
-      process.stderr.write('Error: --key is required when not running interactively.\n');
-      process.exit(1);
+      throw new CliUsageError('--key is required when not running interactively.');
     }
 
     let type = options.type as AssetType | undefined;
@@ -41,13 +40,11 @@ export const assetsCreate = async (options: CreateOptions, command: { parent: { 
       if (isTty) {
         type = (await promptChoice('Asset type', ASSET_TYPES.map((t) => ({ label: t, value: t })))) as AssetType;
       } else {
-        process.stderr.write('Error: --type is required when not running interactively.\n');
-        process.exit(1);
+        throw new CliUsageError('--type is required when not running interactively.');
       }
     }
     if (!ASSET_TYPES.includes(type)) {
-      process.stderr.write(`Error: Invalid asset type '${type}'. Must be one of: ${ASSET_TYPES.join(', ')}\n`);
-      process.exit(1);
+      throw new CliUsageError(`Invalid asset type '${type}'. Must be one of: ${ASSET_TYPES.join(', ')}`);
     }
 
     const description = options.description ?? (isTty ? await prompt('Description (optional)') : undefined);
@@ -69,8 +66,7 @@ export const assetsCreate = async (options: CreateOptions, command: { parent: { 
       data = await promptRequired(`Data (${type})`);
     }
     if (!data) {
-      process.stderr.write('Error: --data, --data-file, or piped stdin is required for text assets.\n');
-      process.exit(1);
+      throw new CliUsageError('--data, --data-file, or piped stdin is required for text assets.');
     }
 
     const body: BIQAssetCreateBody = { key, description, type, data };
@@ -87,8 +83,7 @@ export const assetsCreate = async (options: CreateOptions, command: { parent: { 
 
 const readDataFile = (filePath: string): string => {
   if (filePath === '-') {
-    process.stderr.write('Error: Use stdin piping directly (omit --data-file) to read data from stdin.\n');
-    process.exit(1);
+    throw new CliUsageError('Use stdin piping directly (omit --data-file) to read data from stdin.');
   }
   return fs.readFileSync(filePath, 'utf-8');
 };
@@ -141,13 +136,11 @@ export const createFileAsset = async (
 export const readFileInput = async (filePath: string | undefined, overrideFileName: string | undefined): Promise<{ bytes: Uint8Array; fileName: string }> => {
   if (!filePath || filePath === '-') {
     if (process.stdin.isTTY) {
-      process.stderr.write('Error: Provide --file <path> or pipe file bytes via stdin (e.g. `cat foo.pdf | borgiq assets create --type file --file - --file-name foo.pdf`).\n');
-      process.exit(1);
+      throw new CliUsageError('Provide --file <path> or pipe file bytes via stdin (e.g. `cat foo.pdf | borgiq assets create --type file --file - --file-name foo.pdf`).');
     }
     const bytes = await readStdinBytes();
     if (!overrideFileName) {
-      process.stderr.write('Error: --file-name is required when piping file bytes from stdin.\n');
-      process.exit(1);
+      throw new CliUsageError('--file-name is required when piping file bytes from stdin.');
     }
     return { bytes, fileName: overrideFileName };
   }
