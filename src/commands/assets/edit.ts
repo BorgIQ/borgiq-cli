@@ -23,38 +23,49 @@ export const assetsEdit = async (id: string, options: EditOptions, command: { pa
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
-    const body: BIQAssetUpdateBody = {};
-    if (options.key !== undefined) body.key = options.key;
-    if (options.description !== undefined) body.description = options.description;
-
-    let data: string | undefined = options.data;
-    if (!data && options.dataFile) {
-      data = fs.readFileSync(options.dataFile, 'utf-8');
-    }
-    if (!data && !process.stdin.isTTY && !options.updateFile) {
-      const raw = await readStdinBytes();
-      if (raw.length > 0) data = Buffer.from(raw).toString('utf-8');
-    }
-    if (data !== undefined) body.data = data;
-
     let uploadPlan: { bytes: Uint8Array; fileName: string; mimeType: string; digest: ReturnType<typeof computeFileDigest> } | undefined;
+    let body: BIQAssetUpdateBody;
+
     if (options.updateFile) {
       const { bytes, fileName } = await readFileInput(options.file, options.fileName);
       const digest = computeFileDigest(bytes);
       const mimeType = mimeTypeFromFileName(fileName);
-      body.updateFile = true;
-      body.file = { fileName, mimeType, sizeInBytes: digest.sizeInBytes };
       uploadPlan = { bytes, fileName, mimeType, digest };
+      body = {
+        key: options.key,
+        description: options.description,
+        updateFile: true,
+        file: { fileName, mimeType, sizeInBytes: digest.sizeInBytes },
+      };
+    } else {
+      let data: string | undefined = options.data;
+      if (!data && options.dataFile) {
+        data = fs.readFileSync(options.dataFile, 'utf-8');
+      }
+      if (!data && !process.stdin.isTTY) {
+        const raw = await readStdinBytes();
+        if (raw.length > 0) data = Buffer.from(raw).toString('utf-8');
+      }
+      body = {
+        key: options.key,
+        description: options.description,
+        data,
+      };
     }
 
-    if (Object.keys(body).length === 0) {
-      throw new CliUsageError('At least one field must be provided to edit (--key, --description, --data, --data-file, or --update-file).');
+    // Non-file edits require at least one changed scalar field.
+    if (!uploadPlan) {
+      // Narrow: !uploadPlan means we took the scalar-only branch above.
+      const scalarBody = body as { key?: string; description?: string; data?: string };
+      if (scalarBody.key === undefined && scalarBody.description === undefined && scalarBody.data === undefined) {
+        throw new CliUsageError('At least one field must be provided to edit (--key, --description, --data, --data-file, or --update-file).');
+      }
     }
 
     const response = await client.updateAsset(ctx.org, ctx.workspace, id, body);
 
     if (uploadPlan) {
-      if (!response.presignedUrl) {
+      if (!('presignedUrl' in response)) {
         throw new Error('Server did not return a presigned URL for file update');
       }
       if (!response.asset.file?.id) {

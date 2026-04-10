@@ -8,10 +8,9 @@ import { handleError, CliUsageError } from '../../lib/errors.js';
 import { prompt, promptChoice, promptRequired } from '../../lib/prompt.js';
 import { computeFileDigest, mimeTypeFromFileName, readStdinBytes } from '../../lib/fileMeta.js';
 import { uploadToPresignedUrl } from '../../lib/upload.js';
-import type { BIQAssetCreateBody, BIQAssetCreateResponse } from '../../client/types.js';
+import type { BIQAssetCreateBody, BIQAssetCreateResponse, BIQAssetType } from '../../client/types.js';
 
-type AssetType = 'plainText' | 'json' | 'yaml' | 'file';
-const ASSET_TYPES: AssetType[] = ['plainText', 'json', 'yaml', 'file'];
+const ASSET_TYPES: BIQAssetType[] = ['plainText', 'json', 'yaml', 'file'];
 
 interface CreateOptions {
   key?: string;
@@ -35,10 +34,10 @@ export const assetsCreate = async (options: CreateOptions, command: { parent: { 
       throw new CliUsageError('--key is required when not running interactively.');
     }
 
-    let type = options.type as AssetType | undefined;
+    let type = options.type as BIQAssetType | undefined;
     if (!type) {
       if (isTty) {
-        type = (await promptChoice('Asset type', ASSET_TYPES.map((t) => ({ label: t, value: t })))) as AssetType;
+        type = (await promptChoice('Asset type', ASSET_TYPES.map((t) => ({ label: t, value: t })))) as BIQAssetType;
       } else {
         throw new CliUsageError('--type is required when not running interactively.');
       }
@@ -116,7 +115,7 @@ export const createFileAsset = async (
     process.stderr.write(`Creating asset (${digest.sizeInBytes} bytes, ${mimeType})...\n`);
   }
   const response = await client.createAsset(ctx.org, ctx.workspace, body);
-  if (!response.presignedUrl) {
+  if (!('presignedUrl' in response)) {
     throw new Error('Server did not return a presigned URL for file upload');
   }
   if (!response.asset.file?.id) {

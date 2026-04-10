@@ -1,22 +1,5 @@
+import type { BIQJsonSchemaLike, BIQJsonSchemaProperty } from '../client/types.js';
 import { prompt, promptChoice, promptConfirm, promptSecret } from './prompt.js';
-
-/** Subset of JSON Schema we support for interactive prompts. Matches @borgiq/types BIQJsonSchema shape loosely. */
-export interface FlatJsonSchema {
-  type?: string;
-  properties?: Record<string, FlatJsonSchemaProperty>;
-  required?: string[];
-}
-
-export interface FlatJsonSchemaProperty {
-  type?: string;
-  enum?: unknown[];
-  description?: string;
-  title?: string;
-  default?: unknown;
-  format?: string;
-  /** Custom marker used by BorgIQ to indicate a field should be hidden from echo (e.g. password, secret). */
-  writeOnly?: boolean;
-}
 
 export class UnsupportedSchemaError extends Error {
   constructor(message: string) {
@@ -37,7 +20,7 @@ export class UnsupportedSchemaError extends Error {
  *                        via writeOnly:true or format:'password'.
  */
 export const promptFromSchema = async (
-  schema: FlatJsonSchema | undefined,
+  schema: BIQJsonSchemaLike | undefined,
   useSecretPrompts = false,
 ): Promise<Record<string, unknown>> => {
   if (!schema || !schema.properties) return {};
@@ -64,7 +47,7 @@ export const promptFromSchema = async (
   return result;
 };
 
-const promptField = async (prop: FlatJsonSchemaProperty, question: string, defaultValue: string | undefined, isSecret: boolean): Promise<unknown> => {
+const promptField = async (prop: BIQJsonSchemaProperty, question: string, defaultValue: string | undefined, isSecret: boolean): Promise<unknown> => {
   const type = prop.type || 'string';
 
   if (prop.enum && prop.enum.length > 0) {
@@ -88,7 +71,5 @@ const promptField = async (prop: FlatJsonSchemaProperty, question: string, defau
     case 'boolean': {
       return promptConfirm(question, prop.default === true);
     }
-    default:
-      throw new UnsupportedSchemaError(`Unsupported property type '${type}' for '${question}'. Provide an input file instead.`);
   }
 };

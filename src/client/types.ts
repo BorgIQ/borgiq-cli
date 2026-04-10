@@ -358,6 +358,9 @@ export interface S3PresignedPost {
   fields: Record<string, string>;
 }
 
+/** The four asset types supported by the platform */
+export type BIQAssetType = 'plainText' | 'json' | 'yaml' | 'file';
+
 /** Input for the `file` field when creating a file-type asset */
 export interface BIQAssetFileInput {
   fileName: string;
@@ -365,55 +368,76 @@ export interface BIQAssetFileInput {
   sizeInBytes: number;
 }
 
-/** Body for creating an asset */
-export interface BIQAssetCreateBody {
-  key: string;
-  description?: string;
-  type: 'plainText' | 'json' | 'yaml' | 'file';
-  data?: string;
-  file?: BIQAssetFileInput;
-}
+/**
+ * Body for creating an asset. Discriminated on `type`:
+ * - text types require `data` and forbid `file`
+ * - file type requires `file` and forbids `data`
+ */
+export type BIQAssetCreateBody =
+  | { type: 'plainText' | 'json' | 'yaml'; key: string; description?: string; data: string }
+  | { type: 'file'; key: string; description?: string; file: BIQAssetFileInput };
 
-/** Body for updating an asset */
-export interface BIQAssetUpdateBody {
-  key?: string;
-  description?: string;
-  data?: string;
-  file?: BIQAssetFileInput;
-  updateFile?: boolean;
-}
+/**
+ * Body for updating an asset. Either update scalar fields or replace the
+ * underlying file (the `updateFile: true` variant requires `file`).
+ */
+export type BIQAssetUpdateBody =
+  | { key?: string; description?: string; data?: string }
+  | { key?: string; description?: string; updateFile: true; file: BIQAssetFileInput };
 
-/** Response from creating or updating an asset */
-export interface BIQAssetCreateResponse {
-  asset: BIQAssetMetadata;
-  presignedUrl?: S3PresignedPost;
-}
+/**
+ * Response from creating or updating an asset. File-type assets always
+ * return a presigned URL; text-type assets never do.
+ */
+export type BIQAssetCreateResponse =
+  | { asset: BIQAssetMetadata; presignedUrl: S3PresignedPost }
+  | { asset: BIQAssetMetadata };
 
-/** Body for updating a file's upload status after S3 upload completes */
-export interface BIQFileUploadStatusBody {
-  status: 'UploadSuccess' | 'UploadFailure';
-  md5?: string;
-  sha256?: string;
-}
+/**
+ * Body for updating a file's upload status after S3 upload completes.
+ * Success requires md5 and sha256; failure carries no additional fields.
+ */
+export type BIQFileUploadStatusBody =
+  | { status: 'UploadSuccess'; md5: string; sha256: string }
+  | { status: 'UploadFailure' };
 
-/** Minimal JSON schema shape used by connection form data (subset of BIQJsonSchema) */
+/** Supported auth types for a connection (mirrors BIQConnectionAuthType in the platform) */
+export type BIQConnectionAuthType =
+  | 'oauth2'
+  | 'oauth1'
+  | 'apiKey'
+  | 'bearer'
+  | 'basic'
+  | 'awsKeyBased'
+  | 'awsRoleBased'
+  | 'custom'
+  | 'none';
+
+/**
+ * Minimal JSON schema shape used by connection form data and interactive
+ * prompts. Narrowed to the leaf types the schema-walker handles — nested
+ * objects or arrays force the caller into --inputs-file territory.
+ */
 export interface BIQJsonSchemaLike {
-  type?: string;
-  properties?: Record<string, {
-    type?: string;
-    enum?: unknown[];
-    description?: string;
-    title?: string;
-    default?: unknown;
-    format?: string;
-    writeOnly?: boolean;
-  }>;
+  type?: 'object' | 'string' | 'number' | 'integer' | 'boolean';
+  properties?: Record<string, BIQJsonSchemaProperty>;
   required?: string[];
+}
+
+/** A single property inside a BIQJsonSchemaLike */
+export interface BIQJsonSchemaProperty {
+  type?: 'string' | 'number' | 'integer' | 'boolean';
+  enum?: unknown[];
+  description?: string;
+  title?: string;
+  default?: unknown;
+  format?: string;
+  writeOnly?: boolean;
 }
 
 /** Form data returned by GET /connections/:type/data */
 export interface BIQConnectionFormData {
-  authType: string;
+  authType: BIQConnectionAuthType;
   appInstructions?: string;
   hasBorgIQManagedOptions: boolean;
   userManagedAppInstructions?: string;
