@@ -4,7 +4,6 @@ import { connectionsList } from './list.js';
 import { connectionsDelete } from './delete.js';
 import { connectionsTypes } from './types.js';
 import { connectionsCreate } from './create.js';
-import { connectionsReauth } from './reauth.js';
 
 export const registerConnectionsCommands = (program: Command): void => {
   const connections = program.command('connections').description('Manage connections');
@@ -36,13 +35,6 @@ export const registerConnectionsCommands = (program: Command): void => {
     .option('--web-url <url>', 'Override the web app URL used for OAuth2 handoff')
     .option('--timeout <seconds>', 'How long to wait for OAuth2 completion', '300')
     .action(connectionsCreate);
-
-  connections
-    .command('reauth <id>')
-    .description('Re-authenticate an OAuth2 connection via the web app')
-    .option('--timeout <seconds>', 'How long to wait for reauth to complete', '300')
-    .option('--web-url <url>', 'Override the web app URL used for reauth')
-    .action(connectionsReauth);
 
   connections
     .command('delete <id>')

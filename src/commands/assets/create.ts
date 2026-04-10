@@ -173,12 +173,29 @@ export const runUpload = async (
     }
     await uploadToPresignedUrl(presignedUrl, bytes, fileName, mimeType);
   } catch (err) {
-    await client.updateFileUpload(ctx.org, ctx.workspace, fileId, { status: 'UploadFailure' });
+    // Best-effort status sync. If the sync call ALSO fails (e.g. token
+    // expired mid-upload), log its message but re-throw the ORIGINAL S3
+    // error — that's the root cause the user needs to see.
+    try {
+      await client.updateFileUpload(ctx.org, ctx.workspace, fileId, { status: 'UploadFailure' });
+    } catch (syncErr) {
+      const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
+      process.stderr.write(`Warning: failed to mark upload as failed: ${msg}\n`);
+    }
     throw err;
   }
-  await client.updateFileUpload(ctx.org, ctx.workspace, fileId, {
-    status: 'UploadSuccess',
-    md5: digest.md5,
-    sha256: digest.sha256,
-  });
+
+  try {
+    await client.updateFileUpload(ctx.org, ctx.workspace, fileId, {
+      status: 'UploadSuccess',
+      md5: digest.md5,
+      sha256: digest.sha256,
+    });
+  } catch (err) {
+    // The file is already in storage but the server doesn't know. The asset
+    // is in an inconsistent state — tell the user what happened so they can
+    // recover manually.
+    process.stderr.write('Warning: file uploaded to storage but status sync failed. The asset may be in an inconsistent state; consider deleting and retrying.\n');
+    throw err;
+  }
 };

@@ -230,10 +230,6 @@ export class BorgIQClient {
     return this.request('GET', `${this.wkspPath(org, workspace)}/connectionsKeys?${qs.toString()}`);
   }
 
-  async getConnectionReAuthData(org: string, workspace: string, id: string): Promise<unknown> {
-    return this.request('GET', `${this.wkspPath(org, workspace)}/connections/${id}/reAuthData`);
-  }
-
   // ── Secrets ───────────────────────────────────────────
 
   async listSecrets(org: string, workspace: string, params?: ListFilterParams): Promise<PaginatedResponse<BIQSecretMetadata>> {

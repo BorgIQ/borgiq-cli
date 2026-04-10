@@ -2,6 +2,7 @@ import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
+import { ApiError } from '../../client/errors.js';
 import { prompt, promptRequired } from '../../lib/prompt.js';
 import { encryptWorkspaceData, getWorkspacePublicKey } from '../../lib/crypto.js';
 import { promptFromSchema } from '../../lib/schemaPrompt.js';
@@ -141,7 +142,7 @@ const handleOauth2Create = async (
   openUrl(target);
 
   const timeoutSec = params.timeout ? parseInt(params.timeout, 10) : 300;
-  const connection = await pollForConnection(client, ctx, params.key, timeoutSec);
+  const connection = await pollForConnection(client, ctx, globalOpts, params.key, timeoutSec);
   if (!connection) {
     process.stderr.write(`Error: Timed out after ${timeoutSec}s waiting for connection '${params.key}' to appear.\n`);
     process.exit(1);
@@ -156,18 +157,34 @@ const handleOauth2Create = async (
 const pollForConnection = async (
   client: ReturnType<typeof createClientWithContext>['client'],
   ctx: ReturnType<typeof createClientWithContext>['ctx'],
+  globalOpts: GlobalOptions,
   key: string,
   timeoutSec: number,
 ): Promise<BIQConnectionMetadata | null> => {
   const deadline = Date.now() + timeoutSec * 1000;
+  const verboseErrors = !globalOpts.json && process.stderr.isTTY;
+
   while (Date.now() < deadline) {
-    await sleep(3000);
-    const keys = await client.listConnectionKeys(ctx.org, ctx.workspace, key);
-    if (keys.keys.some((k) => k.key === key)) {
-      const list = await client.listConnections(ctx.org, ctx.workspace, { search: key, pageSize: 20 });
-      const record = list.data.find((c) => c.key === key);
-      if (record) return record;
+    try {
+      const keys = await client.listConnectionKeys(ctx.org, ctx.workspace, key);
+      if (keys.keys.some((k) => k.key === key)) {
+        const list = await client.listConnections(ctx.org, ctx.workspace, { search: key, pageSize: 20 });
+        const record = list.data.find((c) => c.key === key);
+        if (record) return record;
+      }
+    } catch (err) {
+      // Fatal auth errors — rethrow so the user sees them via handleError.
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        throw err;
+      }
+      // Transient failures (502, network blip, rate limit) should not kill
+      // a 5-minute wait. Log and keep polling until the deadline.
+      if (verboseErrors) {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`Transient error during poll, retrying: ${msg}\n`);
+      }
     }
+    await sleep(3000);
   }
   return null;
 };

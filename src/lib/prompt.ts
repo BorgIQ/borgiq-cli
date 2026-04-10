@@ -21,43 +21,85 @@ export const promptRequired = async (question: string): Promise<string> => {
   }
 };
 
-/** Prompt for a secret value without echoing characters. */
+/**
+ * Prompt for a secret value without echoing characters.
+ *
+ * Requires an interactive TTY — throws immediately if stdin is a pipe,
+ * since a non-TTY stdin would hang forever waiting for raw-mode input.
+ *
+ * Uses raw mode (bypassing readline) so typed characters are not echoed to
+ * the terminal. The prior raw state is captured and restored so subsequent
+ * readline-based prompts on the same stdin keep working.
+ */
 export const promptSecret = (question: string): Promise<string> => {
+  const stdin = process.stdin;
+  if (!stdin.isTTY) {
+    return Promise.reject(new Error('promptSecret requires an interactive terminal'));
+  }
+
   return new Promise((resolve, reject) => {
-    const stdin = process.stdin;
     const stderr = process.stderr;
     stderr.write(`${question}: `);
 
-    const wasRaw = stdin.isTTY ? stdin.isRaw : false;
-    if (stdin.isTTY) stdin.setRawMode(true);
+    const wasRaw = stdin.isRaw;
+    stdin.setRawMode(true);
     stdin.resume();
-    stdin.setEncoding('utf-8');
+    stdin.setEncoding('utf8');
 
     let value = '';
+    let done = false;
+
+    const cleanup = (): void => {
+      if (done) return;
+      done = true;
+      stdin.removeListener('data', onData);
+      stdin.removeListener('end', onEnd);
+      stdin.removeListener('error', onError);
+      stdin.removeListener('close', onEnd);
+      stdin.setRawMode(wasRaw);
+      stdin.pause();
+      stderr.write('\n');
+    };
+
     const onData = (chunk: string): void => {
+      // Drop escape-sequence chunks entirely (arrow keys, function keys, etc.)
+      // rather than letting their bytes corrupt the secret. A properly-raw
+      // terminal delivers the full ESC sequence in a single chunk, so this
+      // is a pragmatic filter that keeps backspace/enter/Ctrl-C working.
+      if (chunk.charCodeAt(0) === 0x1b) return;
+
       for (const ch of chunk) {
         if (ch === '\n' || ch === '\r' || ch === '\u0004') {
-          stdin.removeListener('data', onData);
-          if (stdin.isTTY) stdin.setRawMode(wasRaw);
-          stdin.pause();
-          stderr.write('\n');
+          cleanup();
           resolve(value);
           return;
         } else if (ch === '\u0003') {
-          stdin.removeListener('data', onData);
-          if (stdin.isTTY) stdin.setRawMode(wasRaw);
-          stdin.pause();
-          stderr.write('\n');
+          cleanup();
           reject(new Error('Interrupted'));
           return;
         } else if (ch === '\u007f' || ch === '\b') {
           if (value.length > 0) value = value.slice(0, -1);
-        } else {
+        } else if (ch >= ' ') {
           value += ch;
         }
+        // Any other control character (< 0x20) is silently dropped.
       }
     };
+
+    const onEnd = (): void => {
+      cleanup();
+      reject(new Error('Input stream ended before secret was provided'));
+    };
+
+    const onError = (err: Error): void => {
+      cleanup();
+      reject(err);
+    };
+
     stdin.on('data', onData);
+    stdin.once('end', onEnd);
+    stdin.once('close', onEnd);
+    stdin.once('error', onError);
   });
 };
 
