@@ -8,7 +8,12 @@ import { prompt, promptChoice, promptRequired, promptSecret } from '../../lib/pr
 import { encryptWorkspaceData, getWorkspacePublicKey } from '../../lib/crypto.js';
 import { readInput } from '../../lib/input.js';
 
-/** Secret types the CLI can create. OAuth2 variants are excluded — they require the web flow. */
+/**
+ * Secret types the CLI can create. Excludes:
+ * - OAuth2 variants (oauth1, oauth2, smtpOauth2, smtpOauth2Token) — require
+ *   the web flow.
+ * - imapPlain / smtpPlain / smtpOauth2 — marked @deprecated in the platform.
+ */
 const CREATABLE_SECRET_TYPES = [
   'plainText',
   'json',
@@ -18,8 +23,6 @@ const CREATABLE_SECRET_TYPES = [
   'apiKey',
   'bearer',
   'awsRoleBased',
-  'imapPlain',
-  'smtpPlain',
   'custom',
 ] as const;
 
@@ -141,9 +144,7 @@ const buildPlaintext = async (
   if (!isTty) return JSON.stringify(await readInput());
 
   switch (type) {
-    case 'basic':
-    case 'imapPlain':
-    case 'smtpPlain': {
+    case 'basic': {
       const username = await promptRequired('Username');
       const password = await promptSecret('Password');
       return JSON.stringify({ username, password });
