@@ -1,0 +1,184 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { createClientWithContext } from '../../lib/context.js';
+import type { GlobalOptions } from '../../lib/context.js';
+import { output } from '../../output/index.js';
+import { handleError } from '../../lib/errors.js';
+import { prompt, promptChoice, promptRequired } from '../../lib/prompt.js';
+import { computeFileDigest, mimeTypeFromFileName, readStdinBytes } from '../../lib/fileMeta.js';
+import { uploadToPresignedUrl } from '../../lib/upload.js';
+import type { BIQAssetCreateBody, BIQAssetCreateResponse } from '../../client/types.js';
+
+type AssetType = 'plainText' | 'json' | 'yaml' | 'file';
+const ASSET_TYPES: AssetType[] = ['plainText', 'json', 'yaml', 'file'];
+
+interface CreateOptions {
+  key?: string;
+  type?: string;
+  description?: string;
+  data?: string;
+  dataFile?: string;
+  file?: string;
+  fileName?: string;
+}
+
+export const assetsCreate = async (options: CreateOptions, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+  try {
+    const globalOpts = command.parent.parent.opts();
+    const { client, ctx } = createClientWithContext(globalOpts);
+
+    const isTty = process.stdin.isTTY;
+
+    const key = options.key || (isTty ? await promptRequired('Asset key') : undefined);
+    if (!key) {
+      process.stderr.write('Error: --key is required when not running interactively.\n');
+      process.exit(1);
+    }
+
+    let type = options.type as AssetType | undefined;
+    if (!type) {
+      if (isTty) {
+        type = (await promptChoice('Asset type', ASSET_TYPES.map((t) => ({ label: t, value: t })))) as AssetType;
+      } else {
+        process.stderr.write('Error: --type is required when not running interactively.\n');
+        process.exit(1);
+      }
+    }
+    if (!ASSET_TYPES.includes(type)) {
+      process.stderr.write(`Error: Invalid asset type '${type}'. Must be one of: ${ASSET_TYPES.join(', ')}\n`);
+      process.exit(1);
+    }
+
+    const description = options.description ?? (isTty ? await prompt('Description (optional)') : undefined);
+
+    if (type === 'file') {
+      await createFileAsset(client, ctx, globalOpts, { key, description, filePath: options.file, fileName: options.fileName });
+      return;
+    }
+
+    // Text asset (plainText / json / yaml)
+    let data = options.data;
+    if (!data && options.dataFile) {
+      data = readDataFile(options.dataFile);
+    }
+    if (!data && !process.stdin.isTTY) {
+      data = Buffer.from(await readStdinBytes()).toString('utf-8');
+    }
+    if (!data && isTty) {
+      data = await promptRequired(`Data (${type})`);
+    }
+    if (!data) {
+      process.stderr.write('Error: --data, --data-file, or piped stdin is required for text assets.\n');
+      process.exit(1);
+    }
+
+    const body: BIQAssetCreateBody = { key, description, type, data };
+    const response = await client.createAsset(ctx.org, ctx.workspace, body);
+
+    if (!globalOpts.json && process.stderr.isTTY) {
+      process.stderr.write(`Asset created: ${response.asset.key} (${response.asset.id})\n`);
+    }
+    output(response.asset, globalOpts);
+  } catch (error) {
+    handleError(error);
+  }
+};
+
+const readDataFile = (filePath: string): string => {
+  if (filePath === '-') {
+    process.stderr.write('Error: Use stdin piping directly (omit --data-file) to read data from stdin.\n');
+    process.exit(1);
+  }
+  return fs.readFileSync(filePath, 'utf-8');
+};
+
+interface CreateFileParams {
+  key: string;
+  description?: string;
+  filePath?: string;
+  fileName?: string;
+}
+
+export const createFileAsset = async (
+  client: ReturnType<typeof createClientWithContext>['client'],
+  ctx: ReturnType<typeof createClientWithContext>['ctx'],
+  globalOpts: GlobalOptions,
+  params: CreateFileParams,
+): Promise<BIQAssetCreateResponse> => {
+  const { bytes, fileName } = await readFileInput(params.filePath, params.fileName);
+  const digest = computeFileDigest(bytes);
+  const mimeType = mimeTypeFromFileName(fileName);
+
+  const body: BIQAssetCreateBody = {
+    key: params.key,
+    description: params.description,
+    type: 'file',
+    file: { fileName, mimeType, sizeInBytes: digest.sizeInBytes },
+  };
+
+  if (!globalOpts.json && process.stderr.isTTY) {
+    process.stderr.write(`Creating asset (${digest.sizeInBytes} bytes, ${mimeType})...\n`);
+  }
+  const response = await client.createAsset(ctx.org, ctx.workspace, body);
+  if (!response.presignedUrl) {
+    throw new Error('Server did not return a presigned URL for file upload');
+  }
+  if (!response.asset.file?.id) {
+    throw new Error('Server response is missing the created file id');
+  }
+
+  await runUpload(client, ctx, globalOpts, response.presignedUrl, response.asset.file.id, bytes, fileName, mimeType, digest);
+
+  const final = await client.getAsset(ctx.org, ctx.workspace, response.asset.id);
+  if (!globalOpts.json && process.stderr.isTTY) {
+    process.stderr.write(`Asset created: ${final.key} (${final.id})\n`);
+  }
+  output(final, globalOpts);
+  return { asset: final };
+};
+
+export const readFileInput = async (filePath: string | undefined, overrideFileName: string | undefined): Promise<{ bytes: Uint8Array; fileName: string }> => {
+  if (!filePath || filePath === '-') {
+    if (process.stdin.isTTY) {
+      process.stderr.write('Error: Provide --file <path> or pipe file bytes via stdin (e.g. `cat foo.pdf | borgiq assets create --type file --file - --file-name foo.pdf`).\n');
+      process.exit(1);
+    }
+    const bytes = await readStdinBytes();
+    if (!overrideFileName) {
+      process.stderr.write('Error: --file-name is required when piping file bytes from stdin.\n');
+      process.exit(1);
+    }
+    return { bytes, fileName: overrideFileName };
+  }
+  const bytes = new Uint8Array(fs.readFileSync(filePath));
+  const fileName = overrideFileName || path.basename(filePath);
+  return { bytes, fileName };
+};
+
+export const runUpload = async (
+  client: ReturnType<typeof createClientWithContext>['client'],
+  ctx: ReturnType<typeof createClientWithContext>['ctx'],
+  globalOpts: GlobalOptions,
+  presignedUrl: { url: string; fields: Record<string, string> },
+  fileId: string,
+  bytes: Uint8Array,
+  fileName: string,
+  mimeType: string,
+  digest: { md5: string; sha256: string },
+): Promise<void> => {
+  try {
+    if (!globalOpts.json && process.stderr.isTTY) {
+      process.stderr.write('Uploading file to storage...\n');
+    }
+    await uploadToPresignedUrl(presignedUrl, bytes, fileName, mimeType);
+  } catch (err) {
+    await client.updateFileUpload(ctx.org, ctx.workspace, fileId, { status: 'UploadFailure' });
+    throw err;
+  }
+  await client.updateFileUpload(ctx.org, ctx.workspace, fileId, {
+    status: 'UploadSuccess',
+    md5: digest.md5,
+    sha256: digest.sha256,
+  });
+};

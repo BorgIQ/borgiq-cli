@@ -351,3 +351,82 @@ export interface BIQActorVerification {
   valid: boolean;
   errors: { path: (string | number)[]; message: string }[];
 }
+
+/** S3 presigned POST used to upload file assets directly to storage */
+export interface S3PresignedPost {
+  url: string;
+  fields: Record<string, string>;
+}
+
+/** Input for the `file` field when creating a file-type asset */
+export interface BIQAssetFileInput {
+  fileName: string;
+  mimeType: string;
+  sizeInBytes: number;
+}
+
+/** Body for creating an asset */
+export interface BIQAssetCreateBody {
+  key: string;
+  description?: string;
+  type: 'plainText' | 'json' | 'yaml' | 'file';
+  data?: string;
+  file?: BIQAssetFileInput;
+}
+
+/** Body for updating an asset */
+export interface BIQAssetUpdateBody {
+  key?: string;
+  description?: string;
+  data?: string;
+  file?: BIQAssetFileInput;
+  updateFile?: boolean;
+}
+
+/** Response from creating or updating an asset */
+export interface BIQAssetCreateResponse {
+  asset: BIQAssetMetadata;
+  presignedUrl?: S3PresignedPost;
+}
+
+/** Body for updating a file's upload status after S3 upload completes */
+export interface BIQFileUploadStatusBody {
+  status: 'UploadSuccess' | 'UploadFailure';
+  md5?: string;
+  sha256?: string;
+}
+
+/** Minimal JSON schema shape used by connection form data (subset of BIQJsonSchema) */
+export interface BIQJsonSchemaLike {
+  type?: string;
+  properties?: Record<string, {
+    type?: string;
+    enum?: unknown[];
+    description?: string;
+    title?: string;
+    default?: unknown;
+    format?: string;
+    writeOnly?: boolean;
+  }>;
+  required?: string[];
+}
+
+/** Form data returned by GET /connections/:type/data */
+export interface BIQConnectionFormData {
+  authType: string;
+  appInstructions?: string;
+  hasBorgIQManagedOptions: boolean;
+  userManagedAppInstructions?: string;
+  userManagedOptionsJsonSchema?: BIQJsonSchemaLike;
+  inputsJsonSchema?: BIQJsonSchemaLike;
+  secretInputsJsonSchema?: BIQJsonSchemaLike;
+  webAuthData?: string;
+  webEnvData?: Record<string, unknown>;
+}
+
+/** Keys-listing response used for polling after OAuth2 web handoff */
+export interface BIQKeysListResponse {
+  keys: { key: string; type: string }[];
+  nextPage?: number;
+}
+
