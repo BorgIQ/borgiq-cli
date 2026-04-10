@@ -59,7 +59,7 @@ export const assetsCreate = async (options: CreateOptions, command: { parent: { 
       data = readDataFile(options.dataFile);
     }
     if (!data && !process.stdin.isTTY) {
-      data = Buffer.from(await readStdinBytes()).toString('utf-8');
+      data = Buffer.from(await readStdinBytes()).toString('utf-8').replace(/\n$/, '');
     }
     if (!data && isTty) {
       data = await promptRequired(`Data (${type})`);

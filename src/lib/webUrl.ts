@@ -17,14 +17,19 @@ export const resolveWebUrl = (flagWebUrl: string | undefined, apiUrl: string): s
   return deriveWebUrlFromApiUrl(apiUrl);
 };
 
-/** Turn e.g. `https://api.borgiq.com/v1` into `https://app.borgiq.com`. */
+/**
+ * Turn e.g. `https://api.borgiq.com/v1` into `https://app.borgiq.com`.
+ * For self-hosted deployments at a subpath (e.g.
+ * `https://example.com/borgiq/api/v1`), strip only the trailing
+ * `/v<number>` so the webUrl path prefix is preserved.
+ */
 export const deriveWebUrlFromApiUrl = (apiUrl: string): string => {
   try {
     const url = new URL(apiUrl);
     if (url.hostname.startsWith('api.')) {
       url.hostname = 'app.' + url.hostname.slice(4);
     }
-    url.pathname = '';
+    url.pathname = url.pathname.replace(/\/v\d+\/?$/, '');
     url.search = '';
     url.hash = '';
     return stripTrailingSlash(url.toString());

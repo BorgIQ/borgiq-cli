@@ -16,6 +16,9 @@ export const uploadToPresignedUrl = async (
   }
   form.append('file', new Blob([fileBytes], { type: mimeType }), fileName);
 
+  // Do not set a Content-Type header manually — fetch derives
+  // `multipart/form-data; boundary=...` from the FormData body; overriding
+  // it would break the boundary and S3 would reject the signature.
   const response = await fetch(presignedUrl.url, {
     method: 'POST',
     body: form,

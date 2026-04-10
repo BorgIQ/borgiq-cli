@@ -18,13 +18,19 @@ export interface WorkspaceEncryptionResult {
 export const getWorkspacePublicKey = async (client: BorgIQClient, org: string, workspace: string): Promise<PublicCryptoKey> => {
   const base64 = await client.getWorkspacePublicKey(org, workspace);
   const der = Buffer.from(base64, 'base64');
-  return webcrypto.subtle.importKey(
-    'spki',
-    der,
-    { name: 'RSA-OAEP', hash: 'SHA-256' },
-    false,
-    ['encrypt'],
-  );
+  try {
+    return await webcrypto.subtle.importKey(
+      'spki',
+      der,
+      { name: 'RSA-OAEP', hash: 'SHA-256' },
+      false,
+      ['encrypt'],
+    );
+  } catch (err) {
+    // WebCrypto throws opaque DataError/OperationError on malformed keys.
+    // Add context so the user knows the problem is an unexpected server response.
+    throw new Error(`Failed to import workspace public key — server returned an unexpected format: ${(err as Error).message}`);
+  }
 };
 
 /**
