@@ -28,7 +28,7 @@ export const registerConnectionsCommands = (program: Command): void => {
     .option('--key <key>', 'Connection key (unique within workspace)')
     .option('--type <type>', 'Connection type name (e.g. generic-api-key, github-oauth2)')
     .option('--description <desc>', 'Connection description')
-    .option('--exposure-mode <mode>', 'Exposure mode: HttpOnly or Protected', 'HttpOnly')
+    .option('--exposure-mode <mode>', 'Exposure mode: httpOnly or exposed', 'httpOnly')
     .option('--inputs-file <path>', 'Path to JSON/YAML file with non-sensitive inputs')
     .option('--secret-inputs-file <path>', 'Path to JSON/YAML file with sensitive inputs')
     .option('--user-managed-options-file <path>', 'Path to JSON/YAML file with user-managed options (for user-managed OAuth2 apps)')

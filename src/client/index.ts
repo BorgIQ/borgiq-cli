@@ -397,12 +397,13 @@ export class BorgIQClient {
     return { total: raw.total, data: raw.assets };
   }
 
-  async getAsset(org: string, workspace: string, id: string): Promise<BIQAssetMetadata> {
-    return this.request('GET', `${this.wkspPath(org, workspace)}/assets/${id}`);
-  }
-
   async createAsset(org: string, workspace: string, body: BIQAssetCreateBody): Promise<BIQAssetCreateResponse> {
     return this.request('POST', `${this.wkspPath(org, workspace)}/assets`, body);
+  }
+
+  async getAssetData(org: string, workspace: string, id: string): Promise<string> {
+    const raw = await this.request<{ data: string }>('GET', `${this.wkspPath(org, workspace)}/assets/${id}/data`);
+    return raw.data;
   }
 
   async updateAsset(org: string, workspace: string, id: string, body: BIQAssetUpdateBody): Promise<BIQAssetCreateResponse> {

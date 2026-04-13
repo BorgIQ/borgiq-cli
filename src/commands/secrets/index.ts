@@ -18,9 +18,9 @@ export const registerSecretsCommands = (program: Command): void => {
     .command('create')
     .description('Create a secret (client-side encrypted). Prompts interactively when flags are missing.')
     .option('--key <key>', 'Secret key (unique within workspace)')
-    .option('--type <type>', 'Secret type: plainText | json | yaml | jwt | basic | apiKey | bearer | awsRoleBased | custom')
+    .option('--type <type>', 'Secret type: plainText | jwt')
     .option('--description <desc>', 'Secret description')
-    .option('--exposure-mode <mode>', 'Exposure mode: HttpOnly or Protected', 'HttpOnly')
+    .option('--exposure-mode <mode>', 'Exposure mode: httpOnly or exposed', 'httpOnly')
     .option('--data <data>', 'Inline secret data (for single-string types)')
     .option('--data-file <path>', 'Path to JSON/YAML file with secret data')
     .action(secretsCreate);

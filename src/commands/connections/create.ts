@@ -41,9 +41,9 @@ export const connectionsCreate = async (options: CreateOptions, command: { paren
     }
 
     const description = options.description ?? (isTty ? await prompt('Description (optional)') : undefined);
-    const exposureMode = options.exposureMode || 'HttpOnly';
-    if (exposureMode !== 'HttpOnly' && exposureMode !== 'Protected') {
-      throw new CliUsageError(`--exposure-mode must be 'HttpOnly' or 'Protected', got '${exposureMode}'.`);
+    const exposureMode = options.exposureMode || 'httpOnly';
+    if (exposureMode !== 'httpOnly' && exposureMode !== 'exposed') {
+      throw new CliUsageError(`--exposure-mode must be 'httpOnly' or 'exposed', got '${exposureMode}'.`);
     }
 
     // Fetch form data to learn authType and schemas. Relabel only 404s as a

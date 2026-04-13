@@ -124,7 +124,17 @@ export const createFileAsset = async (
 
   await runUpload(client, ctx, globalOpts, response.presignedUrl, response.asset.file.id, bytes, fileName, mimeType, digest);
 
-  const final = await client.getAsset(ctx.org, ctx.workspace, response.asset.id);
+  // The server has no GET /assets/:id endpoint, so synthesize the final
+  // metadata from the POST response plus the known-good upload status.
+  const final = {
+    ...response.asset,
+    file: response.asset.file ? {
+      ...response.asset.file,
+      status: 'upload_success',
+      md5: digest.md5,
+      sha256: digest.sha256,
+    } : undefined,
+  };
   if (!globalOpts.json && process.stderr.isTTY) {
     process.stderr.write(`Asset created: ${final.key} (${final.id})\n`);
   }
@@ -169,7 +179,7 @@ export const runUpload = async (
     // expired mid-upload), log its message but re-throw the ORIGINAL S3
     // error — that's the root cause the user needs to see.
     try {
-      await client.updateFileUpload(ctx.org, ctx.workspace, fileId, { status: 'UploadFailure' });
+      await client.updateFileUpload(ctx.org, ctx.workspace, fileId, { status: 'upload_failure' });
     } catch (syncErr) {
       const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
       process.stderr.write(`Warning: failed to mark upload as failed: ${msg}\n`);
@@ -179,7 +189,7 @@ export const runUpload = async (
 
   try {
     await client.updateFileUpload(ctx.org, ctx.workspace, fileId, {
-      status: 'UploadSuccess',
+      status: 'upload_success',
       md5: digest.md5,
       sha256: digest.sha256,
     });

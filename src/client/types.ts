@@ -378,12 +378,14 @@ export type BIQAssetCreateBody =
   | { type: 'file'; key: string; description?: string; file: BIQAssetFileInput };
 
 /**
- * Body for updating an asset. Either update scalar fields or replace the
- * underlying file (the `updateFile: true` variant requires `file`).
+ * Body for updating an asset. The platform's PUT endpoint uses the same
+ * schema as POST (full replacement, not a patch), so the shape matches
+ * BIQAssetCreateBody plus an optional `updateFile` flag that signals the
+ * underlying file should be replaced.
  */
 export type BIQAssetUpdateBody =
-  | { key?: string; description?: string; data?: string }
-  | { key?: string; description?: string; updateFile: true; file: BIQAssetFileInput };
+  | { type: 'plainText' | 'json' | 'yaml'; key: string; description?: string; data: string }
+  | { type: 'file'; key: string; description?: string; file: BIQAssetFileInput; updateFile?: boolean };
 
 /**
  * Response from creating or updating an asset. File-type assets always
@@ -396,10 +398,12 @@ export type BIQAssetCreateResponse =
 /**
  * Body for updating a file's upload status after S3 upload completes.
  * Success requires md5 and sha256; failure carries no additional fields.
+ * Status values are the wire-format snake_case strings (matching BIQFileStatus
+ * in the platform's runtime-types).
  */
 export type BIQFileUploadStatusBody =
-  | { status: 'UploadSuccess'; md5: string; sha256: string }
-  | { status: 'UploadFailure' };
+  | { status: 'upload_success'; md5: string; sha256: string }
+  | { status: 'upload_failure' };
 
 /** Supported auth types for a connection (mirrors BIQConnectionAuthType in the platform) */
 export type BIQConnectionAuthType =

@@ -6,30 +6,15 @@ import { output } from '../../output/index.js';
 import { handleError, CliUsageError } from '../../lib/errors.js';
 import { prompt, promptChoice, promptRequired, promptSecret } from '../../lib/prompt.js';
 import { encryptWorkspaceData, getWorkspacePublicKey } from '../../lib/crypto.js';
-import { readInput } from '../../lib/input.js';
 
 /**
- * Secret types the CLI can create. Excludes:
- * - OAuth2 variants (oauth1, oauth2, smtpOauth2, smtpOauth2Token) — require
- *   the web flow.
- * - imapPlain / smtpPlain / smtpOauth2 — marked @deprecated in the platform.
+ * Secret types the platform allows creating. Most legacy types have been
+ * deprecated; the server now only accepts plainText and jwt.
+ * Matches BIQCreatableSecretTypes in packages/types/src/common.ts.
  */
-const CREATABLE_SECRET_TYPES = [
-  'plainText',
-  'json',
-  'yaml',
-  'jwt',
-  'basic',
-  'apiKey',
-  'bearer',
-  'awsRoleBased',
-  'custom',
-] as const;
+const CREATABLE_SECRET_TYPES = ['plainText', 'jwt'] as const;
 
 type SecretType = typeof CREATABLE_SECRET_TYPES[number];
-
-const SINGLE_STRING_TYPES = new Set<SecretType>(['plainText', 'jwt', 'apiKey', 'bearer']);
-const STRUCTURED_TEXT_TYPES = new Set<SecretType>(['json', 'yaml']);
 
 interface CreateOptions {
   key?: string;
@@ -67,12 +52,12 @@ export const secretsCreate = async (options: CreateOptions, command: { parent: {
     }
 
     const description = options.description ?? (isTty ? await prompt('Description (optional)') : undefined);
-    const exposureMode = options.exposureMode || 'HttpOnly';
-    if (exposureMode !== 'HttpOnly' && exposureMode !== 'Protected') {
-      throw new CliUsageError(`--exposure-mode must be 'HttpOnly' or 'Protected', got '${exposureMode}'.`);
+    const exposureMode = options.exposureMode || 'httpOnly';
+    if (exposureMode !== 'httpOnly' && exposureMode !== 'exposed') {
+      throw new CliUsageError(`--exposure-mode must be 'httpOnly' or 'exposed', got '${exposureMode}'.`);
     }
 
-    const plaintext = await buildPlaintext(type, options, client, ctx, isTty);
+    const plaintext = await buildPlaintext(type, options, isTty);
 
     if (!globalOpts.json && process.stderr.isTTY) {
       process.stderr.write('Encrypting secret with workspace public key...\n');
@@ -100,59 +85,20 @@ export const secretsCreate = async (options: CreateOptions, command: { parent: {
   }
 };
 
+/**
+ * Build the plaintext payload to be encrypted. Both supported types
+ * (plainText and jwt) are single-string secrets — the raw value is the
+ * payload, with no wrapping object.
+ */
 const buildPlaintext = async (
-  type: SecretType,
+  _type: SecretType,
   options: CreateOptions,
-  client: ReturnType<typeof createClientWithContext>['client'],
-  ctx: ReturnType<typeof createClientWithContext>['ctx'],
   isTty: boolean,
 ): Promise<string> => {
-  // Single-string types: the payload is the raw string, no wrapping object.
-  if (SINGLE_STRING_TYPES.has(type)) {
-    if (options.data !== undefined) return options.data;
-    if (options.dataFile) return fs.readFileSync(options.dataFile, 'utf-8').replace(/\n$/, '');
-    if (!isTty) {
-      throw new CliUsageError(`--data or --data-file is required for '${type}' secrets when not running interactively.`);
-    }
-    return promptSecret(`Secret value (${type})`);
+  if (options.data !== undefined) return options.data;
+  if (options.dataFile) return fs.readFileSync(options.dataFile, 'utf-8').replace(/\n$/, '');
+  if (!isTty) {
+    throw new CliUsageError(`--data or --data-file is required for secrets when not running interactively.`);
   }
-
-  // Structured text: accept JSON or YAML and forward as a JSON string.
-  if (STRUCTURED_TEXT_TYPES.has(type)) {
-    if (options.data !== undefined) return options.data;
-    if (options.dataFile) return JSON.stringify(await readInput(options.dataFile));
-    if (!isTty) return JSON.stringify(await readInput());
-    throw new CliUsageError(`'${type}' secrets require --data-file or piped input.`);
-  }
-
-  // awsRoleBased needs interactive lookup of account id + external id.
-  if (type === 'awsRoleBased') {
-    if (options.dataFile) return JSON.stringify(await readInput(options.dataFile));
-    if (!isTty) {
-      throw new CliUsageError('awsRoleBased secrets require --data-file when not running interactively.');
-    }
-    const roleData = await client.getAwsRoleData(ctx.org, ctx.workspace);
-    process.stderr.write('Configure your AWS trust policy with:\n');
-    process.stderr.write(`  Principal AWS account: ${roleData.awsAccountId}\n`);
-    process.stderr.write(`  External ID:           ${roleData.externalId}\n`);
-    const roleArn = await promptRequired('Your AWS role ARN');
-    return JSON.stringify({ roleArn });
-  }
-
-  // Structured multi-field types — interactive map, or --data-file as escape hatch.
-  if (options.dataFile) return JSON.stringify(await readInput(options.dataFile));
-  if (!isTty) return JSON.stringify(await readInput());
-
-  switch (type) {
-    case 'basic': {
-      const username = await promptRequired('Username');
-      const password = await promptSecret('Password');
-      return JSON.stringify({ username, password });
-    }
-    case 'custom':
-      throw new CliUsageError("'custom' secrets require --data-file with a JSON/YAML payload.");
-  }
-
-  // Exhaustive fallback — unreachable if CREATABLE_SECRET_TYPES is kept in sync.
-  throw new Error(`Unhandled secret type: ${type as string}`);
+  return promptSecret('Secret value');
 };
