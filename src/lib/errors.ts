@@ -1,6 +1,23 @@
 import { ApiError } from '../client/errors.js';
 
+/**
+ * Thrown for user-facing validation failures (missing required flag,
+ * invalid type value, etc). handleError formats these without a stack
+ * trace and without API-specific hints.
+ */
+export class CliUsageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CliUsageError';
+  }
+}
+
 export const handleError = (error: unknown): never => {
+  if (error instanceof CliUsageError) {
+    process.stderr.write(`Error: ${error.message}\n`);
+    process.exit(1);
+  }
+
   if (error instanceof ApiError) {
     process.stderr.write(`Error: ${error.message} (HTTP ${error.status})\n`);
 

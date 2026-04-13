@@ -1,22 +1,11 @@
-import readline from 'node:readline';
-
 import { saveConfig } from '../../config/index.js';
 import type { CliConfig } from '../../config/index.js';
 import { BorgIQClient } from '../../client/index.js';
 import { handleError } from '../../lib/errors.js';
+import { prompt } from '../../lib/prompt.js';
+import { deriveWebUrlFromApiUrl } from '../../lib/webUrl.js';
 
 const DEFAULT_API_URL = 'https://api.borgiq.com/v1';
-
-const prompt = (question: string, defaultValue?: string): Promise<string> => {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-  const suffix = defaultValue ? ` (${defaultValue})` : '';
-  return new Promise((resolve) => {
-    rl.question(`${question}${suffix}: `, (answer) => {
-      rl.close();
-      resolve(answer.trim() || defaultValue || '');
-    });
-  });
-};
 
 export const authLogin = async (options: { apiUrl?: string; token?: string }): Promise<void> => {
   try {
@@ -57,6 +46,15 @@ export const authLogin = async (options: { apiUrl?: string; token?: string }): P
 
     // Try to get orgs and workspaces for defaults
     const config: CliConfig = { apiUrl, apiToken };
+
+    // Optional web app URL for OAuth2 handoff. Only prompted interactively.
+    if (process.stdin.isTTY) {
+      const derived = deriveWebUrlFromApiUrl(apiUrl);
+      const webUrl = await prompt('Web app URL (used for OAuth2 handoff)', derived);
+      if (webUrl && webUrl !== derived) {
+        config.webUrl = webUrl;
+      }
+    }
 
     try {
       const orgsAndWorkspaces = await client.getOrgsAndWorkspaces();

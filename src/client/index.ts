@@ -30,6 +30,13 @@ import type {
   BIQCanvasActor,
   BIQCanvasActorFlow,
   BIQActorVerification,
+  BIQAssetCreateBody,
+  BIQAssetUpdateBody,
+  BIQAssetCreateResponse,
+  BIQFileUploadStatusBody,
+  BIQFileMetadata,
+  BIQConnectionFormData,
+  BIQKeysListResponse,
 } from './types.js';
 
 export class BorgIQClient {
@@ -45,14 +52,19 @@ export class BorgIQClient {
       'Accept': 'application/json',
     };
 
-    if (body !== undefined) {
+    let requestBody: string | FormData | undefined;
+    if (body instanceof FormData) {
+      // Let fetch set the multipart boundary automatically — do not set Content-Type.
+      requestBody = body;
+    } else if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
+      requestBody = JSON.stringify(body);
     }
 
     const response = await fetch(url, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: requestBody,
     });
 
     if (!response.ok) {
@@ -69,6 +81,29 @@ export class BorgIQClient {
     }
 
     return response.json() as Promise<T>;
+  }
+
+  /** GET that returns a plain string body instead of JSON. Used for /publicKey. */
+  private async requestText(method: string, path: string): Promise<string> {
+    const url = `${this.baseUrl}${path}`;
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Accept': 'text/plain, application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => null) as { message?: string; details?: { path: (string | number)[]; message: string }[] } | null;
+      throw new ApiError(
+        response.status,
+        errorBody?.message || response.statusText,
+        errorBody?.details || [],
+      );
+    }
+
+    return response.text();
   }
 
   private buildQueryString(params?: ListFilterParams): string {
@@ -179,6 +214,22 @@ export class BorgIQClient {
     return this.request('DELETE', `${this.wkspPath(org, workspace)}/connections/${id}`);
   }
 
+  async getConnectionFormData(org: string, workspace: string, type: string): Promise<BIQConnectionFormData> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/connections/${type}/data`);
+  }
+
+  async createConnectionMultipart(org: string, workspace: string, form: FormData): Promise<BIQConnectionMetadata> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/connections`, form);
+  }
+
+  async listConnectionKeys(org: string, workspace: string, search?: string): Promise<BIQKeysListResponse> {
+    const qs = new URLSearchParams();
+    if (search) qs.set('search', search);
+    qs.set('page', '1');
+    qs.set('pageSize', '20');
+    return this.request('GET', `${this.wkspPath(org, workspace)}/connectionsKeys?${qs.toString()}`);
+  }
+
   // ── Secrets ───────────────────────────────────────────
 
   async listSecrets(org: string, workspace: string, params?: ListFilterParams): Promise<PaginatedResponse<BIQSecretMetadata>> {
@@ -188,6 +239,34 @@ export class BorgIQClient {
 
   async deleteSecret(org: string, workspace: string, id: string): Promise<void> {
     return this.request('DELETE', `${this.wkspPath(org, workspace)}/secrets/${id}`);
+  }
+
+  async createSecretMultipart(org: string, workspace: string, form: FormData): Promise<BIQSecretMetadata> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/secrets`, form);
+  }
+
+  async listSecretKeys(org: string, workspace: string, search?: string): Promise<{ keys: { key: string; type: string }[]; nextPage?: number }> {
+    const qs = new URLSearchParams();
+    if (search) qs.set('search', search);
+    qs.set('page', '1');
+    qs.set('pageSize', '20');
+    return this.request('GET', `${this.wkspPath(org, workspace)}/secretsKeys?${qs.toString()}`);
+  }
+
+  async getAwsRoleData(org: string, workspace: string): Promise<{ awsAccountId: string; externalId: string }> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/secrets/awsRoleData`);
+  }
+
+  // ── Workspace Public Key ──────────────────────────────
+
+  async getWorkspacePublicKey(org: string, workspace: string): Promise<string> {
+    const raw = await this.requestText('GET', `${this.wkspPath(org, workspace)}/publicKey`);
+    // Server may return the key as a JSON string ("...") or as a plain text body.
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      return JSON.parse(trimmed) as string;
+    }
+    return trimmed;
   }
 
   // ── API Tokens ────────────────────────────────────────
@@ -316,6 +395,23 @@ export class BorgIQClient {
   async listAssets(org: string, workspace: string, params?: ListFilterParams): Promise<PaginatedResponse<BIQAssetMetadata>> {
     const raw = await this.request<{ total: number; assets: BIQAssetMetadata[] }>('GET', `${this.wkspPath(org, workspace)}/assets${this.buildQueryString(params)}`);
     return { total: raw.total, data: raw.assets };
+  }
+
+  async createAsset(org: string, workspace: string, body: BIQAssetCreateBody): Promise<BIQAssetCreateResponse> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/assets`, body);
+  }
+
+  async getAssetData(org: string, workspace: string, id: string): Promise<string> {
+    const raw = await this.request<{ data: string }>('GET', `${this.wkspPath(org, workspace)}/assets/${id}/data`);
+    return raw.data;
+  }
+
+  async updateAsset(org: string, workspace: string, id: string, body: BIQAssetUpdateBody): Promise<BIQAssetCreateResponse> {
+    return this.request('PUT', `${this.wkspPath(org, workspace)}/assets/${id}`, body);
+  }
+
+  async updateFileUpload(org: string, workspace: string, fileId: string, body: BIQFileUploadStatusBody): Promise<BIQFileMetadata> {
+    return this.request('PUT', `${this.wkspPath(org, workspace)}/files/${fileId}/updateUpload`, body);
   }
 
   async deleteAsset(org: string, workspace: string, id: string): Promise<void> {

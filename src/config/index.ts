@@ -12,6 +12,8 @@ export interface CliConfig {
   defaultOrg?: string;
   /** Default workspace slug or ID */
   defaultWorkspace?: string;
+  /** Optional web app URL used for OAuth2 connection creation handoff. If omitted, derived from apiUrl. */
+  webUrl?: string;
 }
 
 export const loadConfig = (): CliConfig | null => {
