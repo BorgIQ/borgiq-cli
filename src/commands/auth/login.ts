@@ -2,7 +2,7 @@ import { saveConfig } from '../../config/index.js';
 import type { CliConfig } from '../../config/index.js';
 import { BorgIQClient } from '../../client/index.js';
 import { handleError } from '../../lib/errors.js';
-import { prompt } from '../../lib/prompt.js';
+import { prompt, promptSecret } from '../../lib/prompt.js';
 import { deriveWebUrlFromApiUrl } from '../../lib/webUrl.js';
 
 const DEFAULT_API_URL = 'https://api.borgiq.com/v1';
@@ -23,7 +23,7 @@ export const authLogin = async (options: { apiUrl?: string; token?: string }): P
     let apiToken = options.token || process.env.BORGIQ_API_TOKEN;
     if (!apiToken) {
       if (process.stdin.isTTY) {
-        apiToken = await prompt('API Token (biq_...)');
+        apiToken = await promptSecret('API Token (biq_...)');
       }
       if (!apiToken) {
         process.stderr.write('Error: API token is required. Use --token or provide interactively.\n');

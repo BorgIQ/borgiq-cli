@@ -27,9 +27,13 @@ export const promptRequired = async (question: string): Promise<string> => {
  * Requires an interactive TTY — throws immediately if stdin is a pipe,
  * since a non-TTY stdin would hang forever waiting for raw-mode input.
  *
- * Uses raw mode (bypassing readline) so typed characters are not echoed to
- * the terminal. The prior raw state is captured and restored so subsequent
- * readline-based prompts on the same stdin keep working.
+ * Uses raw mode (bypassing readline) so the secret itself is never echoed.
+ * A bullet (•) is written for each accepted character so the user gets
+ * length feedback when typing or pasting — this leaks the length but not
+ * the content. Backspace erases the trailing bullet visually.
+ *
+ * The prior raw state is captured and restored so subsequent readline-based
+ * prompts on the same stdin keep working.
  */
 export const promptSecret = (question: string): Promise<string> => {
   const stdin = process.stdin;
@@ -78,9 +82,13 @@ export const promptSecret = (question: string): Promise<string> => {
           reject(new Error('Interrupted'));
           return;
         } else if (ch === '\u007f' || ch === '\b') {
-          if (value.length > 0) value = value.slice(0, -1);
+          if (value.length > 0) {
+            value = value.slice(0, -1);
+            stderr.write('\b \b');
+          }
         } else if (ch >= ' ') {
           value += ch;
+          stderr.write('•');
         }
         // Any other control character (< 0x20) is silently dropped.
       }
