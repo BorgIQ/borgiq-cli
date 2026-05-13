@@ -4,6 +4,7 @@ import { authLogin } from './login.js';
 import { authLogout } from './logout.js';
 import { authStatus } from './status.js';
 import { authHandoffUrl } from './handoffUrl.js';
+import { authSelect } from './select.js';
 
 export const registerAuthCommands = (program: Command): void => {
   const auth = program.command('auth').description('Manage authentication');
@@ -33,4 +34,11 @@ export const registerAuthCommands = (program: Command): void => {
     .description('Print a one-time URL that authenticates a headless browser as you (15-minute session)')
     .option('--redirect <path>', 'Relative path to redirect to after authentication (default: /)')
     .action(authHandoffUrl);
+
+  auth
+    .command('select')
+    .description('Set the default org (and optionally workspace) used by other commands')
+    .option('--org <org>', 'Organization slug or ID (required in non-interactive mode)')
+    .option('--workspace <workspace>', 'Workspace slug or ID')
+    .action((options, command) => authSelect(options, command));
 };
