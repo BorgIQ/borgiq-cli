@@ -1,16 +1,39 @@
+import type { Command } from 'commander';
+
 import { saveConfig } from '../../config/index.js';
 import type { CliConfig } from '../../config/index.js';
 import { BorgIQClient } from '../../client/index.js';
+import type { BIQUserAccessibleWorkspaceInfo, BIQUserWorkspaceAccessInfo } from '../../client/types.js';
 import { handleError } from '../../lib/errors.js';
 import { prompt, promptSecret } from '../../lib/prompt.js';
 import { deriveWebUrlFromApiUrl } from '../../lib/webUrl.js';
 
 const DEFAULT_API_URL = 'https://api.borgiq.com/v1';
+const DEFAULT_WEB_URL = 'https://app.borgiq.com';
 
-export const authLogin = async (options: { apiUrl?: string; token?: string }): Promise<void> => {
+interface LoginOptions {
+  apiUrl?: string;
+  token?: string;
+  webUrl?: string;
+  org?: string;
+  workspace?: string;
+}
+
+export const authLogin = async (_options: LoginOptions, command: Command): Promise<void> => {
   try {
+    // optsWithGlobals merges this command's opts with every ancestor command's
+    // opts, so flags passed at any level (e.g. `borgiq --token X auth login`)
+    // are seen here. command.parent is `auth` (no flags) — that's why
+    // `command.parent.opts()` alone misses program-level globals.
+    const opts = command.optsWithGlobals() as LoginOptions;
+    const apiUrlFlag = opts.apiUrl;
+    const tokenFlag = opts.token;
+    const webUrlFlag = opts.webUrl;
+    const orgFlag = opts.org;
+    const workspaceFlag = opts.workspace;
+
     // Resolve API URL
-    let apiUrl = options.apiUrl || process.env.BORGIQ_API_URL;
+    let apiUrl = apiUrlFlag || process.env.BORGIQ_API_URL;
     if (!apiUrl) {
       if (process.stdin.isTTY) {
         apiUrl = await prompt('API URL', DEFAULT_API_URL);
@@ -20,7 +43,7 @@ export const authLogin = async (options: { apiUrl?: string; token?: string }): P
     }
 
     // Resolve token
-    let apiToken = options.token || process.env.BORGIQ_API_TOKEN;
+    let apiToken = tokenFlag || process.env.BORGIQ_API_TOKEN;
     if (!apiToken) {
       if (process.stdin.isTTY) {
         apiToken = await promptSecret('API Token (biq_...)');
@@ -37,6 +60,18 @@ export const authLogin = async (options: { apiUrl?: string; token?: string }): P
       process.exit(1);
     }
 
+    // Resolve web app URL (used for OAuth2 handoff). Resolved before
+    // credential verification so users pick all their endpoints up front.
+    const derivedWebUrl = deriveWebUrlFromApiUrl(apiUrl) || DEFAULT_WEB_URL;
+    let webUrl = webUrlFlag || process.env.BORGIQ_WEB_URL;
+    if (!webUrl) {
+      if (process.stdin.isTTY) {
+        webUrl = await prompt('Web app URL (used for OAuth2 handoff)', derivedWebUrl);
+      } else {
+        webUrl = derivedWebUrl;
+      }
+    }
+
     // Validate by calling the API
     process.stderr.write('Validating credentials...\n');
     const client = new BorgIQClient(apiUrl, apiToken);
@@ -44,30 +79,57 @@ export const authLogin = async (options: { apiUrl?: string; token?: string }): P
 
     process.stderr.write(`Authenticated as: ${profile.name} (${profile.email})\n`);
 
-    // Try to get orgs and workspaces for defaults
     const config: CliConfig = { apiUrl, apiToken };
-
-    // Optional web app URL for OAuth2 handoff. Only prompted interactively.
-    if (process.stdin.isTTY) {
-      const derived = deriveWebUrlFromApiUrl(apiUrl);
-      const webUrl = await prompt('Web app URL (used for OAuth2 handoff)', derived);
-      if (webUrl && webUrl !== derived) {
-        config.webUrl = webUrl;
-      }
+    if (webUrl && webUrl !== derivedWebUrl) {
+      config.webUrl = webUrl;
     }
 
     try {
       const orgsAndWorkspaces = await client.getOrgsAndWorkspaces();
       const orgs = Object.values(orgsAndWorkspaces);
-      if (orgs.length === 1) {
-        const org = orgs[0];
-        config.defaultOrg = org.slug;
-        process.stderr.write(`Default org: ${org.name} (${org.slug})\n`);
 
-        if (org.workspaces.length === 1) {
-          config.defaultWorkspace = org.workspaces[0].slug;
-          process.stderr.write(`Default workspace: ${org.workspaces[0].name} (${org.workspaces[0].slug})\n`);
+      let resolvedOrg: BIQUserAccessibleWorkspaceInfo | undefined;
+      if (orgFlag) {
+        resolvedOrg = orgs.find((o) => o.slug === orgFlag || o.id === orgFlag);
+        if (!resolvedOrg) {
+          const available = orgs.map((o) => o.slug).join(', ') || '(none)';
+          process.stderr.write(`Error: Organization "${orgFlag}" not found. Available: ${available}\n`);
+          process.exit(1);
         }
+      } else if (orgs.length === 1) {
+        resolvedOrg = orgs[0];
+      }
+
+      if (resolvedOrg) {
+        config.defaultOrg = resolvedOrg.slug;
+        process.stderr.write(`Default org: ${resolvedOrg.name} (${resolvedOrg.slug})\n`);
+
+        let resolvedWorkspace: BIQUserWorkspaceAccessInfo | undefined;
+        if (workspaceFlag) {
+          resolvedWorkspace = resolvedOrg.workspaces.find(
+            (w) => w.slug === workspaceFlag || w.id === workspaceFlag
+          );
+          if (!resolvedWorkspace) {
+            const available = resolvedOrg.workspaces.map((w) => w.slug).join(', ') || '(none)';
+            process.stderr.write(
+              `Error: Workspace "${workspaceFlag}" not found in org "${resolvedOrg.slug}". Available: ${available}\n`
+            );
+            process.exit(1);
+          }
+        } else if (resolvedOrg.workspaces.length === 1) {
+          resolvedWorkspace = resolvedOrg.workspaces[0];
+        }
+
+        if (resolvedWorkspace) {
+          config.defaultWorkspace = resolvedWorkspace.slug;
+          process.stderr.write(`Default workspace: ${resolvedWorkspace.name} (${resolvedWorkspace.slug})\n`);
+        }
+      } else if (workspaceFlag) {
+        // Workspace specified but no org to anchor it.
+        process.stderr.write(
+          'Error: --workspace requires --org (or a single accessible org).\n'
+        );
+        process.exit(1);
       }
     } catch {
       // Non-fatal: user can set defaults manually

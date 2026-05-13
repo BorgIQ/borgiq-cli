@@ -27,6 +27,7 @@ export const createProgram = (): Command => {
   // Global options
   program.option('--api-url <url>', 'BorgIQ API URL (overrides config and env)');
   program.option('--token <token>', 'API token (overrides config and env)');
+  program.option('--web-url <url>', 'Web app URL used for OAuth2 handoff (overrides config and env)');
   program.option('--org <org>', 'Organization slug or ID');
   program.option('--workspace <workspace>', 'Workspace slug or ID');
   program.option('--json', 'Output in JSON format');

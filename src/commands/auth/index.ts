@@ -13,7 +13,10 @@ export const registerAuthCommands = (program: Command): void => {
     .description('Configure API key and base URL')
     .option('--api-url <url>', 'BorgIQ API URL')
     .option('--token <token>', 'API token (biq_...)')
-    .action(authLogin);
+    .option('--web-url <url>', 'Web app URL used for OAuth2 handoff')
+    .option('--org <org>', 'Default organization slug or ID to save')
+    .option('--workspace <workspace>', 'Default workspace slug or ID to save')
+    .action((options, command) => authLogin(options, command));
 
   auth
     .command('logout')
