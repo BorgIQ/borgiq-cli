@@ -132,6 +132,10 @@ export class BorgIQClient {
     return this.request<{[orgId: string]: BIQUserAccessibleWorkspaceInfo }>('GET', '/apiUser/orgsAndWorkspaces');
   }
 
+  async createSessionHandoff(redirectPath?: string): Promise<{ url: string; expiresAt: number }> {
+    return this.request('POST', '/apiUser/sessionHandoff', { redirectPath });
+  }
+
   // ── Workspaces ────────────────────────────────────────
 
   async listWorkspaces(org: string, params?: ListFilterParams): Promise<PaginatedResponse<{ id: string; name: string; slug: string; description: string }>> {
