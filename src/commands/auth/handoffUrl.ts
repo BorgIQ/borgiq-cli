@@ -25,6 +25,9 @@ export const authHandoffUrl = async (options: HandoffUrlOptions, command: { pare
       output({ url, expiresAt }, { json: true });
     } else {
       process.stdout.write(`${url}\n`);
+      // Warning goes to stderr so `URL=$(borgiq auth handoff-url ...)` captures only the
+      // URL on stdout while the warning still appears in the user's terminal.
+      process.stderr.write('Sensitive — do not share this URL with other users. It can be used once to log in as you.\n');
     }
   } catch (error) {
     handleError(error);
