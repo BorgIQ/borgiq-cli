@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 import { authLogin } from './login.js';
 import { authLogout } from './logout.js';
 import { authStatus } from './status.js';
+import { authHandoffUrl } from './handoffUrl.js';
 
 export const registerAuthCommands = (program: Command): void => {
   const auth = program.command('auth').description('Manage authentication');
@@ -23,4 +24,10 @@ export const registerAuthCommands = (program: Command): void => {
     .command('status')
     .description('Show current authentication status')
     .action(authStatus);
+
+  auth
+    .command('handoff-url')
+    .description('Print a one-time URL that authenticates a headless browser as you (15-minute session)')
+    .option('--redirect <path>', 'Relative path to redirect to after authentication (default: /)')
+    .action(authHandoffUrl);
 };
