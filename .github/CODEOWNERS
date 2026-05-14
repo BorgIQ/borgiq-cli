@@ -1,0 +1,18 @@
+# CODEOWNERS for borgiq-cli
+#
+# Every PR that touches the files below must be approved by an owner before
+# merge. This guards the release pipeline: anyone with `main` write could
+# otherwise smuggle a malicious version bump or workflow change.
+#
+# TODO: replace @BorgIQ/maintainers with the actual GitHub team slug (or
+# explicit @username list) before merging. The team must have write access
+# to this repo for CODEOWNERS to be enforceable.
+
+# Anything that controls a release
+/package.json                                @BorgIQ/maintainers
+/CHANGELOG.md                                @BorgIQ/maintainers
+/.release-please-manifest.json               @BorgIQ/maintainers
+/release-please-config.json                  @BorgIQ/maintainers
+
+# Anything that runs in CI / can publish
+/.github/                                    @BorgIQ/maintainers

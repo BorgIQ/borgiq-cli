@@ -181,11 +181,7 @@ When adding a new command:
 - **Node.js requirement:** >=20.0.0 (for native `fetch()` support)
 - **Runtime dependencies:** `commander@^12`, `yaml` (YAML parser)
 
-**To publish:**
-```bash
-npm run clean && npm run build
-npm publish --access public
-```
+**Releases are automated.** See `CONTRIBUTING.md` for the release-please flow. Do not run `npm publish` locally — the `release.yml` GitHub Action publishes from `main` after the release-please PR is merged. PR titles must be valid conventional commits (see the `release-please-commits` skill).
 
 ## Key Conventions
 
