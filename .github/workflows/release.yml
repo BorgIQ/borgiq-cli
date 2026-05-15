@@ -4,9 +4,16 @@ on:
   push:
     branches: [main]
 
-# TODO: replace `@v4` tags with full commit SHAs once Dependabot is configured
-# (see .github/dependabot.yml). Floating major tags are convenient but a
-# compromised action could publish a malicious release. See CONTRIBUTING.md.
+# Why action references are pinned to commit SHAs (not `@vN`):
+#   1. `@vN` major tags are mutable — the owner can re-point them at any
+#      commit. A compromised action with publish access to npm could
+#      smuggle malicious code into a release.
+#   2. SHAs are immutable. We always know exactly what code ran.
+#   3. Dependabot (.github/dependabot.yml) opens PRs when these SHAs go stale,
+#      so we still get the convenience of major-tag tracking without the trust
+#      hole — just with a review step in the middle.
+# The trailing comment after each SHA shows the human-readable version it
+# resolved to at pin time. Dependabot keeps both the SHA and comment in sync.
 
 permissions:
   contents: read
@@ -21,7 +28,7 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           config-file: release-please-config.json
@@ -35,12 +42,15 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 20
+          node-version: lts/*
           registry-url: https://registry.npmjs.org
           cache: npm
+      # Force latest npm so the runner has Trusted Publisher OIDC support
+      # (requires npm >= 11.5.1; Node LTS's bundled npm can lag).
+      - run: npm install -g npm@latest
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm publish --provenance --access public
