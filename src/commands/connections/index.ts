@@ -20,6 +20,7 @@ export const registerConnectionsCommands = (program: Command): void => {
     .description('List available connection types')
     .option('--page <page>', 'Page number')
     .option('--page-size <size>', 'Results per page')
+    .option('--search <query>', 'Filter by name or title (case-insensitive substring)')
     .action(connectionsTypes);
 
   connections
