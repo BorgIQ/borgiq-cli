@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.3.0...cli-v0.4.0) (2026-05-26)
+
+
+### Features
+
+* **connections:** expose authType + --search filter in `connections types` ([#14](https://github.com/BorgIQ/borgiq-cli/issues/14)) ([7da9fab](https://github.com/BorgIQ/borgiq-cli/commit/7da9fab8e4e9e567163971b710e31bd8d44b19a4))
+* **templates:** add command group for browsing and searching templates ([#13](https://github.com/BorgIQ/borgiq-cli/issues/13)) ([d056557](https://github.com/BorgIQ/borgiq-cli/commit/d056557b1b7277d2634681de965113d8abad5335))
+
 ## [0.3.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.2.0...cli-v0.3.0) (2026-05-15)
 
 
