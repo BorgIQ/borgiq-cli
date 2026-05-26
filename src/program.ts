@@ -15,6 +15,7 @@ import { registerConnectionsCommands } from './commands/connections/index.js';
 import { registerSecretsCommands } from './commands/secrets/index.js';
 import { registerAssetsCommands } from './commands/assets/index.js';
 import { registerTokensCommands } from './commands/tokens/index.js';
+import { registerTemplatesCommands } from './commands/templates/index.js';
 
 export const createProgram = (): Command => {
   const program = new Command();
@@ -47,6 +48,7 @@ export const createProgram = (): Command => {
   registerSecretsCommands(program);
   registerAssetsCommands(program);
   registerTokensCommands(program);
+  registerTemplatesCommands(program);
 
   return program;
 };

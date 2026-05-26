@@ -458,3 +458,46 @@ export interface BIQKeysListResponse {
   nextPage?: number;
 }
 
+/** Actor template type — mirrors `ActorTemplateType` in `@borgiq/db`. */
+export type BIQActorTemplateType = 'TASK' | 'TRIGGER';
+
+/** Template access level — mirrors `TemplateAccessLevel` in `@borgiq/db`. */
+export type BIQTemplateAccessLevel = 'PUBLIC' | 'ORG' | 'WORKSPACE';
+
+/** Template app (e.g. Slack, GitHub) used to group templates. */
+export interface BIQTemplateApp {
+  id: string;
+  name: string;
+  color: string;
+  icon?: string;
+}
+
+/** Lightweight template metadata returned by the list endpoint. */
+export interface BIQActorTemplateMetadata {
+  id: string;
+  version: number;
+  accessLevel: BIQTemplateAccessLevel;
+  isBorgiqTemplate: boolean;
+  name: string;
+  description: string;
+  type: BIQActorTemplateType;
+  color: string;
+  tags: string;
+  schemaVersion: number;
+  appName: string;
+  appIcon?: string;
+  orgName?: string;
+  workspaceName?: string;
+}
+
+/** Full template detail returned by the get-by-id endpoint. */
+export interface BIQActorTemplateDetail extends BIQActorTemplateMetadata {
+  actor?: unknown;
+}
+
+/** Extra filters supported by the templates list endpoint. */
+export interface TemplateListFilters {
+  types?: BIQActorTemplateType[];
+  appId?: string;
+}
+
