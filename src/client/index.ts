@@ -37,6 +37,10 @@ import type {
   BIQFileMetadata,
   BIQConnectionFormData,
   BIQKeysListResponse,
+  BIQActorTemplateMetadata,
+  BIQActorTemplateDetail,
+  BIQTemplateApp,
+  TemplateListFilters,
 } from './types.js';
 
 export class BorgIQClient {
@@ -461,6 +465,41 @@ export class BorgIQClient {
   async deleteCanvasActor(org: string, workspace: string, canvasId: string, actorId: string, editVersion?: number): Promise<BatchActorOperationsResponse> {
     const qs = editVersion !== undefined ? `?editVersion=${editVersion}` : '';
     return this.request('DELETE', `${this.wkspPath(org, workspace)}/canvases/${canvasId}/actors/${actorId}${qs}`);
+  }
+
+  // ── Templates ─────────────────────────────────────────
+
+  async listTemplates(org: string, workspace: string, params?: ListFilterParams & TemplateListFilters): Promise<PaginatedResponse<BIQActorTemplateMetadata>> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    if (params?.types) {
+      for (const t of params.types) searchParams.append('types', t);
+    }
+    if (params?.appId) searchParams.set('appId', params.appId);
+    const qs = searchParams.toString();
+    const raw = await this.request<{ total: number; templates: BIQActorTemplateMetadata[] }>('GET', `${this.wkspPath(org, workspace)}/templates${qs ? `?${qs}` : ''}`);
+    return { total: raw.total, data: raw.templates };
+  }
+
+  async getTemplate(org: string, workspace: string, id: string): Promise<BIQActorTemplateDetail> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/templates/${id}`);
+  }
+
+  async listTemplateApps(org: string, workspace: string, params?: ListFilterParams & { categoryId?: string }): Promise<PaginatedResponse<BIQTemplateApp>> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    if (params?.categoryId) searchParams.set('categoryId', params.categoryId);
+    const qs = searchParams.toString();
+    const raw = await this.request<{ total: number; templateApps: BIQTemplateApp[] }>('GET', `${this.wkspPath(org, workspace)}/template/apps${qs ? `?${qs}` : ''}`);
+    return { total: raw.total, data: raw.templateApps };
   }
 }
 
