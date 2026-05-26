@@ -18,6 +18,7 @@ export const connectionsTypes = async (options: { page?: string; pageSize?: stri
       columns: [
         { key: 'name', header: 'TYPE' },
         { key: 'title', header: 'TITLE' },
+        { key: 'authType', header: 'AUTH' },
       ],
       title: 'Connection Types',
     });

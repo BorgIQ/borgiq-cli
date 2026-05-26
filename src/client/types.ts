@@ -311,18 +311,20 @@ export interface BIQAssetMetadata {
 
 /**
  * Connection type list item returned by GET /connections/types. Mirrors
- * `BIQConnectionTypeList` in the platform (`packages/types`): the API
- * projects only these three fields from the connection type record.
+ * `BIQConnectionTypeList` in the platform (`packages/types`).
  *
  * - `name` — the stable slug used when creating a connection
  *   (`borgiq connections create --type <name>`).
  * - `title` — the human-readable label shown in the web UI.
  * - `icon` — optional CDN icon slug.
+ * - `authType` — the auth scheme (e.g. `oauth2`, `apiKey`). Useful for
+ *   grouping or for picking the right `connections create` flow.
  */
 export interface BIQConnectionType {
   name: string;
   title: string;
   icon?: string;
+  authType: BIQConnectionAuthType;
 }
 
 /** Canvas actor instance */
