@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 
+import { withListOptions } from '../../lib/listOptions.js';
 import { tokensList } from './list.js';
 import { tokensCreate } from './create.js';
 import { tokensRevoke } from './revoke.js';
@@ -7,11 +8,9 @@ import { tokensRevoke } from './revoke.js';
 export const registerTokensCommands = (program: Command): void => {
   const tokens = program.command('tokens').description('Manage API tokens');
 
-  tokens
-    .command('list')
-    .description('List API tokens')
-    .option('--page <page>', 'Page number')
-    .option('--page-size <size>', 'Results per page')
+  withListOptions(tokens.command('list').description('List API tokens'), {
+    sort: { fields: ['name', 'createdAt'], defaultBy: 'createdAt', defaultOrder: 'desc' },
+  })
     .action(tokensList);
 
   tokens

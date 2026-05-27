@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 
+import { withListOptions } from '../../lib/listOptions.js';
 import { assetsList } from './list.js';
 import { assetsDelete } from './delete.js';
 import { assetsCreate } from './create.js';
@@ -8,11 +9,9 @@ import { assetsEdit } from './edit.js';
 export const registerAssetsCommands = (program: Command): void => {
   const assets = program.command('assets').description('Manage assets');
 
-  assets
-    .command('list')
-    .description('List assets')
-    .option('--page <page>', 'Page number')
-    .option('--page-size <size>', 'Results per page')
+  withListOptions(assets.command('list').description('List assets'), {
+    sort: { fields: ['key', 'createdAt', 'updatedAt'], defaultBy: 'key', defaultOrder: 'asc' },
+  })
     .action(assetsList);
 
   assets

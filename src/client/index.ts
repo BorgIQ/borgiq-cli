@@ -476,8 +476,11 @@ export class BorgIQClient {
     if (params?.search) searchParams.set('search', params.search);
     if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
     if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
-    if (params?.types) {
-      for (const t of params.types) searchParams.append('types', t);
+    if (params?.types?.length) {
+      // Use array notation (types[]=…) so Express's qs parser produces an array
+      // even when only one value is provided. A bare `types=…` arrives as a string
+      // and fails the server-side `z.array(...)` schema.
+      for (const t of params.types) searchParams.append('types[]', t);
     }
     if (params?.appId) searchParams.set('appId', params.appId);
     const qs = searchParams.toString();

@@ -23,9 +23,11 @@ export const createProgram = (): Command => {
   program
     .name('borgiq')
     .description('BorgIQ CLI - Command-line interface for the BorgIQ workflow automation platform')
-    .version('0.1.2');
+    .version('0.1.2')
+    .configureHelp({ showGlobalOptions: true })
+    .showHelpAfterError();
 
-  // Global options
+  // Global options (inherited by every subcommand thanks to showGlobalOptions)
   program.option('--api-url <url>', 'BorgIQ API URL (overrides config and env)');
   program.option('--token <token>', 'API token (overrides config and env)');
   program.option('--web-url <url>', 'Web app URL used for OAuth2 handoff (overrides config and env)');

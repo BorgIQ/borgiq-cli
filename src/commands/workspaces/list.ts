@@ -3,8 +3,9 @@ import type { GlobalOptions } from '../../lib/context.js';
 import { loadConfig } from '../../config/index.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
+import { parseListOptions, type ListOptionFlags } from '../../lib/listOptions.js';
 
-export const workspacesList = async (options: { page?: string; pageSize?: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+export const workspacesList = async (options: ListOptionFlags, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const config = loadConfig();
@@ -16,10 +17,7 @@ export const workspacesList = async (options: { page?: string; pageSize?: string
     }
 
     const client = createClient(globalOpts);
-    const result = await client.listWorkspaces(org, {
-      page: options.page ? parseInt(options.page, 10) : undefined,
-      pageSize: options.pageSize ? parseInt(options.pageSize, 10) : undefined,
-    });
+    const result = await client.listWorkspaces(org, parseListOptions(options));
 
     output(result, globalOpts, {
       columns: [

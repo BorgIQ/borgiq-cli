@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 
+import { withListOptions } from '../../lib/listOptions.js';
 import { templatesList } from './list.js';
 import { templatesGet } from './get.js';
 import { templatesApps } from './apps.js';
@@ -7,12 +8,9 @@ import { templatesApps } from './apps.js';
 export const registerTemplatesCommands = (program: Command): void => {
   const templates = program.command('templates').description('Browse and search BorgIQ actor templates');
 
-  templates
-    .command('list')
-    .description('List or search templates in a workspace')
-    .option('--page <page>', 'Page number')
-    .option('--page-size <size>', 'Results per page')
-    .option('--search <query>', 'Search by name, description, or tags')
+  withListOptions(templates.command('list').description('List or search templates in a workspace'), {
+    sort: { fields: ['name', 'createdAt', 'updatedAt'], defaultBy: 'name', defaultOrder: 'asc' },
+  })
     .option('--type <type...>', 'Filter by template type: TASK or TRIGGER (repeatable)')
     .option('--app-id <id>', 'Filter by template app id')
     .action(templatesList);
@@ -22,12 +20,9 @@ export const registerTemplatesCommands = (program: Command): void => {
     .description('Get a single template (includes actor definition)')
     .action(templatesGet);
 
-  templates
-    .command('apps')
-    .description('List template apps available for filtering')
-    .option('--page <page>', 'Page number')
-    .option('--page-size <size>', 'Results per page')
-    .option('--search <query>', 'Search filter')
+  withListOptions(templates.command('apps').description('List template apps available for filtering'), {
+    sort: { fields: ['name', 'createdAt'], defaultBy: 'name', defaultOrder: 'asc' },
+  })
     .option('--category-id <id>', 'Filter by template category id')
     .action(templatesApps);
 };

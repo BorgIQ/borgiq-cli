@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 
+import { withListOptions } from '../../lib/listOptions.js';
 import { secretsList } from './list.js';
 import { secretsDelete } from './delete.js';
 import { secretsCreate } from './create.js';
@@ -7,11 +8,9 @@ import { secretsCreate } from './create.js';
 export const registerSecretsCommands = (program: Command): void => {
   const secrets = program.command('secrets').description('Manage secrets');
 
-  secrets
-    .command('list')
-    .description('List secrets')
-    .option('--page <page>', 'Page number')
-    .option('--page-size <size>', 'Results per page')
+  withListOptions(secrets.command('list').description('List secrets'), {
+    sort: { fields: ['key', 'createdAt'], defaultBy: 'key', defaultOrder: 'asc' },
+  })
     .action(secretsList);
 
   secrets
