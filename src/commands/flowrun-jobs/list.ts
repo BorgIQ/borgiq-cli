@@ -15,8 +15,9 @@ export const flowrunJobsList = async (options: FlowrunJobsListOptions, command: 
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
+    const { page, pageSize, search, sortBy, sortOrder } = parseListOptions(options);
     const result = await client.listFlowrunJobs(ctx.org, ctx.workspace, {
-      ...parseListOptions(options),
+      page, pageSize, search, sortBy, sortOrder,
       canvasId: options.canvasId,
       actorId: options.actorId,
       flowrunId: options.flowrunId,

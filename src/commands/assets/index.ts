@@ -10,9 +10,7 @@ export const registerAssetsCommands = (program: Command): void => {
   const assets = program.command('assets').description('Manage assets');
 
   withListOptions(assets.command('list').description('List assets'), {
-    sortFields: ['key', 'createdAt', 'updatedAt'],
-    defaultSortBy: 'key',
-    defaultSortOrder: 'asc',
+    sort: { fields: ['key', 'createdAt', 'updatedAt'], defaultBy: 'key', defaultOrder: 'asc' },
   })
     .action(assetsList);
 

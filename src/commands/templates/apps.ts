@@ -13,8 +13,9 @@ export const templatesApps = async (options: TemplateAppsOptions, command: { par
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
+    const { page, pageSize, search, sortBy, sortOrder } = parseListOptions(options);
     const result = await client.listTemplateApps(ctx.org, ctx.workspace, {
-      ...parseListOptions(options),
+      page, pageSize, search, sortBy, sortOrder,
       categoryId: options.categoryId,
     });
 

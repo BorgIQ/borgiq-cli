@@ -9,9 +9,7 @@ export const registerSecretsCommands = (program: Command): void => {
   const secrets = program.command('secrets').description('Manage secrets');
 
   withListOptions(secrets.command('list').description('List secrets'), {
-    sortFields: ['key', 'createdAt'],
-    defaultSortBy: 'key',
-    defaultSortOrder: 'asc',
+    sort: { fields: ['key', 'createdAt'], defaultBy: 'key', defaultOrder: 'asc' },
   })
     .action(secretsList);
 

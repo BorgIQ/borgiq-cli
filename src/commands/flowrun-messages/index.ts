@@ -7,7 +7,6 @@ import { flowrunMessagesData } from './data.js';
 export const registerFlowrunMessagesCommands = (program: Command): void => {
   const messages = program.command('flowrun-messages').description('Inspect flow run messages between actors');
 
-  // The list endpoint hardcodes sort by emittedAt desc and does not honor search/sort filters.
   withListOptions(messages.command('list').description('List emitted messages for a flow run (sorted by most recent first)'), { search: false })
     .requiredOption('--canvas-id <id>', 'Canvas ID')
     .option('--flowrun-id <id>', 'Filter by flowrun ID')

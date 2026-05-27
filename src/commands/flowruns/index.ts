@@ -10,7 +10,6 @@ import { flowrunsInterrupt } from './interrupt.js';
 export const registerFlowrunsCommands = (program: Command): void => {
   const flowruns = program.command('flowruns').description('Manage flow runs');
 
-  // The list endpoint hardcodes sort by id desc and does not honor search/sort filters.
   withListOptions(flowruns.command('list').description('List flow runs (sorted by most recent first)'), { search: false })
     .requiredOption('--canvas-id <id>', 'Canvas ID')
     .action(flowrunsList);

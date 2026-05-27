@@ -15,8 +15,9 @@ export const flowrunMessagesList = async (options: FlowrunMessagesListOptions, c
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
+    const { page, pageSize, search, sortBy, sortOrder } = parseListOptions(options);
     const result = await client.listFlowrunMessages(ctx.org, ctx.workspace, {
-      ...parseListOptions(options),
+      page, pageSize, search, sortBy, sortOrder,
       canvasId: options.canvasId,
       flowrunId: options.flowrunId,
       actorId: options.actorId,

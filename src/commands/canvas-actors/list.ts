@@ -14,8 +14,9 @@ export const canvasActorsList = async (canvasId: string, options: CanvasActorsLi
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
+    const { page, pageSize, search, sortBy, sortOrder } = parseListOptions(options);
     const result = await client.listCanvasActors(ctx.org, ctx.workspace, canvasId, {
-      ...parseListOptions(options),
+      page, pageSize, search, sortBy, sortOrder,
       actorType: options.actorType,
       isActive: options.isActive,
     });

@@ -20,8 +20,9 @@ export const templatesList = async (options: TemplatesListOptions, command: { pa
       throw new Error('--type must be one of: TASK, TRIGGER');
     }
 
+    const { page, pageSize, search, sortBy, sortOrder } = parseListOptions(options);
     const result = await client.listTemplates(ctx.org, ctx.workspace, {
-      ...parseListOptions(options),
+      page, pageSize, search, sortBy, sortOrder,
       types,
       appId: options.appId,
     });

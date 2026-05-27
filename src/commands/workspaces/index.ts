@@ -7,9 +7,7 @@ export const registerWorkspacesCommands = (program: Command): void => {
   const workspaces = program.command('workspaces').description('Manage workspaces');
 
   withListOptions(workspaces.command('list').description('List workspaces in an organization'), {
-    sortFields: ['name', 'createdAt', 'updatedAt'],
-    defaultSortBy: 'name',
-    defaultSortOrder: 'asc',
+    sort: { fields: ['name', 'createdAt', 'updatedAt'], defaultBy: 'name', defaultOrder: 'asc' },
   })
     .action(workspacesList);
 };

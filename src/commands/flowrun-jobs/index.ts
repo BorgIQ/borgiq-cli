@@ -11,7 +11,6 @@ import { flowrunJobsSourceMessage } from './source-message.js';
 export const registerFlowrunJobsCommands = (program: Command): void => {
   const jobs = program.command('flowrun-jobs').description('Manage flow run jobs');
 
-  // The list endpoint hardcodes sort by id desc and does not honor search/sort filters.
   withListOptions(jobs.command('list').description('List flow run jobs (sorted by most recent first)'), { search: false })
     .requiredOption('--canvas-id <id>', 'Canvas ID')
     .requiredOption('--actor-id <id>', 'Actor ID')

@@ -9,9 +9,7 @@ export const registerTokensCommands = (program: Command): void => {
   const tokens = program.command('tokens').description('Manage API tokens');
 
   withListOptions(tokens.command('list').description('List API tokens'), {
-    sortFields: ['name', 'createdAt'],
-    defaultSortBy: 'createdAt',
-    defaultSortOrder: 'desc',
+    sort: { fields: ['name', 'createdAt'], defaultBy: 'createdAt', defaultOrder: 'desc' },
   })
     .action(tokensList);
 

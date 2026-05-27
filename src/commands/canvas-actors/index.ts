@@ -15,7 +15,7 @@ export const registerCanvasActorsCommands = (program: Command): void => {
 
   withListOptions(
     canvasActors.command('list <canvasId>').description('List actors in a canvas with optional filters'),
-    { sortFields: ['name', 'type', 'createdAt'], defaultSortBy: 'name', defaultSortOrder: 'asc' },
+    { sort: { fields: ['name', 'type', 'createdAt'], defaultBy: 'name', defaultOrder: 'asc' } },
   )
     .option('--actor-type <type>', 'Filter by actor type (e.g. DenoActor, HttpRequestActor)')
     .option('--is-active <bool>', 'Filter by active status (true/false)')

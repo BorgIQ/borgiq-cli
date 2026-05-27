@@ -10,16 +10,12 @@ export const registerConnectionsCommands = (program: Command): void => {
   const connections = program.command('connections').description('Manage connections');
 
   withListOptions(connections.command('list').description('List connections'), {
-    sortFields: ['key', 'createdAt'],
-    defaultSortBy: 'key',
-    defaultSortOrder: 'asc',
+    sort: { fields: ['key', 'createdAt'], defaultBy: 'key', defaultOrder: 'asc' },
   })
     .action(connectionsList);
 
   withListOptions(connections.command('types').description('List available connection types'), {
-    sortFields: ['name', 'title'],
-    defaultSortBy: 'name',
-    defaultSortOrder: 'asc',
+    sort: { fields: ['name', 'title'], defaultBy: 'name', defaultOrder: 'asc' },
   })
     .action(connectionsTypes);
 

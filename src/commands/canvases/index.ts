@@ -18,9 +18,7 @@ export const registerCanvasesCommands = (program: Command): void => {
   const canvases = program.command('canvases').description('Manage canvases');
 
   withListOptions(canvases.command('list').description('List canvases in a workspace'), {
-    sortFields: ['name', 'createdAt', 'updatedAt'],
-    defaultSortBy: 'name',
-    defaultSortOrder: 'asc',
+    sort: { fields: ['name', 'createdAt', 'updatedAt'], defaultBy: 'name', defaultOrder: 'asc' },
   })
     .action(canvasesList);
 
