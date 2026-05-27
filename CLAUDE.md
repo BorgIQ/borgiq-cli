@@ -2,34 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Multi-Repository Workspace
+## Overview
 
-**This repository** (`borgiq-cli`) is the official command-line interface for the BorgIQ workflow automation platform. It communicates with the BorgIQ API (provided by `borgiq-platform`) to manage canvases, actors, flow runs, connections, secrets, and more.
+`borgiq-cli` is the official command-line interface for the BorgIQ workflow automation platform. It talks to the BorgIQ API over HTTPS to manage canvases, actors, flow runs, connections, secrets, and more.
 
-### Expected Workspace Structure
-
-All BorgIQ repositories should be checked out as siblings under a common parent directory:
-
-```
-<parent>/                         # e.g., ~/projects/borgiq/ or /workspace/code/
-├── borgiq-platform/              # Main Application (API server this CLI talks to)
-├── borgiq-cli/                   ← YOU ARE HERE (CLI client)
-├── borgiq-lambda-runtime/        # Serverless actor execution runtime
-├── borgiq-aws-infrastructure/    # AWS infrastructure as code (Pulumi)
-├── borgiq-deno-bootstrap/        # Deno runtime & interpolation engine
-├── borgiq-templates/             # Pre-built workflow templates
-```
-
-### Cross-Repository Dependencies
-
-**This repo consumes from others:**
-- **borgiq-platform** (API): All CLI commands interact with the BorgIQ API served by `borgiq-platform`'s Express backend
-- API types and endpoint contracts are defined in `borgiq-platform`; this repo has its own type definitions in `src/client/types.ts` that must stay in sync
-
-**This repo does NOT:**
-- Import any npm packages from other BorgIQ repos
-- Share TypeScript types via package dependencies
-- Require any other repo to be running for builds (only for runtime API calls)
+This repo is fully standalone: it has no npm dependencies on other BorgIQ packages, defines its own API request/response types in `src/client/types.ts`, and needs no other services running locally to build (only for runtime API calls against a live BorgIQ instance).
 
 ## Development Environment Setup
 

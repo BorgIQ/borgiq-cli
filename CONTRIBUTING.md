@@ -25,10 +25,6 @@ Quick reminders:
 - Don't merge the Release PR with a custom commit message — keep `chore(main): release X.Y.Z` so release-please can find it next time.
 - Don't merge-commit into `main` — squash-merge only (configured in repo settings).
 
-## Action pinning
-
-The `release.yml` workflow currently references actions by their `@v4` major tag for convenience. Before the first real release, pin each `uses:` line to a full 40-char commit SHA and enable Dependabot for `github-actions` so SHA bumps come in as reviewable PRs. A compromised third-party action could otherwise publish a malicious release.
-
 ## Branch model
 
 - `main` is the only long-lived branch.
