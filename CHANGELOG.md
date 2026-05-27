@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.4.0...cli-v0.5.0) (2026-05-27)
+
+
+### Features
+
+* expose pagination, search, sort options in subcommand --help ([#16](https://github.com/BorgIQ/borgiq-cli/issues/16)) ([ced111c](https://github.com/BorgIQ/borgiq-cli/commit/ced111ca427f56747b8e272bccc84da4ce68ff35))
+
 ## [0.4.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.3.0...cli-v0.4.0) (2026-05-26)
 
 
