@@ -811,4 +811,4 @@ node dist/index.js --help
 
 ## License
 
-Proprietary. All rights reserved.
+Licensed under the [Apache License, Version 2.0](LICENSE).
