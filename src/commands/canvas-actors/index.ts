@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 
+import { withListOptions } from '../../lib/listOptions.js';
 import { canvasActorsList } from './list.js';
 import { canvasActorsGet } from './get.js';
 import { canvasActorsFlow } from './flow.js';
@@ -12,14 +13,12 @@ import { canvasActorsBatch } from './batch.js';
 export const registerCanvasActorsCommands = (program: Command): void => {
   const canvasActors = program.command('canvas-actors').description('Manage individual actors within a canvas');
 
-  canvasActors
-    .command('list <canvasId>')
-    .description('List actors in a canvas with optional filters')
+  withListOptions(
+    canvasActors.command('list <canvasId>').description('List actors in a canvas with optional filters'),
+    { sortFields: ['name', 'type', 'createdAt'], defaultSortBy: 'name', defaultSortOrder: 'asc' },
+  )
     .option('--actor-type <type>', 'Filter by actor type (e.g. DenoActor, HttpRequestActor)')
     .option('--is-active <bool>', 'Filter by active status (true/false)')
-    .option('--search <query>', 'Search by name or description')
-    .option('--page <page>', 'Page number')
-    .option('--page-size <size>', 'Results per page')
     .action(canvasActorsList);
 
   canvasActors

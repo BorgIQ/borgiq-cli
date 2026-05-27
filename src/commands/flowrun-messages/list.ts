@@ -2,15 +2,21 @@ import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
+import { parseListOptions, type ListOptionFlags } from '../../lib/listOptions.js';
 
-export const flowrunMessagesList = async (options: { page?: string; pageSize?: string; canvasId: string; flowrunId?: string; actorId: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+interface FlowrunMessagesListOptions extends ListOptionFlags {
+  canvasId: string;
+  flowrunId?: string;
+  actorId: string;
+}
+
+export const flowrunMessagesList = async (options: FlowrunMessagesListOptions, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
     const result = await client.listFlowrunMessages(ctx.org, ctx.workspace, {
-      page: options.page ? parseInt(options.page, 10) : undefined,
-      pageSize: options.pageSize ? parseInt(options.pageSize, 10) : undefined,
+      ...parseListOptions(options),
       canvasId: options.canvasId,
       flowrunId: options.flowrunId,
       actorId: options.actorId,

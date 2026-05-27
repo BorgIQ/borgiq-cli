@@ -2,16 +2,20 @@ import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
+import { parseListOptions, type ListOptionFlags } from '../../lib/listOptions.js';
 
-export const canvasActorsList = async (canvasId: string, options: { page?: string; pageSize?: string; search?: string; actorType?: string; isActive?: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+interface CanvasActorsListOptions extends ListOptionFlags {
+  actorType?: string;
+  isActive?: string;
+}
+
+export const canvasActorsList = async (canvasId: string, options: CanvasActorsListOptions, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
     const result = await client.listCanvasActors(ctx.org, ctx.workspace, canvasId, {
-      page: options.page ? parseInt(options.page, 10) : undefined,
-      pageSize: options.pageSize ? parseInt(options.pageSize, 10) : undefined,
-      search: options.search,
+      ...parseListOptions(options),
       actorType: options.actorType,
       isActive: options.isActive,
     });

@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 
+import { withListOptions } from '../../lib/listOptions.js';
 import { canvasesList } from './list.js';
 import { canvasesGet } from './get.js';
 import { canvasesCreate } from './create.js';
@@ -16,12 +17,11 @@ import { canvasesVerifyImport } from './verify-import.js';
 export const registerCanvasesCommands = (program: Command): void => {
   const canvases = program.command('canvases').description('Manage canvases');
 
-  canvases
-    .command('list')
-    .description('List canvases in a workspace')
-    .option('--page <page>', 'Page number')
-    .option('--page-size <size>', 'Results per page')
-    .option('--search <query>', 'Search filter')
+  withListOptions(canvases.command('list').description('List canvases in a workspace'), {
+    sortFields: ['name', 'createdAt', 'updatedAt'],
+    defaultSortBy: 'name',
+    defaultSortOrder: 'asc',
+  })
     .action(canvasesList);
 
   canvases

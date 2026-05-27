@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 
+import { withListOptions } from '../../lib/listOptions.js';
 import { connectionsList } from './list.js';
 import { connectionsDelete } from './delete.js';
 import { connectionsTypes } from './types.js';
@@ -8,19 +9,18 @@ import { connectionsCreate } from './create.js';
 export const registerConnectionsCommands = (program: Command): void => {
   const connections = program.command('connections').description('Manage connections');
 
-  connections
-    .command('list')
-    .description('List connections')
-    .option('--page <page>', 'Page number')
-    .option('--page-size <size>', 'Results per page')
+  withListOptions(connections.command('list').description('List connections'), {
+    sortFields: ['key', 'createdAt'],
+    defaultSortBy: 'key',
+    defaultSortOrder: 'asc',
+  })
     .action(connectionsList);
 
-  connections
-    .command('types')
-    .description('List available connection types')
-    .option('--page <page>', 'Page number')
-    .option('--page-size <size>', 'Results per page')
-    .option('--search <query>', 'Filter by name or title (case-insensitive substring)')
+  withListOptions(connections.command('types').description('List available connection types'), {
+    sortFields: ['name', 'title'],
+    defaultSortBy: 'name',
+    defaultSortOrder: 'asc',
+  })
     .action(connectionsTypes);
 
   connections
