@@ -18,6 +18,7 @@ import { registerSecretsCommands } from './commands/secrets/index.js';
 import { registerAssetsCommands } from './commands/assets/index.js';
 import { registerTokensCommands } from './commands/tokens/index.js';
 import { registerTemplatesCommands } from './commands/templates/index.js';
+import { registerGenerateCommands } from './commands/generate/index.js';
 
 // Read the version from package.json at runtime so `borgiq --version` always
 // matches the published package and never drifts on release.
@@ -81,6 +82,7 @@ Exit codes:
   registerAssetsCommands(program);
   registerTokensCommands(program);
   registerTemplatesCommands(program);
+  registerGenerateCommands(program);
 
   return program;
 };
