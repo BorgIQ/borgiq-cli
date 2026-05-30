@@ -2,7 +2,7 @@ import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
-import { parseListOptions, type ListOptionFlags } from '../../lib/listOptions.js';
+import { collectAllPages, type ListOptionFlags } from '../../lib/listOptions.js';
 
 interface FlowrunJobsListOptions extends ListOptionFlags {
   canvasId: string;
@@ -15,13 +15,14 @@ export const flowrunJobsList = async (options: FlowrunJobsListOptions, command: 
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
-    const { page, pageSize, search, sortBy, sortOrder } = parseListOptions(options);
-    const result = await client.listFlowrunJobs(ctx.org, ctx.workspace, {
-      page, pageSize, search, sortBy, sortOrder,
-      canvasId: options.canvasId,
-      actorId: options.actorId,
-      flowrunId: options.flowrunId,
-    });
+    const result = await collectAllPages(options, (params) =>
+      client.listFlowrunJobs(ctx.org, ctx.workspace, {
+        ...params,
+        canvasId: options.canvasId,
+        actorId: options.actorId,
+        flowrunId: options.flowrunId,
+      }),
+    );
 
     output(result, globalOpts, {
       columns: [

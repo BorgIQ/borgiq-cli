@@ -3,7 +3,7 @@ import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
 import type { BIQActorTemplateType } from '../../client/types.js';
-import { parseListOptions, type ListOptionFlags } from '../../lib/listOptions.js';
+import { collectAllPages, type ListOptionFlags } from '../../lib/listOptions.js';
 
 interface TemplatesListOptions extends ListOptionFlags {
   type?: string[];
@@ -20,12 +20,13 @@ export const templatesList = async (options: TemplatesListOptions, command: { pa
       throw new Error('--type must be one of: TASK, TRIGGER');
     }
 
-    const { page, pageSize, search, sortBy, sortOrder } = parseListOptions(options);
-    const result = await client.listTemplates(ctx.org, ctx.workspace, {
-      page, pageSize, search, sortBy, sortOrder,
-      types,
-      appId: options.appId,
-    });
+    const result = await collectAllPages(options, (params) =>
+      client.listTemplates(ctx.org, ctx.workspace, {
+        ...params,
+        types,
+        appId: options.appId,
+      }),
+    );
 
     output(result, globalOpts, {
       columns: [

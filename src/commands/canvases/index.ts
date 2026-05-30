@@ -30,9 +30,9 @@ export const registerCanvasesCommands = (program: Command): void => {
 
   canvases
     .command('create')
-    .description('Create an empty canvas')
-    .requiredOption('--name <name>', 'Canvas name')
-    .requiredOption('--slug <slug>', 'Canvas slug')
+    .description('Create an empty canvas. Prompts interactively when required flags are missing.')
+    .option('--name <name>', 'Canvas name')
+    .option('--slug <slug>', 'Canvas slug')
     .option('--description <desc>', 'Canvas description')
     .option('--message-ttl <days>', 'Message TTL in days (1-14)', '7')
     .option('--tags <tags>', 'Canvas tags')
@@ -43,6 +43,13 @@ export const registerCanvasesCommands = (program: Command): void => {
     .command('create-with-data')
     .description('Create a canvas with full flow data (actors + edges)')
     .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ borgiq canvases create-with-data --file flow.json
+  $ borgiq canvases export <id> | borgiq canvases create-with-data --file -`,
+    )
     .action(canvasesCreateWithData);
 
   canvases
@@ -66,6 +73,8 @@ export const registerCanvasesCommands = (program: Command): void => {
   canvases
     .command('delete <id>')
     .description('Delete a canvas')
+    .option('-y, --yes', 'Skip the confirmation prompt')
+    .option('--force', 'Alias for --yes')
     .action(canvasesDelete);
 
   canvases

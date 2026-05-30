@@ -211,8 +211,19 @@ List commands support pagination options:
 | Option | Description |
 |--------|-------------|
 | `--page <number>` | Page number (1-based) |
-| `--page-size <number>` | Items per page |
+| `--page-size <number>` | Items per page (max 100) |
 | `--search <query>` | Filter results by search query |
+| `--sort-by <field>` | Field to sort by |
+| `--sort-order <asc\|desc>` | Sort direction |
+| `--all` | Fetch every page and return the full result set (ignores `--page`) |
+
+`--all` is the simplest option for scripts and agents that need the complete list:
+it walks every page for you and returns one `{ "total": <count>, "data": [...] }`.
+
+```bash
+# All canvases as a single JSON array, no manual page loop
+borgiq canvases list --all --json | jq '.data[].slug'
+```
 
 ---
 
@@ -762,15 +773,58 @@ The CLI provides descriptive error messages for common issues:
 | 429 Rate Limited | Retry after the specified delay |
 | Connection Error | Verify API URL and network connectivity |
 
-Validation errors from the API include field-level details:
+All error output is written to **stderr** (stdout stays clean for piping results).
+In human mode, validation errors from the API include field-level details:
 
 ```
-Error: Validation failed (400)
-  - name: Canvas name is required
-  - slug: Slug must be URL-safe
+Error: Input validation error! (HTTP 400)
+  params.id: must follow the pattern for id
 ```
 
-All error output is written to stderr. The process exits with code 1 on failure.
+### Structured errors (JSON mode)
+
+Whenever output is JSON (the `--json` flag, or any non-TTY/piped invocation),
+errors are emitted as JSON too — so scripts and agents can parse them:
+
+```json
+{
+  "error": {
+    "code": "unauthorized",
+    "status": 401,
+    "exitCode": 3,
+    "message": "Invalid or expired API token!",
+    "hint": "Run 'borgiq auth login' to reconfigure your credentials."
+  }
+}
+```
+
+`details` (an array of `{ "path": [...], "message": "..." }`) is included for
+validation failures.
+
+### Exit codes
+
+The process exits with a category-specific code so scripts can branch on the
+failure type without parsing text:
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Other / unexpected error |
+| `2` | Usage error (bad flags, missing input, `400`/`422`) |
+| `3` | Authentication required or invalid (`401`) |
+| `4` | Forbidden (`403`) |
+| `5` | Not found (`404`) |
+| `6` | Conflict (`409`) |
+| `7` | Rate limited (`429`) |
+| `8` | Server error (`5xx`) |
+| `9` | Network error (could not reach the API) |
+
+### Destructive commands
+
+`delete`, `revoke`, and `interrupt` prompt for confirmation on an interactive
+terminal. Pass `--yes` (or `--force`) to skip the prompt. When stdin is not a
+TTY (piped or run by an agent), they proceed without prompting so scripts never
+hang — use `--yes` to make that intent explicit.
 
 ## Configuration
 

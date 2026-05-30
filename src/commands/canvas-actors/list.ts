@@ -2,7 +2,7 @@ import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
-import { parseListOptions, type ListOptionFlags } from '../../lib/listOptions.js';
+import { collectAllPages, type ListOptionFlags } from '../../lib/listOptions.js';
 
 interface CanvasActorsListOptions extends ListOptionFlags {
   actorType?: string;
@@ -14,15 +14,19 @@ export const canvasActorsList = async (canvasId: string, options: CanvasActorsLi
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
-    const { page, pageSize, search, sortBy, sortOrder } = parseListOptions(options);
-    const result = await client.listCanvasActors(ctx.org, ctx.workspace, canvasId, {
-      page, pageSize, search, sortBy, sortOrder,
-      actorType: options.actorType,
-      isActive: options.isActive,
-    });
+    // The API returns { total, actors }; normalize to { total, data } so the
+    // pagination helper and output layer can treat it like every other list.
+    const result = await collectAllPages(options, (params) =>
+      client
+        .listCanvasActors(ctx.org, ctx.workspace, canvasId, {
+          ...params,
+          actorType: options.actorType,
+          isActive: options.isActive,
+        })
+        .then((r) => ({ total: r.total, data: r.actors })),
+    );
 
-    // Transform { total, actors } to { total, data } for the output helper
-    output({ total: result.total, data: result.actors }, globalOpts, {
+    output(result, globalOpts, {
       columns: [
         { key: 'id', header: 'ID' },
         { key: 'name', header: 'NAME' },

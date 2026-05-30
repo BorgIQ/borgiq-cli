@@ -2,8 +2,8 @@ import { createClient } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { loadConfig } from '../../config/index.js';
 import { output } from '../../output/index.js';
-import { handleError } from '../../lib/errors.js';
-import { parseListOptions, type ListOptionFlags } from '../../lib/listOptions.js';
+import { handleError, CliUsageError } from '../../lib/errors.js';
+import { collectAllPages, type ListOptionFlags } from '../../lib/listOptions.js';
 
 export const workspacesList = async (options: ListOptionFlags, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
@@ -12,12 +12,13 @@ export const workspacesList = async (options: ListOptionFlags, command: { parent
     const org = globalOpts.org || process.env.BORGIQ_ORG || config?.defaultOrg;
 
     if (!org) {
-      process.stderr.write('Error: Organization is required. Use --org, set BORGIQ_ORG, or run \'borgiq auth login\' with a default org.\n');
-      process.exit(1);
+      throw new CliUsageError(
+        "Organization is required. Use --org, set BORGIQ_ORG, or run 'borgiq auth login' with a default org.",
+      );
     }
 
     const client = createClient(globalOpts);
-    const result = await client.listWorkspaces(org, parseListOptions(options));
+    const result = await collectAllPages(options, (params) => client.listWorkspaces(org, params));
 
     output(result, globalOpts, {
       columns: [
