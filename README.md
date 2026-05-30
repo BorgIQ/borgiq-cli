@@ -647,6 +647,28 @@ Available scopes:
 
 ---
 
+## Offline commands
+
+These commands run locally and need no API token — they generate IDs and scaffold/validate
+workflow JSON/YAML for the `borgiq-actor-builder` skill.
+
+### generate
+- `borgiq generate id <type>` — mint an ID. Types: `actor`, `edge`, `sourceport`, `template`, `app`, `category`, `webhooktriggerkey`.
+- `borgiq generate msgvar "<name>"` — convert an actor name to a `msgVar`.
+
+### validate
+- `borgiq validate <file.yaml>` — validate a workflow YAML (structure + per-actor rules). Exit 2 when invalid.
+- `borgiq validate <file.yaml> --skip-typecheck` — skip Deno/Python code typechecking.
+- `borgiq validate <file.yaml> --post-process [--in-place]` — clean up redundant fields.
+
+Code typechecking (DenoActor/PythonActor) runs only when `deno` / `python3` are installed; otherwise it is skipped with a warning.
+
+### scaffold
+- `borgiq scaffold canvas --name <n> --slug <s> [--template <t>]` — emit canvas JSON for `borgiq canvases create-with-data`.
+- `borgiq scaffold actor-from-template` — convert `borgiq templates get … --json` output into a CanvasActor body (pipe in via stdin).
+
+---
+
 ## Examples
 
 ### CI/CD: Trigger a Flow and Wait for Completion
