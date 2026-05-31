@@ -2,7 +2,7 @@ import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
-import { parseListOptions, type ListOptionFlags } from '../../lib/listOptions.js';
+import { collectAllPages, type ListOptionFlags } from '../../lib/listOptions.js';
 
 interface TemplateAppsOptions extends ListOptionFlags {
   categoryId?: string;
@@ -13,11 +13,12 @@ export const templatesApps = async (options: TemplateAppsOptions, command: { par
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
-    const { page, pageSize, search, sortBy, sortOrder } = parseListOptions(options);
-    const result = await client.listTemplateApps(ctx.org, ctx.workspace, {
-      page, pageSize, search, sortBy, sortOrder,
-      categoryId: options.categoryId,
-    });
+    const result = await collectAllPages(options, (params) =>
+      client.listTemplateApps(ctx.org, ctx.workspace, {
+        ...params,
+        categoryId: options.categoryId,
+      }),
+    );
 
     output(result, globalOpts, {
       columns: [

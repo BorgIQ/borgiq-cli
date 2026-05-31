@@ -1,6 +1,7 @@
 import { loadConfig } from '../config/index.js';
 import type { CliConfig } from '../config/index.js';
 import { BorgIQClient } from '../client/index.js';
+import { CliUsageError } from './errors.js';
 
 export interface ResolvedContext {
   apiUrl: string;
@@ -28,13 +29,11 @@ export const resolveAuth = (opts: GlobalOptions): { apiUrl: string; apiToken: st
   const apiToken = resolveValue(opts.token, 'BORGIQ_API_TOKEN', config?.apiToken);
 
   if (!apiUrl) {
-    process.stderr.write('Error: API URL is required. Use --api-url, set BORGIQ_API_URL, or run \'borgiq auth login\'.\n');
-    process.exit(1);
+    throw new CliUsageError("API URL is required. Use --api-url, set BORGIQ_API_URL, or run 'borgiq auth login'.");
   }
 
   if (!apiToken) {
-    process.stderr.write('Error: API token is required. Use --token, set BORGIQ_API_TOKEN, or run \'borgiq auth login\'.\n');
-    process.exit(1);
+    throw new CliUsageError("API token is required. Use --token, set BORGIQ_API_TOKEN, or run 'borgiq auth login'.");
   }
 
   return { apiUrl, apiToken };
@@ -48,13 +47,15 @@ export const resolveContext = (opts: GlobalOptions): ResolvedContext => {
   const workspace = resolveValue(opts.workspace, 'BORGIQ_WORKSPACE', config?.defaultWorkspace);
 
   if (!org) {
-    process.stderr.write('Error: Organization is required. Use --org, set BORGIQ_ORG, or run \'borgiq auth login\' with a default org.\n');
-    process.exit(1);
+    throw new CliUsageError(
+      "Organization is required. Use --org, set BORGIQ_ORG, or run 'borgiq auth login' with a default org.",
+    );
   }
 
   if (!workspace) {
-    process.stderr.write('Error: Workspace is required. Use --workspace, set BORGIQ_WORKSPACE, or run \'borgiq auth login\' with a default workspace.\n');
-    process.exit(1);
+    throw new CliUsageError(
+      "Workspace is required. Use --workspace, set BORGIQ_WORKSPACE, or run 'borgiq auth login' with a default workspace.",
+    );
   }
 
   return { apiUrl, apiToken, org, workspace };

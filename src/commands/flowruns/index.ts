@@ -12,6 +12,13 @@ export const registerFlowrunsCommands = (program: Command): void => {
 
   withListOptions(flowruns.command('list').description('List flow runs (sorted by most recent first)'), { search: false })
     .requiredOption('--canvas-id <id>', 'Canvas ID')
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ borgiq flowruns list --canvas-id <id>
+  $ borgiq flowruns list --canvas-id <id> --all --json`,
+    )
     .action(flowrunsList);
 
   flowruns
@@ -32,5 +39,7 @@ export const registerFlowrunsCommands = (program: Command): void => {
   flowruns
     .command('interrupt <id>')
     .description('Interrupt a running flow')
+    .option('-y, --yes', 'Skip the confirmation prompt')
+    .option('--force', 'Alias for --yes')
     .action(flowrunsInterrupt);
 };

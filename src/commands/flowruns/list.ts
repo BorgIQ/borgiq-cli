@@ -2,7 +2,7 @@ import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
-import { parseListOptions, type ListOptionFlags } from '../../lib/listOptions.js';
+import { collectAllPages, type ListOptionFlags } from '../../lib/listOptions.js';
 
 interface FlowrunsListOptions extends ListOptionFlags {
   canvasId: string;
@@ -13,7 +13,9 @@ export const flowrunsList = async (options: FlowrunsListOptions, command: { pare
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
-    const result = await client.listFlowruns(ctx.org, ctx.workspace, options.canvasId, parseListOptions(options));
+    const result = await collectAllPages(options, (params) =>
+      client.listFlowruns(ctx.org, ctx.workspace, options.canvasId, params),
+    );
 
     output(result, globalOpts, {
       columns: [

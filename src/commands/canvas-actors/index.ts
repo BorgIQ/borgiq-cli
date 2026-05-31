@@ -54,11 +54,19 @@ export const registerCanvasActorsCommands = (program: Command): void => {
     .command('delete <canvasId> <actorId>')
     .description('Delete a single actor from a canvas')
     .option('--edit-version <version>', 'Edit version for conflict detection')
+    .option('-y, --yes', 'Skip the confirmation prompt')
+    .option('--force', 'Alias for --yes')
     .action(canvasActorsDelete);
 
   canvasActors
     .command('batch <canvasId>')
     .description('Apply batch actor operations (add, update, remove multiple actors)')
     .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
+    .addHelpText(
+      'after',
+      `
+Example:
+  $ cat ops.json | borgiq canvas-actors batch <canvasId> --file -`,
+    )
     .action(canvasActorsBatch);
 };

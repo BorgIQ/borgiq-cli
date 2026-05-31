@@ -135,3 +135,25 @@ export const promptConfirm = async (question: string, defaultValue = false): Pro
   if (!answer) return defaultValue;
   return answer === 'y' || answer === 'yes';
 };
+
+/**
+ * Guard a destructive action behind a confirmation.
+ *
+ * - `--yes`/`--force` skips the prompt (for both humans and scripts).
+ * - On an interactive terminal, prompts and aborts (exit 0) if declined.
+ * - When not a TTY (piped/agent) and no flag, it proceeds — so existing
+ *   non-interactive scripts keep working without hanging on a prompt.
+ */
+export const confirmDestructive = async (
+  message: string,
+  opts: { yes?: boolean; force?: boolean },
+): Promise<void> => {
+  if (opts.yes || opts.force) return;
+  if (!process.stdin.isTTY) return;
+
+  const confirmed = await promptConfirm(message, false);
+  if (!confirmed) {
+    process.stderr.write('Aborted.\n');
+    process.exit(0);
+  }
+};

@@ -27,5 +27,7 @@ export const registerSecretsCommands = (program: Command): void => {
   secrets
     .command('delete <id>')
     .description('Delete a secret')
+    .option('-y, --yes', 'Skip the confirmation prompt')
+    .option('--force', 'Alias for --yes')
     .action(secretsDelete);
 };

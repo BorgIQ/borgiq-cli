@@ -41,5 +41,7 @@ export const registerAssetsCommands = (program: Command): void => {
   assets
     .command('delete <id>')
     .description('Delete an asset')
+    .option('-y, --yes', 'Skip the confirmation prompt')
+    .option('--force', 'Alias for --yes')
     .action(assetsDelete);
 };

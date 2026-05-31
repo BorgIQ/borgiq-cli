@@ -36,5 +36,7 @@ export const registerConnectionsCommands = (program: Command): void => {
   connections
     .command('delete <id>')
     .description('Delete a connection')
+    .option('-y, --yes', 'Skip the confirmation prompt')
+    .option('--force', 'Alias for --yes')
     .action(connectionsDelete);
 };

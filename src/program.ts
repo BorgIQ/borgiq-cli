@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+
 import { Command } from 'commander';
 
 import { registerAuthCommands } from './commands/auth/index.js';
@@ -17,13 +19,18 @@ import { registerAssetsCommands } from './commands/assets/index.js';
 import { registerTokensCommands } from './commands/tokens/index.js';
 import { registerTemplatesCommands } from './commands/templates/index.js';
 
+// Read the version from package.json at runtime so `borgiq --version` always
+// matches the published package and never drifts on release.
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json') as { version: string };
+
 export const createProgram = (): Command => {
   const program = new Command();
 
   program
     .name('borgiq')
     .description('BorgIQ CLI - Command-line interface for the BorgIQ workflow automation platform')
-    .version('0.1.2')
+    .version(version)
     .configureHelp({ showGlobalOptions: true })
     .showHelpAfterError();
 
@@ -34,6 +41,29 @@ export const createProgram = (): Command => {
   program.option('--org <org>', 'Organization slug or ID');
   program.option('--workspace <workspace>', 'Workspace slug or ID');
   program.option('--json', 'Output in JSON format');
+
+  program.addHelpText(
+    'after',
+    `
+Examples:
+  $ borgiq auth login                         Configure credentials interactively
+  $ borgiq canvases list                      Table in a terminal, JSON when piped
+  $ borgiq canvases list --json --all         Every canvas as JSON (auto-paginated)
+  $ borgiq secrets delete <id> --yes          Delete without the confirmation prompt
+  $ cat flow.json | borgiq canvases create-with-data --file -
+
+Configuration (highest precedence first):
+  flags  ->  env vars  ->  ~/.config/borgiq/config.json
+  Env: BORGIQ_API_URL, BORGIQ_API_TOKEN, BORGIQ_ORG, BORGIQ_WORKSPACE, BORGIQ_CONFIG_DIR
+
+Output:
+  Tables on an interactive terminal; JSON when piped or with --json.
+  In JSON mode, errors are emitted as JSON too: { "error": { code, status, details } }.
+
+Exit codes:
+  0 success    2 usage         3 auth (401)      4 forbidden (403)   5 not found (404)
+  6 conflict   7 rate limit    8 server (5xx)    9 network           1 other`,
+  );
 
   registerAuthCommands(program);
   registerOrgsCommands(program);

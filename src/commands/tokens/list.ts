@@ -2,14 +2,14 @@ import { createClient } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
-import { parseListOptions, type ListOptionFlags } from '../../lib/listOptions.js';
+import { collectAllPages, type ListOptionFlags } from '../../lib/listOptions.js';
 
 export const tokensList = async (options: ListOptionFlags, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const client = createClient(globalOpts);
 
-    const result = await client.listTokens(parseListOptions(options));
+    const result = await collectAllPages(options, (params) => client.listTokens(params));
 
     output(result, globalOpts, {
       columns: [
