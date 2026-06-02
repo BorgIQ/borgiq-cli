@@ -196,11 +196,12 @@ borgiq canvas-actors create <canvasId> <actorId> --file actor.json
 # From a YAML file
 borgiq canvas-actors create <canvasId> <actorId> --file actor.yaml
 
-# From stdin (pipe, always parsed as JSON)
+# From stdin (pipe, parsed as YAML — JSON is valid YAML, so piped JSON works too)
+cat actor.yaml | borgiq canvas-actors create <canvasId> <actorId>
 cat actor.json | borgiq canvas-actors create <canvasId> <actorId>
 ```
 
-File format is detected by extension: `.yaml` and `.yml` files are parsed as YAML, all other extensions are parsed as JSON.
+File format is detected by extension: `.yaml` and `.yml` files are parsed as YAML, all other extensions are parsed as JSON. Piped stdin is parsed as YAML — since JSON is a subset of YAML, existing JSON pipelines continue to work unchanged.
 
 If neither `--file` nor piped stdin is provided, the command exits with an error.
 
@@ -327,7 +328,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON/YAML file containing full canvas definition (or pipe JSON via stdin) |
+| `--file <path>` | Path to JSON/YAML file containing full canvas definition (or pipe YAML/JSON via stdin) |
 
 **`borgiq canvases update`**
 
@@ -344,7 +345,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON/YAML file (or pipe JSON via stdin) |
+| `--file <path>` | Path to JSON/YAML file (or pipe YAML/JSON via stdin) |
 | `--mode <mode>` | Update mode: `merge` (default), `insert`, or `replace` |
 
 **`borgiq canvases layout`**
@@ -357,7 +358,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON/YAML file (or pipe JSON via stdin) |
+| `--file <path>` | Path to JSON/YAML file (or pipe YAML/JSON via stdin) |
 
 ---
 
@@ -388,13 +389,13 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON/YAML file with actor configuration (or pipe JSON via stdin) |
+| `--file <path>` | Path to JSON/YAML file with actor configuration (or pipe YAML/JSON via stdin) |
 
 **`borgiq canvas-actors update`**
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON/YAML file with actor updates (or pipe JSON via stdin) |
+| `--file <path>` | Path to JSON/YAML file with actor updates (or pipe YAML/JSON via stdin) |
 | `--edit-version <version>` | Edit version for conflict detection |
 
 **`borgiq canvas-actors delete`**
@@ -407,13 +408,13 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON/YAML file with actor options to validate (or pipe JSON via stdin) |
+| `--file <path>` | Path to JSON/YAML file with actor options to validate (or pipe YAML/JSON via stdin) |
 
 **`borgiq canvas-actors batch`**
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Path to JSON/YAML file with batch operations (or pipe JSON via stdin) |
+| `--file <path>` | Path to JSON/YAML file with batch operations (or pipe YAML/JSON via stdin) |
 
 ---
 

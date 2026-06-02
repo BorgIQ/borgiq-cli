@@ -30,15 +30,17 @@ export const readInput = async (filePath?: string): Promise<unknown> => {
       chunks.push(chunk as Buffer);
     }
     const raw = Buffer.concat(chunks).toString('utf-8');
+    // Stdin is parsed as YAML, which is a superset of JSON — piped JSON still
+    // parses identically, but YAML documents are also accepted.
     try {
-      return JSON.parse(raw);
+      return parseYaml(raw);
     } catch {
-      process.stderr.write('Error: Invalid JSON from stdin.\n');
+      process.stderr.write('Error: Invalid YAML/JSON from stdin.\n');
       process.exit(1);
     }
   }
 
-  process.stderr.write('Error: Provide input via --file <path> or pipe JSON to stdin.\n');
+  process.stderr.write('Error: Provide input via --file <path> or pipe YAML/JSON to stdin.\n');
   process.exit(1);
 };
 

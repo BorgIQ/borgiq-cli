@@ -42,7 +42,7 @@ export const registerCanvasesCommands = (program: Command): void => {
   canvases
     .command('create-with-data')
     .description('Create a canvas with full flow data (actors + edges)')
-    .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
+    .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .addHelpText(
       'after',
       `
@@ -66,7 +66,7 @@ Examples:
   canvases
     .command('update-data <id>')
     .description('Import canvas data (merge, insert, or replace actors)')
-    .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
+    .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .option('--mode <mode>', 'Import mode: merge (default), insert, or replace', 'merge')
     .action(canvasesUpdateData);
 
@@ -96,6 +96,6 @@ Examples:
   canvases
     .command('verify-import')
     .description('Verify canvas import data before creating')
-    .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
+    .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .action(canvasesVerifyImport);
 };

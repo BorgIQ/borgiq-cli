@@ -34,19 +34,19 @@ export const registerCanvasActorsCommands = (program: Command): void => {
   canvasActors
     .command('verify <canvasId>')
     .description('Verify actor options against the actor type schema')
-    .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
+    .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .action(canvasActorsVerify);
 
   canvasActors
     .command('create <canvasId> <actorId>')
     .description('Create a single actor in a canvas')
-    .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
+    .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .action(canvasActorsCreate);
 
   canvasActors
     .command('update <canvasId> <actorId>')
     .description('Update a single actor (partial update)')
-    .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
+    .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .option('--edit-version <version>', 'Edit version for conflict detection')
     .action(canvasActorsUpdate);
 
@@ -61,7 +61,7 @@ export const registerCanvasActorsCommands = (program: Command): void => {
   canvasActors
     .command('batch <canvasId>')
     .description('Apply batch actor operations (add, update, remove multiple actors)')
-    .option('--file <path>', 'Path to JSON file (or pipe via stdin)')
+    .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .addHelpText(
       'after',
       `
