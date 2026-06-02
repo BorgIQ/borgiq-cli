@@ -48,9 +48,48 @@ jobs:
           node-version: lts/*
           registry-url: https://registry.npmjs.org
           cache: npm
-      # Force latest npm so the runner has Trusted Publisher OIDC support
-      # (requires npm >= 11.5.1; Node LTS's bundled npm can lag).
+      # Force latest npm so the runner has Trusted Publisher OIDC support and
+      # staged publishing (`npm stage`, requires npm >= 11.15.0; OIDC needs
+      # >= 11.5.1). Node LTS's bundled npm can lag.
       - run: npm install -g npm@latest
       - run: npm ci --ignore-scripts
       - run: npm run build
-      - run: npm publish --provenance --access public
+
+      # Stage the release instead of publishing it live. The npm-side trusted
+      # publisher is configured with --allow-stage-publish ONLY (not
+      # --allow-publish), so this OIDC token can stage but cannot publish — a
+      # direct `npm publish` here would be denied by the registry. Nothing is
+      # public until a maintainer runs `npm stage approve <id>` with 2FA.
+      - id: stage
+        run: |
+          npm stage publish --provenance --access public --json | tee stage.json
+          echo "stage_id=$(jq -r '.id // .stageId // empty' stage.json)" >> "$GITHUB_OUTPUT"
+
+      # Notify maintainers via the BorgIQ webhook that a release is staged and
+      # awaiting 2FA approval. The payload is HMAC-signed (over `<ts>.<body>`)
+      # so the canvas can verify the request came from this Action before it
+      # posts to Slack. We don't put a Slack secret in GitHub.
+      - name: Notify BorgIQ (staged, awaiting approval)
+        env:
+          WEBHOOK_URL: ${{ secrets.BORGIQ_RELEASE_WEBHOOK_URL }}
+          SIGNING_SECRET: ${{ secrets.BORGIQ_RELEASE_WEBHOOK_SECRET }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          STAGE_ID: ${{ steps.stage.outputs.stage_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          ts=$(date +%s)
+          body=$(jq -nc \
+            --arg tag "$TAG" \
+            --arg version "${TAG#v}" \
+            --arg stage_id "$STAGE_ID" \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg run_url "$RUN_URL" \
+            '{tag:$tag, version:$version, stage_id:$stage_id, repo:$repo, run_url:$run_url}')
+          # Sign exactly "<ts>.<body>" with no trailing newline so the bytes
+          # match the canvas's recomputed HMAC-SHA256 over `${ts}.${rawBody}`.
+          sig=$(printf '%s' "${ts}.${body}" | openssl dgst -sha256 -hmac "$SIGNING_SECRET" | sed 's/^.*= //')
+          curl -fsSL -X POST "$WEBHOOK_URL" \
+            -H 'content-type: application/json' \
+            -H "x-borgiq-timestamp: ${ts}" \
+            -H "x-borgiq-signature: sha256=${sig}" \
+            --data "$body"

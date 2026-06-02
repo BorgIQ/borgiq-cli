@@ -2,13 +2,39 @@
 
 ## Release process
 
-This repo uses [release-please](https://github.com/googleapis/release-please) to automate npm releases. You don't run `npm publish` — the workflow does.
+This repo uses [release-please](https://github.com/googleapis/release-please) to automate npm releases, with **[staged publishing](https://docs.npmjs.com/staged-publishing)** so every release waits for a human 2FA approval before it goes live. You never run `npm publish` — CI stages, a maintainer approves.
 
 ### How it works
 
 1. You merge a PR into `main` with a **conventional commit** PR title (squash-merge — the PR title becomes the commit on `main`).
 2. release-please notices the new commits and opens (or updates) a single **Release PR** titled `chore(main): release X.Y.Z`. It bumps `package.json`, regenerates `CHANGELOG.md`, and waits.
-3. When that Release PR is merged, release-please tags the commit (`vX.Y.Z`) and the `publish` job runs `npm publish --provenance --access public`. The package appears on npm with a verified provenance badge.
+3. When that Release PR is merged, release-please tags the commit (`vX.Y.Z`) and the `publish` job runs `npm stage publish --provenance --access public`. This uploads the build (with provenance) to npm's **staging area** — **the version is not yet public** — and pings a BorgIQ webhook that posts a "staged, awaiting approval" message to Slack.
+4. A maintainer reviews and **approves the staged release with 2FA** (see below). Only then does the version appear on npm's `latest` tag with the verified provenance badge.
+
+> The GitHub OIDC token is scoped to staging only (`--allow-stage-publish`, not `--allow-publish`), so CI **cannot** publish a live version even if the workflow were changed — the approval gate is enforced by npm, not just convention.
+
+### Approving a staged release
+
+Once Slack says a release is staged, a maintainer with publish access + 2FA runs:
+
+```bash
+npm stage list "@borgiq/cli"   # find the pending stage id
+npm stage view <stage-id>      # inspect metadata
+npm stage download <stage-id>  # (optional) download and inspect the tarball
+npm stage approve <stage-id>   # 2FA prompt -> goes live on `latest`
+npm stage reject <stage-id>    # discard without publishing
+```
+
+### Release infrastructure prerequisites
+
+These are one-time setup, not per-release. Documented here so they aren't lost:
+
+- **npm trusted publisher** for `@borgiq/cli` configured with `--allow-stage-publish` **only** (not `--allow-publish`):
+  `npm trust github "@borgiq/cli" --repo BorgIQ/borgiq-cli --file release.yml --allow-stage-publish`
+- **Approver** account needs publish access + 2FA enabled (`npm stage approve` requires 2FA; staging does not).
+- **BorgIQ notify canvas** deployed (webhook → HMAC verify → Slack `chat.postMessage`), with a workspace credential `release-webhook-signing-secret` and a Slack connection.
+- **GitHub repo secrets:** `BORGIQ_RELEASE_WEBHOOK_URL` and `BORGIQ_RELEASE_WEBHOOK_SECRET` (the latter must equal the canvas's `release-webhook-signing-secret`).
+- **Tooling floors:** npm ≥ 11.15.0 and Node ≥ 22.14.0 (CI forces `npm@latest` and uses `node-version: lts/*`, which satisfy both).
 
 ### Commit / PR title format
 
@@ -21,7 +47,7 @@ Quick reminders:
 
 ### Don't
 
-- Don't run `npm publish` locally.
+- Don't run `npm publish` locally. The only sanctioned manual release step is `npm stage approve <id>` (2FA) after CI has staged a release.
 - Don't merge the Release PR with a custom commit message — keep `chore(main): release X.Y.Z` so release-please can find it next time.
 - Don't merge-commit into `main` — squash-merge only (configured in repo settings).
 

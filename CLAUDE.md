@@ -158,7 +158,7 @@ When adding a new command:
 - **Node.js requirement:** >=20.0.0 (for native `fetch()` support)
 - **Runtime dependencies:** `commander@^12`, `yaml` (YAML parser)
 
-**Releases are automated.** See `CONTRIBUTING.md` for the release-please flow. Do not run `npm publish` locally — the `release.yml` GitHub Action publishes from `main` after the release-please PR is merged. PR titles must be valid conventional commits (see the `release-please-commits` skill).
+**Releases are automated with a human approval gate.** See `CONTRIBUTING.md` for the release-please + staged-publishing flow. Do not run `npm publish` locally — after the release-please PR is merged, the `release.yml` GitHub Action runs `npm stage publish` (staging only; CI's OIDC token can't publish live) and pings a BorgIQ webhook → Slack. A maintainer then approves with `npm stage approve <id>` (2FA) to make the version live. PR titles must be valid conventional commits (see the `release-please-commits` skill).
 
 ## Key Conventions
 
