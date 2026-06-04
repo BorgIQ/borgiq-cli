@@ -1,0 +1,8 @@
+# Repo-local Codex policy. AGENTS.md is the canonical agent guidance; CLAUDE.md
+# remains a Claude compatibility shim.
+default_permissions = "borgiq-repo"
+
+[permissions.borgiq-repo]
+description = "BorgIQ CLI workspace with project-local command rules."
+extends = ":workspace"
+

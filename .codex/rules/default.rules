@@ -1,0 +1,32 @@
+# Codex command policy for borgiq-cli.
+
+prefix_rule(
+    pattern = ["npm", "run", "build"],
+    decision = "allow",
+    justification = "CLI TypeScript build is a routine verification command.",
+)
+prefix_rule(
+    pattern = ["npm", "run", "dev"],
+    decision = "prompt",
+    justification = "Running the CLI can call live BorgIQ APIs depending on arguments and auth.",
+)
+prefix_rule(
+    pattern = ["npm", "run", "clean"],
+    decision = "prompt",
+    justification = "Clean removes build artifacts and should be intentional.",
+)
+prefix_rule(
+    pattern = ["npm", "publish"],
+    decision = "forbidden",
+    justification = "Publishing should run only through the approved release workflow.",
+)
+prefix_rule(
+    pattern = ["git", ["commit", "push"]],
+    decision = "prompt",
+    justification = "Git history and remote changes require human confirmation.",
+)
+prefix_rule(
+    pattern = [["rm", "rmdir"]],
+    decision = "forbidden",
+    justification = "Use a reviewed cleanup command instead of direct deletion.",
+)
