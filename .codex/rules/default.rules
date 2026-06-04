@@ -2,8 +2,8 @@
 
 prefix_rule(
     pattern = ["npm", "run", "build"],
-    decision = "allow",
-    justification = "CLI TypeScript build is a routine verification command.",
+    decision = "prompt",
+    justification = "CLI NPM scripts may need local auth or process capabilities outside the Bubblewrap sandbox; run them intentionally.",
 )
 prefix_rule(
     pattern = ["npm", "run", "dev"],
