@@ -33,7 +33,7 @@
     "prepublishOnly": "npm run clean && npm run build"
   },
   "dependencies": {
-    "commander": "14.0.3",
+    "commander": "15.0.0",
     "ulidx": "2.4.1",
     "yaml": "2.9.0"
   },
