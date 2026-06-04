@@ -26,6 +26,11 @@ prefix_rule(
     justification = "Git history and remote changes require human confirmation.",
 )
 prefix_rule(
+    pattern = [["bash", "zsh", "sh"]],
+    decision = "prompt",
+    justification = "Broad shell entrypoints can run arbitrary commands and should be reviewed.",
+)
+prefix_rule(
     pattern = [["rm", "rmdir"]],
     decision = "forbidden",
     justification = "Use a reviewed cleanup command instead of direct deletion.",
