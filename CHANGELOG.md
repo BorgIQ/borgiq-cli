@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.5.0...cli-v0.6.0) (2026-06-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* structured errors, exit codes, --all, and confirmation prompts ([#22](https://github.com/BorgIQ/borgiq-cli/issues/22))
+
+### Features
+
+* add offline generate/validate commands and parse piped stdin as YAML ([#23](https://github.com/BorgIQ/borgiq-cli/issues/23)) ([ac106ba](https://github.com/BorgIQ/borgiq-cli/commit/ac106baa08aab1e25c0c5e8e43a9db645a4b9b4a))
+* structured errors, exit codes, --all, and confirmation prompts ([#22](https://github.com/BorgIQ/borgiq-cli/issues/22)) ([7c710a0](https://github.com/BorgIQ/borgiq-cli/commit/7c710a0227c7565e5694e74447f9f924a64bc80b))
+
 ## [0.5.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.4.0...cli-v0.5.0) (2026-05-27)
 
 
