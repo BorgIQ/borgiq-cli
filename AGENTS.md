@@ -11,7 +11,7 @@ This repo is fully standalone: it has no npm dependencies on other BorgIQ packag
 ## Development Environment Setup
 
 **Prerequisites:**
-- Node.js >=20.0.0
+- Node.js >=22.0.0
 - npm (used for all dependency management)
 
 **Initial Setup:**
@@ -112,7 +112,7 @@ When adding a new command:
 ### API Client
 
 - **`src/client/index.ts`** — `BorgIQClient` class with methods for every API endpoint
-- Uses **native `fetch()`** (Node.js 20+ built-in) — no third-party HTTP libraries
+- Uses **native `fetch()`** (Node.js 22+ built-in) — no third-party HTTP libraries
 - Authentication: `Authorization: Bearer <token>` header
 - All methods are async, return typed responses
 - Error responses throw `ApiError` with status code, message, and field-level details
@@ -155,7 +155,7 @@ When adding a new command:
 - **Binary name:** `borgiq` (defined in `package.json` `bin` field)
 - **Entry point:** `./dist/index.js` (compiled from TypeScript)
 - **Published files:** `dist/**` and `README.md` only (via `files` field)
-- **Node.js requirement:** >=20.0.0 (for native `fetch()` support)
+- **Node.js requirement:** >=22.0.0 (for native `fetch()` support)
 - **Runtime dependencies:** `commander@^12`, `yaml` (YAML parser)
 
 **Releases are automated with a human approval gate.** See `CONTRIBUTING.md` for the release-please + staged-publishing flow. Do not run `npm publish` locally — after the release-please PR is merged, the `release.yml` GitHub Action runs `npm stage publish` (staging only; CI's OIDC token can't publish live) and pings a BorgIQ webhook → Slack. A maintainer then approves with `npm stage approve <id>` (2FA) to make the version live. PR titles must be valid conventional commits (see the `release-please-commits` skill).
