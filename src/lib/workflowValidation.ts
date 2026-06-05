@@ -216,17 +216,21 @@ const VALID_ACTOR_TYPES = [
   // Task Actors
   "HttpRequestActor",
   "DenoActor",
+  "DenoTestActor",
   "PythonActor",
   "AiRouterActor",
   "RouterActor",
   "AiActor",
   "AiAgentActor",
+  "AgentHarnessActor",
   "MessageProcessorActor",
   "WebhookResponseActor",
   "CallableResponseActor",
   "CallFlowActor",
   "InterfaceActor",
+  "InterfaceStatusActor",
   "SendEmailActor",
+  "DataStoreActor",
   "CollectionActor",
   // Trigger Actors
   "ButtonTriggerActor",
@@ -236,8 +240,11 @@ const VALID_ACTOR_TYPES = [
   "AppTriggerActor",
   "ScheduledTriggerActor",
   "CallableTriggerActor",
+  "UniversalTriggerActor",
+  "McpServerActor",
   // Non-functional Actors
   "CommentActor",
+  "EchoActor",
 ] as const;
 
 // Actors that require sourcePorts
