@@ -8,7 +8,7 @@ Command-line interface for the [BorgIQ](https://borgiq.com) workflow automation 
 npm install -g @borgiq/cli
 ```
 
-Requires Node.js 20 or later.
+Requires Node.js 22 or later.
 
 ## Quick Start
 
