@@ -24,6 +24,71 @@ export interface WithListOptionsConfig {
 
 const MAX_PAGE_SIZE = 100;
 
+/** Full invocation path of a command, e.g. `borgiq canvases list`. Walks the
+ *  parent chain so examples stay correct if a command is ever re-parented. */
+const commandPath = (cmd: Command): string => {
+  const parts: string[] = [];
+  let cur: Command | undefined = cmd;
+  while (cur) {
+    const name = cur.name();
+    if (name) parts.unshift(name);
+    cur = cur.parent ?? undefined;
+  }
+  return parts.join(' ');
+};
+
+/** Required positional args (`<canvasId>`) and required options (`--canvas-id
+ *  <id>`) as a copy-pasteable suffix. Read lazily at help-render time so
+ *  options the caller chains *after* `withListOptions` (e.g. flowruns'
+ *  `requiredOption('--canvas-id')`) are included. */
+const requiredSuffix = (cmd: Command): string => {
+  const args = cmd.registeredArguments
+    .filter((arg) => arg.required)
+    .map((arg) => `<${arg.name()}>`);
+
+  const flags = cmd.options
+    .filter((opt) => opt.mandatory)
+    .map((opt) => {
+      const valueToken = opt.flags.match(/\s(<[^>]+>|\[[^\]]+\])$/);
+      return valueToken ? `${opt.long} ${valueToken[1]}` : opt.long;
+    });
+
+  const all = [...args, ...flags];
+  return all.length ? ` ${all.join(' ')}` : '';
+};
+
+/**
+ * Build a tailored `Examples:` help block for a list command, derived from
+ * what the command actually supports — so an agent reading `--help` sees how
+ * to combine the flags, not just that they exist. Pagination examples are
+ * always shown; search/sort examples appear only when that command enables
+ * them (the flowrun endpoints, which ignore sort/search, get just the
+ * pagination pair).
+ */
+const buildListExamples = (cmd: Command, config: WithListOptionsConfig): string => {
+  const base = `${commandPath(cmd)}${requiredSuffix(cmd)}`;
+  const lines: string[] = ['', 'Examples:'];
+
+  lines.push('  Page through results (1-based):');
+  lines.push(`    $ ${base} --page 2 --page-size 50`);
+  lines.push('  Fetch every page in one call (auto-paginates, ignores --page):');
+  lines.push(`    $ ${base} --all --json`);
+
+  const searchEnabled = config.search ?? true;
+  if (searchEnabled || config.sort) {
+    const parts: string[] = [];
+    if (searchEnabled) parts.push('--search "<text>"');
+    if (config.sort) {
+      const field = config.sort.defaultBy ?? config.sort.fields[0];
+      parts.push(`--sort-by ${field} --sort-order desc`);
+    }
+    lines.push(`  ${searchEnabled && config.sort ? 'Search and sort' : config.sort ? 'Sort' : 'Search'}:`);
+    lines.push(`    $ ${base} ${parts.join(' ')}`);
+  }
+
+  return lines.join('\n');
+};
+
 const parsePositiveInt = (raw: string): number => {
   const n = Number(raw);
   if (!Number.isInteger(n) || n <= 0) {
@@ -64,6 +129,10 @@ export const withListOptions = (cmd: Command, config: WithListOptionsConfig = {}
       ).choices(['asc', 'desc']),
     );
   }
+
+  // Deferred so required options the caller chains *after* this call (e.g.
+  // `--canvas-id` on flowruns) are reflected in the example invocations.
+  cmd.addHelpText('after', () => buildListExamples(cmd, config));
 
   return cmd;
 };
