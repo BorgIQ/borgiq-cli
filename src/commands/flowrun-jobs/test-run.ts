@@ -2,14 +2,17 @@ import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
+import { resolveCanvasSlugOrId, type CanvasOptionFlags } from '../../lib/canvasFlag.js';
 
-export const flowrunJobsTestRun = async (options: { canvasId: string; actorId: string; publish?: boolean }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+export const flowrunJobsTestRun = async (options: CanvasOptionFlags & { actorId: string; publish?: boolean }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
+    // The testRun endpoint validates the body's canvasId as a ULID, so a slug is
+    // not accepted here — but we still resolve through the shared --canvas flag.
     const result = await client.testRunJob(ctx.org, ctx.workspace, {
-      canvasId: options.canvasId,
+      canvasId: resolveCanvasSlugOrId(options),
       actorId: options.actorId,
       publishEmittedMessageToConnectedActors: options.publish ?? false,
     });

@@ -37,17 +37,30 @@ const commandPath = (cmd: Command): string => {
   return parts.join(' ');
 };
 
-/** Required positional args (`<canvasId>`) and required options (`--canvas-id
- *  <id>`) as a copy-pasteable suffix. Read lazily at help-render time so
- *  options the caller chains *after* `withListOptions` (e.g. flowruns'
- *  `requiredOption('--canvas-id')`) are included. */
+/** Commander Option augmented with the example-required marker. */
+type ExampleRequiredOption = Option & { exampleRequired?: boolean };
+
+/** Flag an option as required for `--help` examples even when it isn't
+ *  Commander-mandatory. Used for `--canvas`, which is optional at the parser
+ *  level only because it accepts the deprecated `--canvas-id` alias, yet is
+ *  effectively required for every list invocation. */
+export const markExampleRequired = (option: Option): Option => {
+  (option as ExampleRequiredOption).exampleRequired = true;
+  return option;
+};
+
+/** Required positional args (`<canvasSlugOrId>`) and required options
+ *  (`--actor-id <id>`) as a copy-pasteable suffix. Read lazily at help-render
+ *  time so options the caller chains *after* `withListOptions` are included.
+ *  Options flagged via {@link markExampleRequired} (e.g. `--canvas`) are treated
+ *  as required here so the printed examples stay runnable. */
 const requiredSuffix = (cmd: Command): string => {
   const args = cmd.registeredArguments
     .filter((arg) => arg.required)
     .map((arg) => `<${arg.name()}>`);
 
   const flags = cmd.options
-    .filter((opt) => opt.mandatory)
+    .filter((opt) => opt.mandatory || (opt as ExampleRequiredOption).exampleRequired)
     .map((opt) => {
       const valueToken = opt.flags.match(/\s(<[^>]+>|\[[^\]]+\])$/);
       return valueToken ? `${opt.long} ${valueToken[1]}` : opt.long;

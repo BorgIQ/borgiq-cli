@@ -3,9 +3,9 @@ import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
 import { collectAllPages, type ListOptionFlags } from '../../lib/listOptions.js';
+import { resolveCanvasSlugOrId, type CanvasOptionFlags } from '../../lib/canvasFlag.js';
 
-interface FlowrunMessagesListOptions extends ListOptionFlags {
-  canvasId: string;
+interface FlowrunMessagesListOptions extends ListOptionFlags, CanvasOptionFlags {
   flowrunId?: string;
   actorId: string;
 }
@@ -15,10 +15,11 @@ export const flowrunMessagesList = async (options: FlowrunMessagesListOptions, c
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
+    const canvasSlugOrId = resolveCanvasSlugOrId(options);
     const result = await collectAllPages(options, (params) =>
       client.listFlowrunMessages(ctx.org, ctx.workspace, {
         ...params,
-        canvasId: options.canvasId,
+        canvasSlugOrId,
         flowrunId: options.flowrunId,
         actorId: options.actorId,
       }),
