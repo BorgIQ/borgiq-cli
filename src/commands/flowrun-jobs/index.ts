@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 
 import { withListOptions } from '../../lib/listOptions.js';
+import { withCanvasOption } from '../../lib/canvasFlag.js';
 import { flowrunJobsList } from './list.js';
 import { flowrunJobsTestRun } from './test-run.js';
 import { flowrunJobsReRun } from './re-run.js';
@@ -11,16 +12,12 @@ import { flowrunJobsSourceMessage } from './source-message.js';
 export const registerFlowrunJobsCommands = (program: Command): void => {
   const jobs = program.command('flowrun-jobs').description('Manage flow run jobs');
 
-  withListOptions(jobs.command('list').description('List flow run jobs (sorted by most recent first)'), { search: false })
-    .requiredOption('--canvas-id <id>', 'Canvas ID')
+  withCanvasOption(withListOptions(jobs.command('list').description('List flow run jobs (sorted by most recent first)'), { search: false }))
     .requiredOption('--actor-id <id>', 'Actor ID')
     .option('--flowrun-id <id>', 'Filter by flowrun ID')
     .action(flowrunJobsList);
 
-  jobs
-    .command('test-run')
-    .description('Test run a single actor')
-    .requiredOption('--canvas-id <id>', 'Canvas ID')
+  withCanvasOption(jobs.command('test-run').description('Test run a single actor'), 'Canvas ID (ULID)')
     .requiredOption('--actor-id <id>', 'Actor ID')
     .option('--publish', 'Publish emitted messages to downstream actors')
     .action(flowrunJobsTestRun);

@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 
 import { withListOptions } from '../../lib/listOptions.js';
+import { withCanvasOption } from '../../lib/canvasFlag.js';
 import { flowrunsList } from './list.js';
 import { flowrunsGet } from './get.js';
 import { flowrunsStatus } from './status.js';
@@ -10,8 +11,7 @@ import { flowrunsInterrupt } from './interrupt.js';
 export const registerFlowrunsCommands = (program: Command): void => {
   const flowruns = program.command('flowruns').description('Manage flow runs');
 
-  withListOptions(flowruns.command('list').description('List flow runs (sorted by most recent first)'), { search: false })
-    .requiredOption('--canvas-id <id>', 'Canvas ID')
+  withCanvasOption(withListOptions(flowruns.command('list').description('List flow runs (sorted by most recent first)'), { search: false }))
     .action(flowrunsList);
 
   flowruns

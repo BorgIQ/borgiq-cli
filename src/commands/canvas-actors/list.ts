@@ -9,7 +9,7 @@ interface CanvasActorsListOptions extends ListOptionFlags {
   isActive?: string;
 }
 
-export const canvasActorsList = async (canvasId: string, options: CanvasActorsListOptions, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+export const canvasActorsList = async (canvasSlugOrId: string, options: CanvasActorsListOptions, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
@@ -18,7 +18,7 @@ export const canvasActorsList = async (canvasId: string, options: CanvasActorsLi
     // pagination helper and output layer can treat it like every other list.
     const result = await collectAllPages(options, (params) =>
       client
-        .listCanvasActors(ctx.org, ctx.workspace, canvasId, {
+        .listCanvasActors(ctx.org, ctx.workspace, canvasSlugOrId, {
           ...params,
           actorType: options.actorType,
           isActive: options.isActive,

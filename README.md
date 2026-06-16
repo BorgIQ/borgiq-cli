@@ -23,7 +23,7 @@ borgiq orgs list
 borgiq canvases list --org my-org --workspace prod
 
 # Trigger a flow manually
-borgiq triggers run --canvas-id <id> --actor-id <id>
+borgiq triggers run --canvas <id> --actor-id <id>
 
 # Check a flow run's status
 borgiq flowruns status <id>
@@ -108,14 +108,14 @@ Values are resolved in this order (highest priority first):
 
 | Command | Description |
 |---------|-------------|
-| `borgiq canvas-actors list <canvasId>` | List actors in a canvas with filters |
-| `borgiq canvas-actors get <canvasId> <actorId>` | Get a single actor by ID |
-| `borgiq canvas-actors flow <canvasId> <actorId>` | Get actor and downstream actors |
-| `borgiq canvas-actors verify <canvasId>` | Verify actor options against type schema |
-| `borgiq canvas-actors create <canvasId> <actorId>` | Create a single actor |
-| `borgiq canvas-actors update <canvasId> <actorId>` | Update a single actor (partial) |
-| `borgiq canvas-actors delete <canvasId> <actorId>` | Delete a single actor |
-| `borgiq canvas-actors batch <canvasId>` | Apply batch actor operations (add, update, remove) |
+| `borgiq canvas-actors list <canvasSlugOrId>` | List actors in a canvas with filters |
+| `borgiq canvas-actors get <canvasSlugOrId> <actorId>` | Get a single actor by ID |
+| `borgiq canvas-actors flow <canvasSlugOrId> <actorId>` | Get actor and downstream actors |
+| `borgiq canvas-actors verify <canvasSlugOrId>` | Verify actor options against type schema |
+| `borgiq canvas-actors create <canvasSlugOrId> <actorId>` | Create a single actor |
+| `borgiq canvas-actors update <canvasSlugOrId> <actorId>` | Update a single actor (partial) |
+| `borgiq canvas-actors delete <canvasSlugOrId> <actorId>` | Delete a single actor |
+| `borgiq canvas-actors batch <canvasSlugOrId>` | Apply batch actor operations (add, update, remove) |
 
 ### Flow Runs
 
@@ -191,14 +191,14 @@ Commands that accept structured input (e.g., creating actors, batch operations) 
 
 ```bash
 # From a JSON file
-borgiq canvas-actors create <canvasId> <actorId> --file actor.json
+borgiq canvas-actors create <canvasSlugOrId> <actorId> --file actor.json
 
 # From a YAML file
-borgiq canvas-actors create <canvasId> <actorId> --file actor.yaml
+borgiq canvas-actors create <canvasSlugOrId> <actorId> --file actor.yaml
 
 # From stdin (pipe, parsed as YAML — JSON is valid YAML, so piped JSON works too)
-cat actor.yaml | borgiq canvas-actors create <canvasId> <actorId>
-cat actor.json | borgiq canvas-actors create <canvasId> <actorId>
+cat actor.yaml | borgiq canvas-actors create <canvasSlugOrId> <actorId>
+cat actor.json | borgiq canvas-actors create <canvasSlugOrId> <actorId>
 ```
 
 File format is detected by extension: `.yaml` and `.yml` files are parsed as YAML, all other extensions are parsed as JSON. Piped stdin is parsed as YAML — since JSON is a subset of YAML, existing JSON pipelines continue to work unchanged.
@@ -366,14 +366,14 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Command | Description |
 |---------|-------------|
-| `borgiq canvas-actors list <canvasId>` | List actors in a canvas |
-| `borgiq canvas-actors get <canvasId> <actorId>` | Get a single actor by ID |
-| `borgiq canvas-actors flow <canvasId> <actorId>` | Get actor and all downstream actors |
-| `borgiq canvas-actors verify <canvasId>` | Verify actor options against type schema |
-| `borgiq canvas-actors create <canvasId> <actorId>` | Create a single actor |
-| `borgiq canvas-actors update <canvasId> <actorId>` | Update a single actor (partial update) |
-| `borgiq canvas-actors delete <canvasId> <actorId>` | Delete a single actor |
-| `borgiq canvas-actors batch <canvasId>` | Apply batch actor operations (add, update, remove) |
+| `borgiq canvas-actors list <canvasSlugOrId>` | List actors in a canvas |
+| `borgiq canvas-actors get <canvasSlugOrId> <actorId>` | Get a single actor by ID |
+| `borgiq canvas-actors flow <canvasSlugOrId> <actorId>` | Get actor and all downstream actors |
+| `borgiq canvas-actors verify <canvasSlugOrId>` | Verify actor options against type schema |
+| `borgiq canvas-actors create <canvasSlugOrId> <actorId>` | Create a single actor |
+| `borgiq canvas-actors update <canvasSlugOrId> <actorId>` | Update a single actor (partial update) |
+| `borgiq canvas-actors delete <canvasSlugOrId> <actorId>` | Delete a single actor |
+| `borgiq canvas-actors batch <canvasSlugOrId>` | Apply batch actor operations (add, update, remove) |
 
 **`borgiq canvas-actors list`**
 
@@ -432,7 +432,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--canvas-id <id>` | Yes | Canvas ID to list flow runs for |
+| `--canvas <slugOrId>` | Yes | Canvas slug or ID to list flow runs for (deprecated alias: `--canvas-id`) |
 | `--page <number>` | No | Page number |
 | `--page-size <number>` | No | Items per page |
 
@@ -453,7 +453,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--canvas-id <id>` | Yes | Canvas ID |
+| `--canvas <slugOrId>` | Yes | Canvas slug or ID (deprecated alias: `--canvas-id`) |
 | `--actor-id <id>` | Yes | Actor ID |
 | `--flowrun-id <id>` | No | Filter by flow run ID |
 | `--page <number>` | No | Page number |
@@ -463,7 +463,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--canvas-id <id>` | Yes | Canvas ID |
+| `--canvas <id>` | Yes | Canvas ID / ULID — a slug is not accepted here (deprecated alias: `--canvas-id`) |
 | `--actor-id <id>` | Yes | Actor ID to test |
 | `--publish` | No | Publish emitted messages to downstream actors (default: false) |
 
@@ -508,7 +508,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--canvas-id <id>` | Yes | Canvas ID |
+| `--canvas <slugOrId>` | Yes | Canvas slug or ID (deprecated alias: `--canvas-id`) |
 | `--actor-id <id>` | Yes | Actor ID |
 | `--flowrun-id <id>` | No | Filter by flow run ID |
 | `--page <number>` | No | Page number |
@@ -526,7 +526,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--canvas-id <id>` | Yes | Canvas ID |
+| `--canvas <id>` | Yes | Canvas ID / ULID — a slug is not accepted here (deprecated alias: `--canvas-id`) |
 | `--actor-id <id>` | Yes | Trigger actor ID |
 
 ---
@@ -677,7 +677,7 @@ export BORGIQ_ORG=my-org
 export BORGIQ_WORKSPACE=prod
 
 # Trigger the flow
-borgiq triggers run --canvas-id cnv_abc123 --actor-id act_def456 --json
+borgiq triggers run --canvas cnv_abc123 --actor-id act_def456 --json
 
 # Check status
 borgiq flowruns status <flowrun-id> --json
@@ -709,7 +709,7 @@ borgiq canvases update-data cnv_xyz789 --file canvas-backup.json --mode merge
 
 ```bash
 # List recent flow runs for a canvas
-borgiq flowruns list --canvas-id cnv_abc123
+borgiq flowruns list --canvas cnv_abc123
 
 # Get detailed summary with per-actor job information
 borgiq flowruns summary <flowrun-id>
@@ -725,10 +725,10 @@ borgiq flowrun-jobs ai-timeline <job-id>
 
 ```bash
 # Test run without publishing messages downstream
-borgiq flowrun-jobs test-run --canvas-id cnv_abc123 --actor-id act_def456
+borgiq flowrun-jobs test-run --canvas cnv_abc123 --actor-id act_def456
 
 # Test run and publish to downstream actors
-borgiq flowrun-jobs test-run --canvas-id cnv_abc123 --actor-id act_def456 --publish
+borgiq flowrun-jobs test-run --canvas cnv_abc123 --actor-id act_def456 --publish
 ```
 
 ### Manage Canvas Actors via CLI
