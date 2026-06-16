@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.7.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.6.0...cli-v0.7.0) (2026-06-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* minimum supported Node.js is now 22 (was 20).
+
+### Features
+
+* accept canvas slug or id via new --canvas flag ([#32](https://github.com/BorgIQ/borgiq-cli/issues/32)) ([abc1296](https://github.com/BorgIQ/borgiq-cli/commit/abc129613eb08689eba0eab47c64039f90744c67))
+* usage examples in list --help (discoverable pagination/sort for agents) ([#31](https://github.com/BorgIQ/borgiq-cli/issues/31)) ([16b8c02](https://github.com/BorgIQ/borgiq-cli/commit/16b8c02c652333aa1d8965c6fd790b916515a8cc))
+
+
+### Bug Fixes
+
+* **lib:** recognize new actor types in canvas validation ([#28](https://github.com/BorgIQ/borgiq-cli/issues/28)) ([140ce08](https://github.com/BorgIQ/borgiq-cli/commit/140ce08b5171cc76e65ba4a3c8bf699ee9393b08))
+
+
+### Build System
+
+* require Node.js &gt;= 22 (drop EOL Node 20) ([#30](https://github.com/BorgIQ/borgiq-cli/issues/30)) ([c62a849](https://github.com/BorgIQ/borgiq-cli/commit/c62a849386c502036bd4bf1b251261eadcb23f80))
+
 ## [0.6.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.5.0...cli-v0.6.0) (2026-06-04)
 
 
