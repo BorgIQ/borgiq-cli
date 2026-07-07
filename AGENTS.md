@@ -37,10 +37,11 @@ npm run clean    # Removes dist/
 ```bash
 npm run build         # TypeScript compilation (tsc) to dist/
 npm run dev           # Run CLI via tsx (no build step needed)
+npm test              # Run Vitest tests
 npm run clean         # Remove dist/ directory
 ```
 
-There is **no test suite, linter, or formatter** configured in this repo currently.
+There is **no linter or formatter** configured in this repo currently. Tests run with Vitest.
 
 ## Architecture Overview
 
@@ -60,6 +61,7 @@ src/
 │   ├── workspaces/       # list
 │   ├── actors/           # list, schema
 │   ├── canvases/         # list, get, create, update, delete, export, validate, layout, etc.
+│   ├── bundle/           # init, unpack, pack, validate, pull, push - canvas bundle folders (BORG-565)
 │   ├── canvas-actors/    # list, get, flow, verify, create, update, delete, batch
 │   ├── flowruns/         # list, get, status, summary, interrupt
 │   ├── flowrun-jobs/     # list, test-run, re-run, runtime-data, ai-timeline, source-message
@@ -74,6 +76,8 @@ src/
 │   └── index.ts          # Config file management (~/.config/borgiq/config.json)
 ├── lib/
 │   ├── context.ts        # Auth & context resolution (CLI flags → env vars → config file)
+│   ├── bundle/           # Pure canvas bundle compiler core (no fs/network)
+│   ├── bundleFs.ts       # Canvas bundle filesystem read/write helpers
 │   ├── errors.ts         # Global error handler (handleError)
 │   └── input.ts          # JSON/YAML input from --file or stdin
 └── output/

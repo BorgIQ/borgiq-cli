@@ -21,6 +21,7 @@ import { registerTemplatesCommands } from './commands/templates/index.js';
 import { registerScaffoldCommands } from './commands/scaffold/index.js';
 import { registerGenerateCommands } from './commands/generate/index.js';
 import { registerValidateCommands } from './commands/validate/index.js';
+import { registerBundleCommands } from './commands/bundle/index.js';
 
 // Read the version from package.json at runtime so `borgiq --version` always
 // matches the published package and never drifts on release.
@@ -87,6 +88,7 @@ Exit codes:
   registerScaffoldCommands(program);
   registerGenerateCommands(program);
   registerValidateCommands(program);
+  registerBundleCommands(program);
 
   return program;
 };
