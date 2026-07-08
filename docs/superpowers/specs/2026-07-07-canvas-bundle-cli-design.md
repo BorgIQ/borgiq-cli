@@ -42,8 +42,8 @@ Both directions are pure functions of their input: same input bytes → same out
 - Edges are a `Record<edgeId, edge>` on the **source actor**; `position` is per-actor. There is no global graph object — the bundle's root `graph` is a projection the compiler owns.
 - Import endpoints: `POST .../canvases/data` (create, body `{name, slug, description?, tags?, messageTTLInDays, runtimeSlug?, data}`) and `POST .../canvases/:id/import` (body `{canvas: ExportedCanvasData, mode: merge|insert|replace}`). Both already exist in the CLI client.
 - Credentials entries are `Record<name, { type?, workspaceKey, source?: 'secret' | 'connection' }>`; `configuration.connection` is `{ type?, key? }` (verified against `packages/types/src/schemas/canvas.ts` and the orchestrator dependency walk).
-- **Per-actor mutation API (used by sync; already in the CLI client):** `PATCH .../canvases/:id/actors` (`batchActorOperations`) takes `{ operations: BatchActorOperation[] }` where each op is `{ type: 'add' | 'update' | 'remove', actorId, editVersion?, data? }` and returns `{ appliedOperations, conflicts, updatedAt }`. Single-actor `createCanvasActor` / `updateCanvasActor` / `deleteCanvasActor` also exist (client-minted `ACTR…` ids are accepted on create). `PUT .../canvases/:id` (`updateCanvas`) updates canvas metadata.
-- **Optimistic concurrency:** every server actor carries `version: number` (incremented on each server-side edit). Update/remove operations accept `editVersion`; a stale `editVersion` lands the op in the response's `conflicts[]` instead of applying. Exported actors include `version`, and the bundle's `actor.yaml` preserves it (pass-through rule) — so a pulled bundle records, per actor and in git, exactly which server version it was taken from.
+- **Per-actor mutation API (used by sync; already in the CLI client):** `PATCH .../canvases/:id/actors` (`batchActorOperations`) takes `{ operations: BatchActorOperation[] }` where each op is `{ type: 'add' | 'update' | 'remove', actorId, timestamp, editVersion?, data? }` and returns `{ appliedOperations, conflicts, updatedAt }`. Operation `data` is CanvasActor mutation shape, so selected configuration/schema fields (`configuration.credentials|inputs|vars|options|outputs|error`, `schemas.inputs|outputs`) are YAML strings, even though bundles store exported parsed-object shape. Single-actor `createCanvasActor` / `updateCanvasActor` / `deleteCanvasActor` also exist (client-minted `ACTR…` ids are accepted on create). `PUT .../canvases/:id` (`updateCanvas`) updates canvas metadata.
+- **Optimistic concurrency:** the platform stores a separate per-actor `editVersion`, exposed by `GET .../canvases/:id?includeData=true` as `actorVersions`. This is not the exported actor's `version` field. Update/remove operations accept `editVersion`; a stale `editVersion` lands the op in the response's `conflicts[]` instead of applying. Pull/refresh writes those edit versions into `canvas.yaml` under `sync.actorVersions`.
 
 ## Bundle format
 
@@ -89,6 +89,9 @@ dependencies:           # informational projection; regenerated on pack
       referencedBy: [ACTR…]
 exportErrors: []        # per-actor errors from the export envelope (pull); informational
 warnings: []            # generated notes, e.g. webhook/scheduled triggers need target env setup
+sync:                   # CLI-owned sync metadata; omitted from packed canvas exports
+  actorVersions:
+    ACTR…: 12           # platform canvasActor.editVersion from getCanvas(...includeData)
 actors:                 # authoritative index, sorted by path
   - id: ACTR…
     type: HttpRequestActor
@@ -100,7 +103,7 @@ Rules (per BORG-565):
 
 - `canvas.yaml` is authoritative: pack reads actor paths from `actors[]`, never by scanning the tree.
 - `graph` is authoritative for edges and positions — actor folders contain neither.
-- `dependencies`, `exportErrors`, and `warnings` are informational; pack ignores their content and regenerates them on the next unpack. Pack warns on stderr if `exportErrors` is non-empty.
+- `dependencies`, `exportErrors`, `warnings`, and `sync` are informational for pack; pack ignores their content when emitting `{metadata, data}`. Pull/push refresh regenerates `sync.actorVersions` from the platform.
 - Adding an actor by hand requires three edits: the actor folder, an `actors[]` entry, and a `graph.nodes` entry. Validation reports each miss precisely.
 
 ### Actor path registry (exhaustive, compile-time)
@@ -189,7 +192,7 @@ New group `borgiq bundle`, registered in `src/program.ts` following the existing
 | `bundle pack <dir> [-o <file>] [--strict]` | Validates (errors fatal; warnings to stderr, fatal only with `--strict`), assembles, emits the `{metadata, data}` YAML document to stdout or `-o`. Output is directly consumable by `canvases create-with-data` / `update-data` / `verify-import`. |
 | `bundle validate <dir> [--strict]` | Assembles without writing; reports all errors and warnings with bundle-relative file paths. Warnings are non-fatal by default; `--strict` makes them fatal. Exit code reflects the result. |
 | `bundle pull <canvas> [dir] [--replace] [--force] [--dry-run]` | **Default: incremental sync** — fetch the export, diff per actor against the local bundle, rewrite only the actor folders the server actually changed, preserve local-only edits and new local actors (see [Incremental sync](#incremental-sync-default-push-pull-behavior)). `--replace` restores the whole-canvas managed-path rewrite (the pre-sync behavior). Default dir `./<slug>.borgiq-canvas`. Envelope `errors` land in `exportErrors`. |
-| `bundle push <dir> [--canvas <slugOrId>] [--mode merge\|insert\|replace] [--create] [--force-local] [--dry-run] [--no-refresh] [--strict] [--auto-layout] [--layout-source-actor-id <actorId...>]` | **Default: incremental sync** — validate → assemble → fetch the server export → per-actor diff → apply only adds/updates/deletes via `batchActorOperations` (+ `updateCanvas` for metadata), aborting with a report if any actor changed on the server since it was pulled; `--force-local` overrides (local wins). Ends with an implicit incremental pull to refresh `version` markers (`--no-refresh` skips). **Passing `--mode` opts into the legacy whole-document path:** pack → `importCanvasData` with that mode. `--create` calls `createCanvasWithData` from the bundle's metadata and conflicts with `--canvas`/`--mode` (error if combined). Validation errors abort before any API call. `--auto-layout` runs the canvas layout API after a successful sync/create/import; `--layout-source-actor-id` limits layout downstream of those actors and implies layout. |
+| `bundle push <dir> [--canvas <slugOrId>] [--mode merge\|insert\|replace] [--create] [--force-local] [--dry-run] [--no-refresh] [--strict] [--auto-layout] [--layout-source-actor-id <actorId...>]` | **Default: incremental sync** — validate → assemble → fetch the server export and actorVersions → per-actor diff → apply only adds/updates/deletes via `batchActorOperations` (+ `updateCanvas` for metadata), aborting with a report if any actor changed on the server since it was pulled; `--force-local` overrides (local wins). Ends with an implicit incremental pull to refresh `sync.actorVersions` (`--no-refresh` skips). **Passing `--mode` opts into the legacy whole-document path:** pack → `importCanvasData` with that mode. `--create` calls `createCanvasWithData` from the bundle's metadata and conflicts with `--canvas`/`--mode` (error if combined). Validation errors abort before any API call. `--auto-layout` runs the canvas layout API after a successful sync/create/import; `--layout-source-actor-id` limits layout downstream of those actors and implies layout. |
 
 **Git-safe overwrite semantics (unpack/pull):** writing into an existing directory rewrites only *managed paths* — `canvas.yaml` and the `actors/` subtree are deleted and rewritten; everything else (`.git/`, `AGENTS.md`, `.gitignore`, user files) is untouched. `AGENTS.md` and `.gitignore` are created only if missing, never overwritten. A target that already contains `canvas.yaml` is a bundle and is rewritten without `--force` (the normal pull workflow — git is the safety net); a non-empty target *without* `canvas.yaml` requires `--force`.
 
@@ -201,36 +204,36 @@ Output follows repo conventions: human summaries to stderr on TTY, structured re
 
 Whole-document import replaces every actor on every push — noisy in the canvas edit history, needless load, and it stomps concurrent server-side edits wholesale. Sync makes `push` and `pull` converge the two sides by touching **only the actors that actually differ**, using the per-actor API (`batchActorOperations`, `updateCanvas`). The legacy behavior remains available: `push --mode <merge|insert|replace>` (presence of `--mode` selects the whole-document `importCanvasData` path) and `pull --replace` (full managed-path rewrite).
 
-### Change detection: stateless diff + `version` markers
+### Change detection: canonical diff + `sync.actorVersions`
 
-Sync keeps **no local state** (no `.borgiq/` baseline, no checksums). Every sync fetches the server export, disassembles it in memory, and compares per actor against the local bundle:
+Sync keeps no hidden state (no `.borgiq/` baseline, no checksums). The visible root `sync.actorVersions` map records the server `canvasActor.editVersion` observed at the last pull/refresh. Every sync fetches the server export plus `getCanvas(...includeData).actorVersions`, disassembles the export in memory, and compares per actor against the local bundle:
 
-- **Content comparison** is on canonical form: both sides are parsed and re-serialized through the deterministic YAML seam, with the actor's `version` field excluded, then byte-compared (actor.yaml + its `code/` files + its `graph` slice — edges owned by the actor, and its position). Formatting-only local edits are therefore *not* changes.
-- **Freshness** comes from the `version` field already preserved in each pulled `actor.yaml`: it records which server version the local copy was taken from. `serverVersion != bundleVersion` means the server has moved since the last pull. This is the stateless substitute for a baseline snapshot — it lives in the bundle, visible in git.
+- **Content comparison** is on canonical form: both sides are parsed and re-serialized through the deterministic YAML seam, with the exported actor's `version` field excluded, then byte-compared (actor.yaml + its `code/` files + its `graph` slice — edges owned by the actor, and its position). Formatting-only local edits are therefore *not* changes.
+- **Freshness** comes from `sync.actorVersions`: it records which server edit version the local copy was taken from. `serverVersion != bundleVersion` means the server has moved since the last pull. For bundles written before this metadata existed, the first sync assumes the current server edit versions, then refresh writes the real map.
 
-Per-actor classification, given `contentEqual` (canonical compare) and the version fields:
+Per-actor classification, given `contentEqual` (canonical compare) and the edit-version fields:
 
 | Case | Local | Server | Verdict | push does | pull does |
 |---|---|---|---|---|---|
 | unchanged | present | present, `contentEqual` | in sync | skip | skip (file mtimes untouched) |
 | local edit | present, differs, `bundleVersion == serverVersion` | present | only you changed it | `update` op (with `editVersion`) | **keep local** (report: "local changes kept — push to publish") |
-| server edit | present, differs, `bundleVersion != serverVersion` | present | server changed it (local may have too — indistinguishable statelessly) | **conflict** → abort (see below) | rewrite local from server |
-| new local | present, **no `version` field** | absent | created locally (init / hand-added) | `add` op (client-minted `ACTR…` id) | keep local, merge into graph |
-| deleted on server | present, **has `version`** | absent | was pulled once, server since deleted it | — (nothing to push; reported) | delete local actor folder |
+| server edit | present, differs, `bundleVersion != serverVersion` | present | server changed it (local may have too — indistinguishable without a baseline) | **conflict** → abort (see below) | rewrite local from server |
+| new local | present, **no `sync.actorVersions` entry** | absent | created locally (init / hand-added) | `add` op (client-minted `ACTR…` id) | keep local, merge into graph |
+| deleted on server | present, **has `sync.actorVersions` entry** | absent | was pulled once, server since deleted it | — (nothing to push; reported) | delete local actor folder |
 | new on server / deleted locally | absent | present | ambiguous statelessly; push direction rules | `remove` op (**delete by default** — push makes the server match the bundle) | write new actor folder |
 
-The `version`-present/absent distinction is what lets `pull` tell "I created this locally" (keep it) apart from "the server deleted this" (remove it) without any baseline file.
+The `sync.actorVersions` entry is what lets `pull` tell "I created this locally" (keep it) apart from "the server deleted this" (remove it) without a hidden baseline file.
 
 ### Conflict policy (push): abort with report
 
-If any actor classifies as **server edit** (content differs *and* the server's `version` is not the one the bundle was pulled at), `push` applies **nothing** — all-or-nothing — and exits non-zero listing every conflicted actor (id, name, bundle path, bundle vs server version), with the resolution hint: *re-pull (server wins on those actors), or re-run with `--force-local` (local wins)*. An actor with a missing local `version` that *does* exist on the server is treated the same way (freshness unknowable → conservative).
+If any actor classifies as **server edit** (content differs *and* the server's `editVersion` is not the one the bundle was pulled at), `push` applies **nothing** — all-or-nothing — and exits non-zero listing every conflicted actor (id, name, bundle path, bundle vs server editVersion), with the resolution hint: *re-pull (server wins on those actors), or re-run with `--force-local` (local wins)*. An actor with a missing local edit-version entry that *does* exist on the server is treated the same way (freshness unknowable → conservative), except legacy bundles with no sync map at all get one compatibility sync that assumes the current server map.
 
 Two further layers keep races out:
 
-1. Every `update`/`remove` op carries `editVersion` (the server version observed during the diff). An edit landing between diff and apply surfaces in the response's `conflicts[]`; the CLI reports it and exits non-zero.
-2. `push` ends with an **implicit incremental pull** (skippable with `--no-refresh`): it re-fetches the export and refreshes managed paths, so local `version` markers advance and any server-side normalization lands in the bundle. Without this, the next push would misread its own writes as conflicts.
+1. Every `update`/`remove` op carries `editVersion` (the server edit version observed during the diff). An edit landing between diff and apply surfaces in the response's `conflicts[]`; the CLI reports it and exits non-zero.
+2. `push` ends with an **implicit incremental pull** (skippable with `--no-refresh`): it re-fetches the export and actorVersions, refreshes managed paths, and advances `sync.actorVersions`. Without this, the next push would misread its own writes as conflicts.
 
-`pull` needs no abort: its only lossy case is **server edit** where the local copy was *also* hand-edited — statelessly indistinguishable from a pure server edit, so the server wins, and git (the bundle is a git artifact) is the recovery path. Pure local edits (`bundleVersion == serverVersion`) are always preserved.
+`pull` needs no abort: its only lossy case is **server edit** where the local copy was *also* hand-edited — indistinguishable without a baseline snapshot, so the server wins, and git (the bundle is a git artifact) is the recovery path. Pure local edits (`bundleVersion == serverVersion`) are always preserved.
 
 ### Order of operations (push sync)
 
@@ -253,7 +256,7 @@ Fetch + disassemble the server export, then compute the merged target: server ac
 - A no-op sync (nothing differs) makes zero mutation calls and rewrites zero files, in both directions.
 - `push --dry-run` and `pull --dry-run` are read-only end to end.
 - Sync composes with `--strict` (validation policy unchanged) and never bypasses validation.
-- Determinism guarantees are unaffected: diffing reuses the same canonical serialization seam; sync adds no new serialization format.
+- Determinism guarantees are unaffected: diffing reuses the same canonical serialization seam; `sync.actorVersions` is sorted and contains only platform edit-version numbers.
 
 ## Architecture
 
@@ -311,7 +314,7 @@ The starter bundle passes `bundle validate --strict` and packs immediately. IDs 
   - The three determinism/round-trip guarantees, on fixtures covering: simple trigger→task canvas; HTTP task; Deno actor with code; Python actor; app actor with inline HTML/CSS/JS; app actor with BIQFile references (not split); canvas with schemas + credentials + connection.
   - Validation matrix: helper file in `code/` rejected; reserved filenames rejected; dual source rejected; duplicate IDs; missing `actor.yaml`; unreferenced-file warning; bad graph refs (actor, port, `aiAgentToolActorIds`); path escape (`..`, absolute); unknown type; wrong `codeDir` value.
   - Registry: compile-time exhaustiveness (the `Record` type) plus a runtime test asserting 30 entries and kebab-case folder names.
-  - Sync diff matrix (pure, on in-memory documents): unchanged / local edit / server edit (conflict on push, rewrite on pull) / formatting-only local edit (not a change) / new local actor without `version` (add on push, kept on pull) / actor with `version` absent from server (reported on push, folder deleted on pull) / server-only actor (remove op on push, written on pull) / missing local `version` for a server actor (conservative conflict) / metadata-only delta / no-op sync produces zero operations. Pull-merge cases: kept local actors' graph nodes/edges survive `canvas.yaml` regeneration; only changed files rewritten.
+  - Sync diff matrix (pure, on in-memory documents plus edit-version maps): unchanged / local edit / server edit (conflict on push, rewrite on pull) / formatting-only local edit (not a change) / new local actor without `sync.actorVersions` entry (add on push, kept on pull) / actor with sync entry absent from server (reported on push, folder deleted on pull) / server-only actor (remove op on push, written on pull) / missing local sync entry for a server actor (conservative conflict, except legacy no-map compatibility) / metadata-only delta / no-op sync produces zero operations. Pull-merge cases: kept local actors' graph nodes/edges survive `canvas.yaml` regeneration; only changed files rewritten.
   - Snapshot tests: disassembled file map of a representative canvas. The init template is covered structurally instead (its ids are minted per invocation, and it flows through the already-snapshotted disassembler).
 - `bundleFs` tests in a temp dir: managed-path overwrite preserves unmanaged files; `AGENTS.md`/`.gitignore` not clobbered; `--force` requirement.
 - `npm run build` (tsc) stays the compile gate; tests run inside the devcontainer.
@@ -321,7 +324,7 @@ The starter bundle passes `bundle validate --strict` and packs immediately. IDs 
 | Ticket item | CLI v1 decision | Rationale |
 |---|---|---|
 | Zip transport | Folder only | Git is the transport; zip belongs with the future platform endpoint. |
-| Per-actor checksums | Omitted | In git, content tracking is git's job; checksums either go stale, get ignored, or force root-file churn on every actor edit — defeating localized diffs. Sync (2026-07-08) resolved the "revisit for sync tooling" note without them: the actor's own `version` field is the freshness marker and canonical content comparison detects changes, so checksums stay out. |
+| Per-actor checksums | Omitted | In git, content tracking is git's job; checksums either go stale, get ignored, or force root-file churn on every actor edit — defeating localized diffs. Sync (2026-07-08) resolved the "revisit for sync tooling" note without them: `sync.actorVersions` is the freshness marker and canonical content comparison detects changes, so checksums stay out. |
 | `runtimeContractVersion` | Omitted | The CLI doesn't know the runtime SDK surface; platform-side concern. |
 | Dev config (`code/deno.json`, type stubs) | Omitted | Deferred alongside `bundle dev-setup`. Note v1 validation rejects a hand-added `code/deno.json` (codeDir contract); when dev-config lands, it joins the canonical-entrypoint allowlist. |
 | Dependency walk promoted into `@borgiq/utils` | Local reimplementation of the same walk (`connection.key` + credentials `source` split) | No platform changes; the walk is ~15 lines against the exported (object) shapes. |

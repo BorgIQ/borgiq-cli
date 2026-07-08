@@ -381,11 +381,12 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 Canvas bundles expand the platform's canvas export document into a git-friendly
 folder. `canvas.yaml` holds canvas metadata, graph nodes/edges, dependencies,
-export errors, warnings, and the actor index. Each actor lives in
+export errors, warnings, sync edit versions, and the actor index. Each actor lives in
 `actors/<category>/<type>/<ACTOR_ID>/actor.yaml`; Deno, Python, Universal
 Trigger, and App actors use native files under `code/` for editable source.
 
 Pack/unpack is deterministic and lossless over managed bundle paths.
+Push/pull refresh `canvas.yaml` `sync.actorVersions` from the platform's actor edit versions for conflict detection.
 
 ```bash
 borgiq bundle init ./my-flow.borgiq-canvas

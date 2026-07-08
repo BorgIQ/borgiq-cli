@@ -5,6 +5,7 @@ import type {
   BundleFileMap,
   BundleIssue,
   BundleRootDoc,
+  BundleSync,
   CanvasExportDocument,
   ExportedActor,
   ExportedEdge,
@@ -24,6 +25,7 @@ export class BundleValidationError extends Error {
 
 export interface AssembleResult {
   doc: CanvasExportDocument;
+  sync: BundleSync;
   warnings: BundleIssue[];
 }
 
@@ -72,8 +74,18 @@ export const assembleBundle = (files: BundleFileMap): AssembleResult => {
         actors,
       },
     },
+    sync: parseSync(root.sync),
     warnings,
   };
+};
+
+const parseSync = (value: unknown): BundleSync => {
+  if (!isPlainObject(value) || !isPlainObject(value.actorVersions)) return {};
+  const actorVersions: Record<string, number> = {};
+  for (const [actorId, version] of Object.entries(value.actorVersions)) {
+    if (typeof version === 'number') actorVersions[actorId] = version;
+  }
+  return Object.keys(actorVersions).length > 0 ? { actorVersions } : {};
 };
 
 const rehydrateActorCode = (

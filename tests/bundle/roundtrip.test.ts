@@ -59,6 +59,15 @@ describe('round-trip guarantees', () => {
     expect(doc.metadata.slug).toBe('test-canvas');
   });
 
+  it('keeps bundle sync edit versions outside the packed canvas document', () => {
+    const { files } = disassemble(makeWiredDoc(), { actorVersions: { [TRIGGER_ID]: 4, [TASK_ID]: 5 } });
+    const assembled = assembleBundle(files);
+
+    expect(assembled.sync.actorVersions).toEqual({ [TASK_ID]: 5, [TRIGGER_ID]: 4 });
+    expect(assembled.doc.metadata.sync).toBeUndefined();
+    expect(assembled.doc.data.actors[TRIGGER_ID].version).toBe(1);
+  });
+
   it('throws BundleValidationError carrying all findings on an invalid bundle', () => {
     const { files } = disassemble(makeWiredDoc());
     delete files[`actors/tasks/deno/${TASK_ID}/code/mod.ts`];

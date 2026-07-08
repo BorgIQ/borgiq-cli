@@ -62,6 +62,10 @@ export interface BundleDependencies {
   secrets: BundleDependencyRef[];
 }
 
+export interface BundleSync {
+  actorVersions?: Record<string, number>;
+}
+
 export interface BundleRootDoc {
   format: string;
   formatVersion: number;
@@ -70,6 +74,7 @@ export interface BundleRootDoc {
   dependencies: BundleDependencies;
   exportErrors: unknown[];
   warnings: string[];
+  sync?: BundleSync;
   actors: BundleActorIndexEntry[];
 }
 
@@ -93,7 +98,7 @@ export const ROOT_FILE = 'canvas.yaml';
 export const ACTOR_FILE = 'actor.yaml';
 export const CODE_DIR = 'code';
 
-export const ROOT_KEY_ORDER = ['format', 'formatVersion', 'canvas', 'graph', 'dependencies', 'exportErrors', 'warnings', 'actors'] as const;
+export const ROOT_KEY_ORDER = ['format', 'formatVersion', 'canvas', 'graph', 'dependencies', 'exportErrors', 'warnings', 'sync', 'actors'] as const;
 export const CANVAS_KEY_ORDER = ['id', 'slug', 'name', 'description', 'tags', 'imagePath', 'messageTTLInDays', 'runtimeSlug', 'schemaVersion'] as const;
 export const ACTOR_KEY_ORDER = [
   'id',

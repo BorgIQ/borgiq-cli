@@ -111,6 +111,20 @@ describe('disassemble', () => {
     expect(doc.formatVersion).toBe(1);
   });
 
+  it('records sync actor edit versions when supplied', () => {
+    const doc = root(disassemble(makeWiredDoc(), {
+      actorVersions: {
+        [TRIGGER_ID]: 3,
+        [TASK_ID]: 2,
+      },
+    }).files);
+
+    expect(doc.sync?.actorVersions).toEqual({
+      [TASK_ID]: 2,
+      [TRIGGER_ID]: 3,
+    });
+  });
+
   it('warns on DeprecatedAiAgent and setup-sensitive triggers', () => {
     const { files, warnings } = disassemble(
       makeDoc([

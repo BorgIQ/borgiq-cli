@@ -39,7 +39,8 @@ export const bundlePush = async (
       throw new CliUsageError('--mode uses the legacy whole-document import path and cannot be combined with --force-local, --dry-run, or --no-refresh.');
     }
 
-    const { doc } = assembleOrFail(readBundleDir(dir), options.strict ?? false);
+    const local = assembleOrFail(readBundleDir(dir), options.strict ?? false);
+    const { doc } = local;
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
@@ -85,11 +86,19 @@ export const bundlePush = async (
       return;
     }
 
-    const serverEnvelope = await client.exportCanvas(ctx.org, ctx.workspace, target);
+    const [serverEnvelope, canvasDetail] = await Promise.all([
+      client.exportCanvas(ctx.org, ctx.workspace, target),
+      client.getCanvas(ctx.org, ctx.workspace, target, true),
+    ]);
     const server = parseExportInput(JSON.stringify(serverEnvelope));
-    const diff = diffCanvas(doc, server.document);
+    const actorVersions = canvasDetail.actorVersions ?? {};
+    const diff = diffCanvas(doc, server.document, {
+      localActorVersions: local.sync.actorVersions,
+      serverActorVersions: actorVersions,
+      assumeServerVersionsWhenLocalMissing: true,
+    });
     const summary = summarizeDiff(diff);
-    const operations = toBatchOperations(diff, doc, Boolean(options.forceLocal));
+    const operations = toBatchOperations(diff, doc, Boolean(options.forceLocal), Date.now());
 
     if (diff.conflicts.length > 0 && !options.forceLocal) {
       reportPushConflicts(diff.conflicts);
@@ -130,9 +139,15 @@ export const bundlePush = async (
 
     let refresh: unknown;
     if (options.refresh !== false) {
-      const refreshEnvelope = await client.exportCanvas(ctx.org, ctx.workspace, target);
+      const [refreshEnvelope, refreshCanvasDetail] = await Promise.all([
+        client.exportCanvas(ctx.org, ctx.workspace, target),
+        client.getCanvas(ctx.org, ctx.workspace, target, true),
+      ]);
       const refreshed = parseExportInput(JSON.stringify(refreshEnvelope));
-      const refreshedFiles = disassemble(refreshed.document, { exportErrors: refreshed.exportErrors }).files;
+      const refreshedFiles = disassemble(refreshed.document, {
+        exportErrors: refreshed.exportErrors,
+        actorVersions: refreshCanvasDetail.actorVersions ?? {},
+      }).files;
       const writePlan = writeBundleDirIncremental(dir, refreshedFiles, { createIfMissing: BUNDLE_COMPANIONS });
       refresh = { writePlan, exportErrors: refreshed.exportErrors.length };
     }
@@ -150,7 +165,7 @@ const reportPushConflicts = (conflicts: { actorId: string; name: string; bundleV
   process.stderr.write(`Push aborted: ${conflicts.length} actor conflict(s). Re-pull, or re-run with --force-local for local wins.\n`);
   for (const conflict of conflicts) {
     process.stderr.write(
-      `  ${conflict.actorId} (${conflict.name}): bundle version ${String(conflict.bundleVersion ?? 'missing')} -> server version ${String(conflict.serverVersion ?? 'missing')}\n`,
+      `  ${conflict.actorId} (${conflict.name}): bundle editVersion ${String(conflict.bundleVersion ?? 'missing')} -> server editVersion ${String(conflict.serverVersion ?? 'missing')}\n`,
     );
   }
 };

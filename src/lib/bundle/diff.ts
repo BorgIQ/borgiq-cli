@@ -25,6 +25,12 @@ export interface CanvasDiff {
   metadataDelta: Record<string, unknown> | null;
 }
 
+export interface CanvasDiffOptions {
+  localActorVersions?: Record<string, number>;
+  serverActorVersions?: Record<string, number>;
+  assumeServerVersionsWhenLocalMissing?: boolean;
+}
+
 export interface DiffSummary {
   added: number;
   updated: number;
@@ -37,6 +43,8 @@ export interface DiffSummary {
 }
 
 const SYNC_METADATA_FIELDS = ['name', 'description', 'tags', 'messageTTLInDays', 'runtimeSlug'] as const;
+const CONFIG_YAML_FIELDS = ['credentials', 'inputs', 'vars', 'options', 'outputs', 'error'] as const;
+const SCHEMA_YAML_FIELDS = ['inputs', 'outputs'] as const;
 
 const compareStrings = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -55,8 +63,8 @@ const stableValue = (value: unknown): unknown => {
   return out;
 };
 
-const actorVersion = (actor: ExportedActor | undefined): number | undefined =>
-  typeof actor?.version === 'number' ? actor.version : undefined;
+const actorVersion = (versions: Record<string, number> | undefined, actorId: string): number | undefined =>
+  typeof versions?.[actorId] === 'number' ? versions[actorId] : undefined;
 
 const actorName = (local: ExportedActor | undefined, server: ExportedActor | undefined, actorId: string): string =>
   (typeof local?.name === 'string' && local.name.length > 0 ? local.name : undefined)
@@ -72,6 +80,35 @@ export const canonicalActorForm = (actor: ExportedActor): string => {
 const valuesEqual = (a: unknown, b: unknown): boolean =>
   stringifyYamlDoc(stableValue(a)) === stringifyYamlDoc(stableValue(b));
 
+const cloneActor = (actor: Record<string, unknown>): Record<string, unknown> =>
+  stableValue(actor) as Record<string, unknown>;
+
+const stringifyObjectFields = (obj: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> => {
+  const out = { ...obj };
+  for (const field of fields) {
+    if (out[field] !== undefined && typeof out[field] !== 'string') {
+      out[field] = stringifyYamlDoc(out[field]);
+    }
+  }
+  return out;
+};
+
+/**
+ * The bundle format keeps exported actors in editable object form. The actor
+ * mutation endpoint expects CanvasActor shape, where selected configuration
+ * and schema fields are YAML strings.
+ */
+export const toCanvasActorMutationData = (actor: Record<string, unknown>): Record<string, unknown> => {
+  const data = cloneActor(actor);
+  if (isRecord(data.configuration)) {
+    data.configuration = stringifyObjectFields(data.configuration, CONFIG_YAML_FIELDS);
+  }
+  if (isRecord(data.schemas)) {
+    data.schemas = stringifyObjectFields(data.schemas, SCHEMA_YAML_FIELDS);
+  }
+  return data;
+};
+
 const metadataDelta = (local: CanvasExportDocument, server: CanvasExportDocument): Record<string, unknown> | null => {
   const delta: Record<string, unknown> = {};
   for (const field of SYNC_METADATA_FIELDS) {
@@ -84,13 +121,15 @@ const metadataDelta = (local: CanvasExportDocument, server: CanvasExportDocument
   return Object.keys(delta).length > 0 ? delta : null;
 };
 
-export const diffCanvas = (local: CanvasExportDocument, server: CanvasExportDocument): CanvasDiff => {
+export const diffCanvas = (local: CanvasExportDocument, server: CanvasExportDocument, options: CanvasDiffOptions = {}): CanvasDiff => {
   const actorIds = [...new Set([...Object.keys(local.data.actors), ...Object.keys(server.data.actors)])].sort(compareStrings);
+  const hasLocalActorVersions = options.localActorVersions !== undefined;
   const entries: ActorDiffEntry[] = actorIds.map((actorId) => {
     const localActor = local.data.actors[actorId];
     const serverActor = server.data.actors[actorId];
-    const bundleVersion = actorVersion(localActor);
-    const serverVersion = actorVersion(serverActor);
+    const serverVersion = actorVersion(options.serverActorVersions, actorId);
+    const bundleVersion = actorVersion(options.localActorVersions, actorId)
+      ?? (!hasLocalActorVersions && options.assumeServerVersionsWhenLocalMissing ? serverVersion : undefined);
     let verdict: ActorVerdict;
 
     if (localActor && serverActor) {
@@ -137,6 +176,7 @@ export const toBatchOperations = (
   diff: CanvasDiff,
   local: CanvasExportDocument,
   forceLocal: boolean,
+  timestamp: number,
 ): BatchActorOperation[] => {
   const adds: BatchActorOperation[] = [];
   const updates: BatchActorOperation[] = [];
@@ -145,13 +185,13 @@ export const toBatchOperations = (
   for (const entry of diff.entries) {
     const localActor = local.data.actors[entry.actorId] as Record<string, unknown> | undefined;
     if (entry.verdict === 'new-local' && localActor) {
-      adds.push({ type: 'add', actorId: entry.actorId, data: localActor });
+      adds.push({ type: 'add', actorId: entry.actorId, timestamp, data: toCanvasActorMutationData(localActor) });
     } else if (entry.verdict === 'local-edit' && localActor) {
-      updates.push({ type: 'update', actorId: entry.actorId, editVersion: entry.serverVersion, data: localActor });
+      updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toCanvasActorMutationData(localActor) });
     } else if ((entry.verdict === 'server-edit' || entry.verdict === 'version-missing') && forceLocal && localActor) {
-      updates.push({ type: 'update', actorId: entry.actorId, editVersion: entry.serverVersion, data: localActor });
+      updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toCanvasActorMutationData(localActor) });
     } else if (entry.verdict === 'server-only') {
-      removes.push({ type: 'remove', actorId: entry.actorId, editVersion: entry.serverVersion });
+      removes.push({ type: 'remove', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion });
     }
   }
 

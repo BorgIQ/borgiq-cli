@@ -33,7 +33,7 @@
 | Create `src/lib/bundle/envelope.ts` | `parseExportInput` — raw YAML doc or `{yaml, errors}` JSON envelope → `{document, exportErrors}` |
 | Create `src/lib/bundle/disassemble.ts` | export doc → `BundleFileMap` (+ warnings): graph lifting, code externalization, dependency walk |
 | Create `src/lib/bundle/validate.ts` | `validateBundle(files)` → `{errors, warnings}`, all 8 spec check groups |
-| Create `src/lib/bundle/assemble.ts` | `assembleBundle(files)` → `{doc, warnings}`; throws `BundleValidationError` on invalid input |
+| Create `src/lib/bundle/assemble.ts` | `assembleBundle(files)` → `{doc, sync, warnings}`; throws `BundleValidationError` on invalid input |
 | Create `src/lib/bundle/template.ts` | `buildStarterBundle`, `BUNDLE_AGENTS_MD`, `BUNDLE_GITIGNORE` |
 | Create `src/lib/bundle/diff.ts` *(Task 10)* | `diffCanvas(local, server)` — pure per-actor sync classification (verdicts, batch ops, metadata delta) |
 | Create `src/lib/bundleFs.ts` | `readBundleDir` / `writeBundleDir` with managed-path overwrite semantics; *(Task 10)* `writeBundleDirIncremental` |
@@ -219,6 +219,10 @@ export interface BundleDependencies {
   secrets: BundleDependencyRef[];
 }
 
+export interface BundleSync {
+  actorVersions?: Record<string, number>;
+}
+
 export interface BundleRootDoc {
   format: string;
   formatVersion: number;
@@ -227,6 +231,7 @@ export interface BundleRootDoc {
   dependencies: BundleDependencies;
   exportErrors: unknown[];
   warnings: string[];
+  sync?: BundleSync;
   actors: BundleActorIndexEntry[];
 }
 
@@ -254,7 +259,7 @@ export const CODE_DIR = 'code';
 
 // Canonical key orders. Known keys first in this order (absent ones skipped),
 // unknown keys after, alphabetically — see orderKeys() in yaml.ts.
-export const ROOT_KEY_ORDER = ['format', 'formatVersion', 'canvas', 'graph', 'dependencies', 'exportErrors', 'warnings', 'actors'] as const;
+export const ROOT_KEY_ORDER = ['format', 'formatVersion', 'canvas', 'graph', 'dependencies', 'exportErrors', 'warnings', 'sync', 'actors'] as const;
 export const CANVAS_KEY_ORDER = ['id', 'slug', 'name', 'description', 'tags', 'imagePath', 'messageTTLInDays', 'runtimeSlug', 'schemaVersion'] as const;
 export const ACTOR_KEY_ORDER = [
   'id', 'version', 'type', 'name', 'msgVar', 'description', 'isActive', 'sourcePorts', 'template', 'icon',
@@ -538,7 +543,7 @@ git commit -m "feat(lib): add exhaustive 30-type canvas bundle path registry"
 **Interfaces:**
 - Consumes: everything from Tasks 1–2 (`types.ts`, `yaml.ts`, `registry.ts`).
 - Produces:
-  - `disassemble(doc: CanvasExportDocument, opts?: { exportErrors?: unknown[] }): { files: BundleFileMap; warnings: string[] }` — throws `BundleError` on malformed docs or unknown actor types.
+  - `disassemble(doc: CanvasExportDocument, opts?: { exportErrors?: unknown[]; actorVersions?: Record<string, number> }): { files: BundleFileMap; warnings: string[] }` — throws `BundleError` on malformed docs or unknown actor types.
   - `parseExportInput(raw: string): { document: CanvasExportDocument; exportErrors: unknown[] }` from `envelope.ts`.
   - Fixture helpers `makeActor`, `makeDoc` from `tests/bundle/fixtures.ts` (used by every later test file).
 
@@ -1448,7 +1453,7 @@ git commit -m "feat(lib): add path-scoped canvas bundle validation"
 **Interfaces:**
 - Consumes: `validateBundle` (Task 4), `disassemble` (Task 3), registry/types/yaml.
 - Produces:
-  - `assembleBundle(files: BundleFileMap): { doc: CanvasExportDocument; warnings: BundleIssue[] }`
+  - `assembleBundle(files: BundleFileMap): { doc: CanvasExportDocument; sync: BundleSync; warnings: BundleIssue[] }`
   - `class BundleValidationError extends Error { errors: BundleIssue[]; warnings: BundleIssue[] }` — thrown when validation finds errors; commands catch it to print findings.
 
 - [ ] **Step 1: Write the failing tests**
@@ -2683,7 +2688,7 @@ git commit -m "feat(bundle): add pull/push commands and document the bundle work
 - Modify: `README.md` (bundle section — sync examples)
 
 **Interfaces:**
-- Consumes: `assemble`/`disassemble`, the `yaml.ts` canonical seam, and EXISTING client methods — no client changes: `client.exportCanvas`, `client.batchActorOperations(org, workspace, canvas, { operations })` (ops `{ type: 'add' | 'update' | 'remove', actorId, editVersion?, data? }` → `{ appliedOperations, conflicts, updatedAt }`), `client.updateCanvas`.
+- Consumes: `assemble`/`disassemble`, the `yaml.ts` canonical seam, and existing client methods: `client.exportCanvas`, `client.getCanvas(..., true)` for `actorVersions`, `client.batchActorOperations(org, workspace, canvas, { operations })` (ops `{ type: 'add' | 'update' | 'remove', actorId, timestamp, editVersion?, data? }` → `{ appliedOperations, conflicts, updatedAt }`), `client.updateCanvas`.
 - Produces: `diffCanvas`, `writeBundleDirIncremental`, and the sync-by-default command surface.
 
 - [ ] **Step 1: Pure diff core**
@@ -2698,9 +2703,9 @@ export type ActorVerdict =
   | 'unchanged'          // canonical content equal
   | 'local-edit'         // differs, bundleVersion === serverVersion → push: update; pull: keep local
   | 'server-edit'        // differs, bundleVersion !== serverVersion → push: CONFLICT; pull: rewrite from server
-  | 'version-missing'    // differs, local has no version but server actor exists → push: CONFLICT (conservative)
-  | 'new-local'          // local only, no version field → push: add; pull: keep + merge into graph
-  | 'deleted-on-server'  // local only, has version → push: report; pull: delete local folder
+  | 'version-missing'    // differs, local has no sync.actorVersions entry but server actor exists → push: CONFLICT (conservative)
+  | 'new-local'          // local only, no sync.actorVersions entry → push: add; pull: keep + merge into graph
+  | 'deleted-on-server'  // local only, has sync.actorVersions entry → push: report; pull: delete local folder
   | 'server-only';       // server only → push: remove op; pull: write locally
 
 export interface ActorDiffEntry {
@@ -2717,24 +2722,34 @@ export interface CanvasDiff {
   metadataDelta: Record<string, unknown> | null;   // name/description/tags/messageTTLInDays/runtimeSlug only
 }
 
+export interface CanvasDiffOptions {
+  localActorVersions?: Record<string, number>;     // from local canvas.yaml sync.actorVersions
+  serverActorVersions?: Record<string, number>;    // from getCanvas(...includeData)
+  assumeServerVersionsWhenLocalMissing?: boolean;  // one-time compatibility path for pre-sync bundles
+}
+
 /** Canonical, version-blind comparison form of one actor (incl. its edges + position). */
 export const canonicalActorForm = (actor: ExportedCanvasActor): string => {
   const { version: _version, ...rest } = actor;
   return stringifyYamlDoc(rest);                   // the ONE deterministic seam — same key ordering as disassemble
 };
 
-export const diffCanvas = (local: CanvasExportDocument, server: CanvasExportDocument): CanvasDiff => { /* … */ };
+export const diffCanvas = (local: CanvasExportDocument, server: CanvasExportDocument, options?: CanvasDiffOptions): CanvasDiff => { /* … */ };
+
+/** Convert exported bundle actor shape into CanvasActor mutation shape for PATCH /actors. */
+export const toCanvasActorMutationData = (actor: Record<string, unknown>): Record<string, unknown> => { /* … */ };
 
 /** Project a CanvasDiff into ordered batch operations: adds → updates → removes. */
-export const toBatchOperations = (diff: CanvasDiff, local: CanvasExportDocument, forceLocal: boolean): BatchActorOperation[] => { /* … */ };
+export const toBatchOperations = (diff: CanvasDiff, local: CanvasExportDocument, forceLocal: boolean, timestamp: number): BatchActorOperation[] => { /* … */ };
 ```
 
 Rules (all from the spec's verdict table — implement exactly):
 - Compare **exported actor records** (post-assembly for the local side), so `code/` files are already re-inlined and edges/position ride on the actor. Never compare raw bundle files against the server.
-- `version` is excluded from content comparison and used only as the freshness marker.
+- Exported actor `version` is excluded from content comparison. Freshness comes from `sync.actorVersions` / server `actorVersions`, not from exported actor `version`.
 - `metadataDelta` compares only `name`, `description`, `tags`, `messageTTLInDays`, `runtimeSlug` — never `slug`, `id`, `imagePath`, `schemaVersion`.
-- `toBatchOperations`: `update`/`remove` ops carry `editVersion: serverVersion`; with `forceLocal`, conflicted actors become plain `update` ops (still with `editVersion` — an in-flight race must still surface in `conflicts[]`).
-- Pure and deterministic: no `Date.now`, no randomness, sorts by `actorId` (plain `<`, not `localeCompare`).
+- `toBatchOperations`: every op carries the caller-provided `timestamp`; `update`/`remove` ops carry `editVersion: serverVersion`; with `forceLocal`, conflicted actors become plain `update` ops (still with `editVersion` — an in-flight race must still surface in `conflicts[]`).
+- `toCanvasActorMutationData`: operation `data` must use CanvasActor mutation shape, not exported bundle shape; selected configuration/schema fields (`configuration.credentials|inputs|vars|options|outputs|error`, `schemas.inputs|outputs`) are YAML strings.
+- Pure and deterministic: no `Date.now` inside the diff/operation projection helpers, no randomness, sorts by `actorId` (plain `<`, not `localeCompare`).
 
 - [ ] **Step 2: Incremental filesystem write**
 
@@ -2749,20 +2764,20 @@ Extend `src/lib/bundleFs.ts` with `writeBundleDirIncremental(dir, files: BundleF
 
 1. `--create` unchanged (conflicts with `--canvas`/`--mode`; also with `--force-local`/`--dry-run` — usage error).
 2. Validate + assemble local bundle (before any API call). If `--mode` given → legacy `importCanvasData` path, verbatim current behavior, done.
-3. `exportCanvas(target)` → parse envelope → local vs server `diffCanvas`.
-4. Conflicts and not `--force-local` → write the report to stderr (id, name, bundle path, `bundleVersion → serverVersion`, hint: *re-pull, or `--force-local`*), `output()` the structured diff, exit non-zero. **Nothing is applied.**
+3. `exportCanvas(target)` + `getCanvas(target, true)` → parse envelope → local vs server `diffCanvas` using `sync.actorVersions` and server `actorVersions`.
+4. Conflicts and not `--force-local` → write the report to stderr (id, name, bundle path, `bundle editVersion → server editVersion`, hint: *re-pull, or `--force-local`*), `output()` the structured diff, exit non-zero. **Nothing is applied.**
 5. `--dry-run` → print the plan (adds/updates/removes/conflicts/unchanged counts + ids, metadata delta), apply nothing, exit 0.
 6. `batchActorOperations` with `toBatchOperations(...)` (skip the call entirely when there are zero ops). Response `conflicts[]` non-empty → report + non-zero exit.
 7. `metadataDelta` → `updateCanvas`.
 8. `--auto-layout` / `--layout-source-actor-id` as today.
-9. Unless `--no-refresh`: implicit incremental pull (Step 4's write path) so local `version` markers advance. Summary: `applied: N added, M updated, K deleted[, metadata]; skipped: U unchanged`.
+9. Unless `--no-refresh`: implicit incremental pull (Step 4's write path) so local `sync.actorVersions` advances. Summary: `applied: N added, M updated, K deleted[, metadata]; skipped: U unchanged`.
 
 - [ ] **Step 4: Rework pull (sync default, `--replace` = legacy)**
 
 `src/commands/bundle/pull.ts` — options become `{ replace?, force?, dryRun? }`:
 
 1. Target dir is not an existing bundle (no `canvas.yaml`), or `--replace` given → current full `writeBundleDir` behavior, done.
-2. Otherwise: read + assemble the local bundle (a local bundle that fails validation cannot be sync-pulled — tell the user to fix it or use `--replace`), fetch + parse the export, `diffCanvas`.
+2. Otherwise: read + assemble the local bundle (a local bundle that fails validation cannot be sync-pulled — tell the user to fix it or use `--replace`), fetch + parse the export plus `actorVersions`, `diffCanvas`.
 3. Compute the merged actor set per the verdict table: server actors, except `local-edit` actors keep the local record (report "local changes kept — push to publish"); `new-local` actors are kept with their graph nodes/edges; `deleted-on-server` actor folders are dropped.
 4. Disassemble the merged document (existing disassembler — graph/index/dependencies regenerate as projections) → `writeBundleDirIncremental`.
 5. `--dry-run` prints per-actor verdicts and the would-write/would-delete file lists, writes nothing.
@@ -2785,7 +2800,7 @@ Extend `src/lib/bundleFs.ts` with `writeBundleDirIncremental(dir, files: BundleF
 
 `tests/bundle/diff.test.ts` (pure, in-memory documents — reuse Task 5 fixtures):
 - Verdict matrix: every row of the spec table, including formatting-only local reordering → `unchanged`, and `version-missing` → conflict.
-- `toBatchOperations`: ordering adds → updates → removes; `editVersion` present on update/remove; `forceLocal` converts conflicts to updates; zero-diff → zero ops.
+- `toBatchOperations`: ordering adds → updates → removes; every op has `timestamp`; `editVersion` present on update/remove; mutation `data` has YAML-string configuration/schema fields; `forceLocal` converts conflicts to updates; zero-diff → zero ops.
 - `metadataDelta`: detects each syncable field; ignores `slug`/`id`/`imagePath`/`schemaVersion`.
 - Pull merge: kept `new-local` actor's node/edges survive `canvas.yaml` regeneration; `local-edit` actor record survives verbatim; `deleted-on-server` folder disappears from the merged file map.
 

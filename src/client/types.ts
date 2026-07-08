@@ -241,6 +241,7 @@ export interface BIQCanvasLayout {
 export interface BatchActorOperation {
   type: 'add' | 'update' | 'remove';
   actorId: string;
+  timestamp: number;
   editVersion?: number;
   data?: Record<string, unknown>;
 }
@@ -511,4 +512,3 @@ export interface TemplateListFilters {
   types?: BIQActorTemplateType[];
   appId?: string;
 }
-

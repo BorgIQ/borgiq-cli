@@ -26,6 +26,7 @@ import { orderKeys, stringifyYamlDoc } from './yaml.js';
 
 export interface DisassembleOptions {
   exportErrors?: unknown[];
+  actorVersions?: Record<string, number>;
 }
 
 export interface DisassembleResult {
@@ -110,6 +111,7 @@ export const disassemble = (doc: CanvasExportDocument, opts: DisassembleOptions 
       dependencies: walkDependencies(doc),
       exportErrors: opts.exportErrors ?? [],
       warnings,
+      sync: syncRoot(opts.actorVersions),
       actors: index,
     },
     ROOT_KEY_ORDER,
@@ -117,6 +119,17 @@ export const disassemble = (doc: CanvasExportDocument, opts: DisassembleOptions 
   files[ROOT_FILE] = stringifyYamlDoc(rootDoc);
 
   return { files, warnings };
+};
+
+const syncRoot = (actorVersions: Record<string, number> | undefined): { actorVersions: Record<string, number> } | undefined => {
+  if (!actorVersions || Object.keys(actorVersions).length === 0) return undefined;
+  return {
+    actorVersions: Object.fromEntries(
+      Object.entries(actorVersions)
+        .filter((entry): entry is [string, number] => typeof entry[1] === 'number')
+        .sort(([a], [b]) => compareStrings(a, b)),
+    ),
+  };
 };
 
 const externalizeActorCode = (

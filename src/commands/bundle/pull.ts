@@ -21,15 +21,19 @@ export const bundlePull = async (
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
-    const envelope = await client.exportCanvas(ctx.org, ctx.workspace, canvasSlugOrId);
+    const [envelope, canvasDetail] = await Promise.all([
+      client.exportCanvas(ctx.org, ctx.workspace, canvasSlugOrId),
+      client.getCanvas(ctx.org, ctx.workspace, canvasSlugOrId, true),
+    ]);
     const input = parseExportInput(JSON.stringify(envelope));
+    const actorVersions = canvasDetail.actorVersions ?? {};
 
     const slug = typeof input.document.metadata.slug === 'string' && input.document.metadata.slug.length > 0
       ? input.document.metadata.slug
       : canvasSlugOrId;
     const target = dir ?? `./${slug}.borgiq-canvas`;
 
-    const { files, warnings } = disassemble(input.document, { exportErrors: input.exportErrors });
+    const { files, warnings } = disassemble(input.document, { exportErrors: input.exportErrors, actorVersions });
     const shouldReplace = options.replace || !isBundleDir(target);
     if (shouldReplace) {
       if (options.dryRun) {
@@ -51,9 +55,13 @@ export const bundlePull = async (
     }
 
     const local = assembleLocalBundle(target);
-    const diff = diffCanvas(local, input.document);
-    const merged = mergeForPull(local, input.document, diff);
-    const mergedDisassembly = disassemble(merged, { exportErrors: input.exportErrors });
+    const diff = diffCanvas(local.doc, input.document, {
+      localActorVersions: local.sync.actorVersions,
+      serverActorVersions: actorVersions,
+      assumeServerVersionsWhenLocalMissing: true,
+    });
+    const merged = mergeForPull(local.doc, input.document, diff);
+    const mergedDisassembly = disassemble(merged, { exportErrors: input.exportErrors, actorVersions });
     const mergedFiles = mergedDisassembly.files;
     const writePlan = planBundleDirIncrementalWrite(target, mergedFiles);
     const summary = summarizeDiff(diff);
@@ -86,7 +94,7 @@ const isBundleDir = (dir: string): boolean =>
 
 const assembleLocalBundle = (dir: string) => {
   try {
-    return assembleBundle(readBundleDir(dir)).doc;
+    return assembleBundle(readBundleDir(dir));
   } catch (error) {
     if (error instanceof BundleValidationError) {
       reportIssues(error.errors, error.warnings);
