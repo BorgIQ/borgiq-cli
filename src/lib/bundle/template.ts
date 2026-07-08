@@ -17,6 +17,13 @@ export default async function receive(req: Request): Promise<Response> {
 }
 `;
 
+const createWebhookConfig = (): Record<string, unknown> => ({
+  triggerKey: monotonicUlid(),
+  authorizationLevel: 'public',
+  allowedMethods: ['get', 'post'],
+  responseTimeout: 30,
+});
+
 export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
   const triggerId = Id.create('ACTR');
   const taskId = Id.create('ACTR');
@@ -38,12 +45,7 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
     showInWorkspaceApps: true,
     runtimeSlug: '',
     configuration: {
-      webhook: {
-        triggerKey: monotonicUlid(),
-        authorizationLevel: 'public',
-        allowedMethods: ['get', 'post'],
-        responseTimeout: 30,
-      },
+      webhook: createWebhookConfig(),
       options: {
         webhook: {
           respondImmediately: true,

@@ -168,6 +168,13 @@ export interface ActorConfig {
     configuration?: {
       inputs?: Record<string, unknown>;
       vars?: Array<Record<string, unknown>>;
+      webhook?: {
+        triggerKey?: string;
+        authorizationLevel?: string;
+        allowedMethods?: string[];
+        responseTimeout?: number;
+      };
+      webhookTriggerKey?: string;
       options?: {
         // HttpRequestActor options
         url?: string;
@@ -176,6 +183,11 @@ export interface ActorConfig {
         queryParams?: Record<string, unknown>;
         body?: unknown;
         auth?: string;
+        webhook?: {
+          respondImmediately?: boolean;
+          emitRawBody?: boolean;
+          response?: { statusCode?: number; body?: unknown; headers?: unknown };
+        };
         // DenoActor options (code is at configuration.code, NOT here)
         allowNet?: boolean;
         allowNetList?: string[];
@@ -1491,56 +1503,55 @@ function validateWebhookTriggerActor(
 ): void {
   const prefix = `Actor '${actorId}'`;
 
-  const webhookTriggerKey = (config as { webhookTriggerKey?: string })?.webhookTriggerKey;
+  const webhookConfig = config.webhook;
+  const webhookTriggerKey = webhookConfig?.triggerKey ?? config.webhookTriggerKey;
   if (!webhookTriggerKey) {
     errors.push(
-      `${prefix}: Missing required 'configuration.webhookTriggerKey'. ` +
-      `Generate one using: npx tsx scripts/generate.ts id webhooktriggerkey`,
+      `${prefix}: Missing required 'configuration.webhook.triggerKey'. ` +
+      `Generate a 26-character ULID and store it at configuration.webhook.triggerKey.`,
     );
   } else if (typeof webhookTriggerKey !== "string") {
     errors.push(
-      `${prefix}: 'configuration.webhookTriggerKey' must be a string`,
+      `${prefix}: 'configuration.webhook.triggerKey' must be a string`,
     );
   } else if (webhookTriggerKey.length !== 26) {
     errors.push(
-      `${prefix}: 'configuration.webhookTriggerKey' must be 26 characters (ULID format), got ${webhookTriggerKey.length}`,
+      `${prefix}: 'configuration.webhook.triggerKey' must be 26 characters (ULID format), got ${webhookTriggerKey.length}`,
     );
   }
 
+  if (webhookConfig?.responseTimeout !== undefined) {
+    if (typeof webhookConfig.responseTimeout === "number") {
+      if (webhookConfig.responseTimeout < 1 || webhookConfig.responseTimeout > 60) {
+        errors.push(
+          `${prefix}: 'configuration.webhook.responseTimeout' must be between 1 and 60 seconds, got ${webhookConfig.responseTimeout}`,
+        );
+      }
+    }
+  }
+
+  if (webhookConfig?.allowedMethods && Array.isArray(webhookConfig.allowedMethods)) {
+    const validMethods = ["get", "post", "put", "patch", "delete"];
+    for (const method of webhookConfig.allowedMethods) {
+      if (!validMethods.includes(method)) {
+        errors.push(
+          `${prefix}: Invalid HTTP method '${method}' in 'configuration.webhook.allowedMethods'. ` +
+          `Valid methods: ${validMethods.join(", ")}`,
+        );
+      }
+    }
+  }
+
   if (config?.options) {
-    const options = config.options as {
+    const options = (config.options.webhook ?? config.options) as {
       respondImmediately?: boolean;
       response?: { statusCode?: number; body?: unknown; headers?: unknown };
-      allowedMethods?: string[];
-      responseTimeout?: number;
     };
 
     if (options.respondImmediately === true && !options.response) {
       errors.push(
         `${prefix}: 'response' is required when 'respondImmediately' is true`,
       );
-    }
-
-    if (options.responseTimeout !== undefined) {
-      if (typeof options.responseTimeout === "number") {
-        if (options.responseTimeout < 1 || options.responseTimeout > 60) {
-          errors.push(
-            `${prefix}: 'responseTimeout' must be between 1 and 60 seconds, got ${options.responseTimeout}`,
-          );
-        }
-      }
-    }
-
-    if (options.allowedMethods && Array.isArray(options.allowedMethods)) {
-      const validMethods = ["get", "post", "put", "patch", "delete"];
-      for (const method of options.allowedMethods) {
-        if (!validMethods.includes(method)) {
-          errors.push(
-            `${prefix}: Invalid HTTP method '${method}' in 'allowedMethods'. ` +
-            `Valid methods: ${validMethods.join(", ")}`,
-          );
-        }
-      }
     }
   }
 }
