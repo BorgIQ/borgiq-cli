@@ -14,7 +14,7 @@ export const registerCanvasActorsCommands = (program: Command): void => {
   const canvasActors = program.command('canvas-actors').description('Manage individual actors within a canvas');
 
   withListOptions(
-    canvasActors.command('list <canvasSlugOrId>').description('List actors in a canvas with optional filters'),
+    canvasActors.command('list <canvas>').description('List actors in a canvas by slug or ID with optional filters'),
     { sort: { fields: ['name', 'type', 'createdAt'], defaultBy: 'name', defaultOrder: 'asc' } },
   )
     .option('--actor-type <type>', 'Filter by actor type (e.g. DenoActor, HttpRequestActor)')
@@ -22,51 +22,51 @@ export const registerCanvasActorsCommands = (program: Command): void => {
     .action(canvasActorsList);
 
   canvasActors
-    .command('get <canvasSlugOrId> <actorId>')
-    .description('Get a single actor by ID')
+    .command('get <canvas> <actorId>')
+    .description('Get a single actor by ID from a canvas by slug or ID')
     .action(canvasActorsGet);
 
   canvasActors
-    .command('flow <canvasSlugOrId> <actorId>')
-    .description('Get an actor and all its downstream actors')
+    .command('flow <canvas> <actorId>')
+    .description('Get an actor and all its downstream actors from a canvas by slug or ID')
     .action(canvasActorsFlow);
 
   canvasActors
-    .command('verify <canvasSlugOrId>')
-    .description('Verify actor options against the actor type schema')
+    .command('verify <canvas>')
+    .description('Verify actor options against the actor type schema for a canvas by slug or ID')
     .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .action(canvasActorsVerify);
 
   canvasActors
-    .command('create <canvasSlugOrId> <actorId>')
-    .description('Create a single actor in a canvas')
+    .command('create <canvas> <actorId>')
+    .description('Create a single actor in a canvas by slug or ID')
     .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .action(canvasActorsCreate);
 
   canvasActors
-    .command('update <canvasSlugOrId> <actorId>')
-    .description('Update a single actor (partial update)')
+    .command('update <canvas> <actorId>')
+    .description('Update a single actor in a canvas by slug or ID')
     .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .option('--edit-version <version>', 'Edit version for conflict detection')
     .action(canvasActorsUpdate);
 
   canvasActors
-    .command('delete <canvasSlugOrId> <actorId>')
-    .description('Delete a single actor from a canvas')
+    .command('delete <canvas> <actorId>')
+    .description('Delete a single actor from a canvas by slug or ID')
     .option('--edit-version <version>', 'Edit version for conflict detection')
     .option('-y, --yes', 'Skip the confirmation prompt')
     .option('--force', 'Alias for --yes')
     .action(canvasActorsDelete);
 
   canvasActors
-    .command('batch <canvasSlugOrId>')
-    .description('Apply batch actor operations (add, update, remove multiple actors)')
+    .command('batch <canvas>')
+    .description('Apply batch actor operations to a canvas by slug or ID')
     .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .addHelpText(
       'after',
       `
 Example:
-  $ cat ops.json | borgiq canvas-actors batch <canvasSlugOrId> --file -`,
+  $ cat ops.json | borgiq canvas-actors batch <canvas> --file -`,
     )
     .action(canvasActorsBatch);
 };

@@ -7,7 +7,7 @@ import { handleError } from '../../lib/errors.js';
 import { BUNDLE_COMPANIONS } from './shared.js';
 
 export const bundlePull = async (
-  canvas: string,
+  canvasSlugOrId: string,
   dir: string | undefined,
   options: { force?: boolean },
   command: { parent: { parent: { opts: () => GlobalOptions } } },
@@ -15,12 +15,12 @@ export const bundlePull = async (
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
-    const envelope = await client.exportCanvas(ctx.org, ctx.workspace, canvas);
+    const envelope = await client.exportCanvas(ctx.org, ctx.workspace, canvasSlugOrId);
     const input = parseExportInput(JSON.stringify(envelope));
 
     const slug = typeof input.document.metadata.slug === 'string' && input.document.metadata.slug.length > 0
       ? input.document.metadata.slug
-      : canvas;
+      : canvasSlugOrId;
     const target = dir ?? `./${slug}.borgiq-canvas`;
 
     const { files, warnings } = disassemble(input.document, { exportErrors: input.exportErrors });

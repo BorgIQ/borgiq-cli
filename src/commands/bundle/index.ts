@@ -44,22 +44,23 @@ Examples:
 
   bundle
     .command('pull <canvas> [dir]')
-    .description('Export a canvas from the API and unpack it into a bundle folder')
+    .description('Export a canvas by slug or ID from the API and unpack it into a bundle folder')
     .option('--force', 'Write into a non-empty directory that is not a bundle')
     .action(bundlePull);
 
   bundle
     .command('push <dir>')
-    .description('Validate, pack, and import a bundle into a canvas')
-    .option('--canvas <slugOrId>', "Target canvas (default: the bundle's canvas.slug)")
+    .description('Validate, pack, and import a bundle into a canvas by slug or ID')
+    .option('--canvas <canvas>', "Target canvas slug or ID (default: the bundle's canvas.slug)")
     .option('--mode <mode>', 'Import mode: merge (default), insert, or replace')
     .option('--create', 'Create a new canvas from the bundle metadata instead of importing')
     .option('--strict', 'Treat validation warnings as errors')
     .addHelpText('after', `
 Examples:
-  $ borgiq bundle pull my-canvas
+  $ borgiq bundle pull my-canvas-slug
+  $ borgiq bundle pull CANV01abc...
   $ borgiq bundle push ./my-canvas.borgiq-canvas
-  $ borgiq bundle push ./my-canvas.borgiq-canvas --mode replace
+  $ borgiq bundle push ./my-canvas.borgiq-canvas --canvas my-canvas-slug --mode replace
   $ borgiq bundle push ./my-canvas.borgiq-canvas --create`)
     .action(bundlePush);
 };

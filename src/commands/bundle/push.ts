@@ -40,7 +40,7 @@ export const bundlePush = async (
 
     const target = options.canvas ?? (typeof doc.metadata.slug === 'string' ? doc.metadata.slug : '');
     if (!target) {
-      throw new CliUsageError('No canvas target - pass --canvas <slugOrId> or set canvas.slug in the bundle.');
+      throw new CliUsageError('No canvas target - pass --canvas <canvas> or set canvas.slug in the bundle.');
     }
 
     const result = await client.importCanvasData(ctx.org, ctx.workspace, target, { canvas: doc.data, mode });

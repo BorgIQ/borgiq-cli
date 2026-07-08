@@ -23,8 +23,8 @@ export const registerCanvasesCommands = (program: Command): void => {
     .action(canvasesList);
 
   canvases
-    .command('get <id>')
-    .description('Get canvas details')
+    .command('get <canvas>')
+    .description('Get canvas details by slug or ID')
     .option('--include-data', 'Include full flow data (actors, edges, positions)')
     .action(canvasesGet);
 
@@ -48,13 +48,13 @@ export const registerCanvasesCommands = (program: Command): void => {
       `
 Examples:
   $ borgiq canvases create-with-data --file flow.json
-  $ borgiq canvases export <id> | borgiq canvases create-with-data --file -`,
+  $ borgiq canvases export <canvas> | borgiq canvases create-with-data --file -`,
     )
     .action(canvasesCreateWithData);
 
   canvases
-    .command('update <id>')
-    .description('Update canvas metadata')
+    .command('update <canvas>')
+    .description('Update canvas metadata by slug or ID')
     .option('--name <name>', 'Canvas name')
     .option('--slug <slug>', 'Canvas slug')
     .option('--description <desc>', 'Canvas description')
@@ -64,32 +64,32 @@ Examples:
     .action(canvasesUpdate);
 
   canvases
-    .command('update-data <id>')
-    .description('Import canvas data (merge, insert, or replace actors)')
+    .command('update-data <canvas>')
+    .description('Import canvas data by slug or ID (merge, insert, or replace actors)')
     .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .option('--mode <mode>', 'Import mode: merge (default), insert, or replace', 'merge')
     .action(canvasesUpdateData);
 
   canvases
-    .command('delete <id>')
-    .description('Delete a canvas')
+    .command('delete <canvas>')
+    .description('Delete a canvas by slug or ID')
     .option('-y, --yes', 'Skip the confirmation prompt')
     .option('--force', 'Alias for --yes')
     .action(canvasesDelete);
 
   canvases
-    .command('export <id>')
-    .description('Export canvas data as JSON')
+    .command('export <canvas>')
+    .description('Export canvas data by slug or ID as JSON')
     .action(canvasesExport);
 
   canvases
-    .command('validate <id>')
-    .description('Validate canvas configuration before execution')
+    .command('validate <canvas>')
+    .description('Validate canvas configuration by slug or ID before execution')
     .action(canvasesValidate);
 
   canvases
-    .command('layout <id>')
-    .description('Auto-layout canvas actors using ELK algorithm')
+    .command('layout <canvas>')
+    .description('Auto-layout canvas actors by slug or ID using ELK algorithm')
     .option('--source-actor-id <actorId...>', 'Layout only downstream of these actors')
     .action(canvasesLayout);
 
