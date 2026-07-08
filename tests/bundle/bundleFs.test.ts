@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { readBundleDir, writeBundleDir } from '../../src/lib/bundleFs.js';
+import { planBundleDirIncrementalWrite, readBundleDir, writeBundleDir, writeBundleDirIncremental } from '../../src/lib/bundleFs.js';
 
 let dir: string;
 
@@ -67,5 +67,34 @@ describe('writeBundleDir and readBundleDir', () => {
 
   it('rejects file-map paths that escape the target directory', () => {
     expect(() => writeBundleDir(dir, { 'canvas.yaml': 'x\n', '../escape.txt': 'x\n' })).toThrow(/escape/i);
+  });
+
+  it('incremental writes leave identical files untouched', async () => {
+    writeBundleDir(dir, FILES);
+    const actorPath = path.join(dir, 'actors/tasks/deno/ACTR1/actor.yaml');
+    const before = fs.statSync(actorPath).mtimeMs;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(planBundleDirIncrementalWrite(dir, FILES)).toEqual({ write: [], delete: [] });
+    expect(writeBundleDirIncremental(dir, FILES)).toEqual({ write: [], delete: [] });
+    expect(fs.statSync(actorPath).mtimeMs).toBe(before);
+  });
+
+  it('incremental writes delete vanished actor files and preserve unmanaged paths', () => {
+    writeBundleDir(dir, FILES);
+    fs.writeFileSync(path.join(dir, 'NOTES.md'), 'mine\n');
+    const next = {
+      'canvas.yaml': 'format: borgiq.canvas.bundle\n',
+      'actors/other/echo/ACTR2/actor.yaml': 'id: ACTR2\n',
+    };
+
+    const plan = writeBundleDirIncremental(dir, next);
+    expect(plan.write).toEqual(['actors/other/echo/ACTR2/actor.yaml']);
+    expect(plan.delete).toEqual([
+      'actors/tasks/deno/ACTR1/actor.yaml',
+      'actors/tasks/deno/ACTR1/code/mod.ts',
+    ]);
+    expect(readBundleDir(dir)).toEqual(next);
+    expect(fs.readFileSync(path.join(dir, 'NOTES.md'), 'utf-8')).toBe('mine\n');
   });
 });

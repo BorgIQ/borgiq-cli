@@ -44,16 +44,21 @@ Examples:
 
   bundle
     .command('pull <canvas> [dir]')
-    .description('Export a canvas by slug or ID from the API and unpack it into a bundle folder')
+    .description('Sync a canvas by slug or ID from the API into a bundle folder')
+    .option('--replace', 'Use the legacy full managed-path rewrite instead of incremental sync')
     .option('--force', 'Write into a non-empty directory that is not a bundle')
+    .option('--dry-run', 'Show the pull sync plan without writing files')
     .action(bundlePull);
 
   bundle
     .command('push <dir>')
-    .description('Validate, pack, and import a bundle into a canvas by slug or ID')
+    .description('Validate and sync a bundle into a canvas by slug or ID')
     .option('--canvas <canvas>', "Target canvas slug or ID (default: the bundle's canvas.slug)")
-    .option('--mode <mode>', 'Import mode: merge (default), insert, or replace')
+    .option('--mode <mode>', 'Legacy whole-document import mode: merge, insert, or replace')
     .option('--create', 'Create a new canvas from the bundle metadata instead of importing')
+    .option('--force-local', 'Resolve sync conflicts by applying the local actor version')
+    .option('--dry-run', 'Show the push sync plan without applying changes')
+    .option('--no-refresh', 'Skip the post-push pull that refreshes local version markers')
     .option('--strict', 'Treat validation warnings as errors')
     .option('--auto-layout', 'Run canvas auto-layout after a successful create/import')
     .option('--layout-source-actor-id <actorId...>', 'Auto-layout only downstream of these actors (implies --auto-layout)')
@@ -62,6 +67,8 @@ Examples:
   $ borgiq bundle pull my-canvas-slug
   $ borgiq bundle pull CANV01abc...
   $ borgiq bundle push ./my-canvas.borgiq-canvas
+  $ borgiq bundle push ./my-canvas.borgiq-canvas --dry-run
+  $ borgiq bundle push ./my-canvas.borgiq-canvas --force-local
   $ borgiq bundle push ./my-canvas.borgiq-canvas --canvas my-canvas-slug --mode replace
   $ borgiq bundle push ./my-canvas.borgiq-canvas --create --auto-layout`)
     .action(bundlePush);

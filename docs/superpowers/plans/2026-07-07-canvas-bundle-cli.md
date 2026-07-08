@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a `borgiq bundle` command group that deterministically compiles the platform's single-document canvas export (`{metadata, data}` YAML) into a git/AI-friendly filesystem bundle and back, plus an offline `init` starter — zero platform changes.
+**Goal:** Add a `borgiq bundle` command group that deterministically compiles the platform's single-document canvas export (`{metadata, data}` YAML) into a git/AI-friendly filesystem bundle and back, plus an offline `init` starter — zero platform changes. **Amended 2026-07-08 (Task 10):** `push` and `pull` default to *incremental sync* — a per-actor diff against the server applied through the per-actor API — with the original whole-document behavior behind `--mode` (push) / `--replace` (pull).
 
-**Architecture:** A pure compiler core in `src/lib/bundle/` operating on an in-memory `BundleFileMap` (`Record<relativePath, string>`): `disassemble` (export doc → files), `assemble` (files → export doc), `validate` (path-scoped errors/warnings), an exhaustive 30-type path registry, and one deterministic YAML serialization seam. Filesystem I/O lives in `src/lib/bundleFs.ts`; API transport reuses existing `BorgIQClient` methods (`exportCanvas`, `createCanvasWithData`, `importCanvasData`) — no client changes.
+**Architecture:** A pure compiler core in `src/lib/bundle/` operating on an in-memory `BundleFileMap` (`Record<relativePath, string>`): `disassemble` (export doc → files), `assemble` (files → export doc), `validate` (path-scoped errors/warnings), `diff` (per-actor sync classification), an exhaustive 30-type path registry, and one deterministic YAML serialization seam. Filesystem I/O lives in `src/lib/bundleFs.ts`; API transport reuses existing `BorgIQClient` methods (`exportCanvas`, `createCanvasWithData`, `importCanvasData`, and for sync `batchActorOperations` + `updateCanvas`) — no client changes.
 
 **Tech Stack:** TypeScript (strict, NodeNext ESM), commander 15, `yaml` 2.9.0 (already pinned), `ulidx` (already present), Vitest (new devDependency — first test infra in this repo).
 
@@ -35,12 +35,14 @@
 | Create `src/lib/bundle/validate.ts` | `validateBundle(files)` → `{errors, warnings}`, all 8 spec check groups |
 | Create `src/lib/bundle/assemble.ts` | `assembleBundle(files)` → `{doc, warnings}`; throws `BundleValidationError` on invalid input |
 | Create `src/lib/bundle/template.ts` | `buildStarterBundle`, `BUNDLE_AGENTS_MD`, `BUNDLE_GITIGNORE` |
-| Create `src/lib/bundleFs.ts` | `readBundleDir` / `writeBundleDir` with managed-path overwrite semantics |
-| Create `src/commands/bundle/{index,shared,init,unpack,pack,validate,pull,push}.ts` | Thin command shells |
+| Create `src/lib/bundle/diff.ts` *(Task 10)* | `diffCanvas(local, server)` — pure per-actor sync classification (verdicts, batch ops, metadata delta) |
+| Create `src/lib/bundleFs.ts` | `readBundleDir` / `writeBundleDir` with managed-path overwrite semantics; *(Task 10)* `writeBundleDirIncremental` |
+| Create `src/commands/bundle/{index,shared,init,unpack,pack,validate,pull,push}.ts` | Thin command shells; *(Task 10)* `push`/`pull` gain sync-by-default flows |
 | Modify `src/program.ts` | Register the bundle group |
 | Modify `package.json` | `vitest` devDep + `"test": "vitest run"` script |
 | Modify `AGENTS.md` (repo root) + `README.md` | Document the new group |
 | Create `tests/bundle/{fixtures,yaml.test,registry.test,disassemble.test,validate.test,roundtrip.test,template.test,bundleFs.test}.ts` | Test suite (outside `src/` so `tsc` — `include: ["src"]` — never compiles or ships them) |
+| Create `tests/bundle/diff.test.ts` *(Task 10)* | Sync diff verdict matrix + pull-merge cases |
 
 ---
 
@@ -2665,8 +2667,150 @@ git commit -m "feat(bundle): add pull/push commands and document the bundle work
 
 ---
 
+### Task 10: Incremental sync — per-actor diff as the default push/pull behavior
+
+*Added 2026-07-08, after Tasks 1–9 shipped. Spec section: "Incremental sync (default push/pull behavior)" — read it first; it is the contract for every rule below (verdict table, conflict policy, ordering, invariants).*
+
+**Why:** whole-document import replaces every actor on every push (noisy canvas history, stomps concurrent server edits); full-rewrite pull churns every file's mtime and clobbers local work. Sync converges the two sides by touching only actors that differ, via the per-actor API that already exists in the client.
+
+**Behavior change:** bare `bundle push` and `bundle pull` become sync. The old paths remain: `push --mode <merge|insert|replace>` (presence of `--mode` selects whole-document `importCanvasData`; there is no longer an implicit default mode) and `pull --replace` (full managed-path rewrite). Call this out in the PR body and CHANGELOG-driving PR title.
+
+**Files:**
+- Create: `src/lib/bundle/diff.ts` (pure core — no fs, no network)
+- Create: `tests/bundle/diff.test.ts`
+- Modify: `src/lib/bundleFs.ts` (add `writeBundleDirIncremental`)
+- Modify: `src/commands/bundle/push.ts`, `src/commands/bundle/pull.ts`, `src/commands/bundle/index.ts`
+- Modify: `README.md` (bundle section — sync examples)
+
+**Interfaces:**
+- Consumes: `assemble`/`disassemble`, the `yaml.ts` canonical seam, and EXISTING client methods — no client changes: `client.exportCanvas`, `client.batchActorOperations(org, workspace, canvas, { operations })` (ops `{ type: 'add' | 'update' | 'remove', actorId, editVersion?, data? }` → `{ appliedOperations, conflicts, updatedAt }`), `client.updateCanvas`.
+- Produces: `diffCanvas`, `writeBundleDirIncremental`, and the sync-by-default command surface.
+
+- [ ] **Step 1: Pure diff core**
+
+Create `src/lib/bundle/diff.ts`:
+
+```typescript
+import type { CanvasExportDocument, ExportedCanvasActor } from './types.js';
+import { stringifyYamlDoc } from './yaml.js';
+
+export type ActorVerdict =
+  | 'unchanged'          // canonical content equal
+  | 'local-edit'         // differs, bundleVersion === serverVersion → push: update; pull: keep local
+  | 'server-edit'        // differs, bundleVersion !== serverVersion → push: CONFLICT; pull: rewrite from server
+  | 'version-missing'    // differs, local has no version but server actor exists → push: CONFLICT (conservative)
+  | 'new-local'          // local only, no version field → push: add; pull: keep + merge into graph
+  | 'deleted-on-server'  // local only, has version → push: report; pull: delete local folder
+  | 'server-only';       // server only → push: remove op; pull: write locally
+
+export interface ActorDiffEntry {
+  actorId: string;
+  name: string;
+  verdict: ActorVerdict;
+  bundleVersion?: number;
+  serverVersion?: number;
+}
+
+export interface CanvasDiff {
+  entries: ActorDiffEntry[];                       // every actor id on either side, sorted by actorId
+  conflicts: ActorDiffEntry[];                     // server-edit + version-missing
+  metadataDelta: Record<string, unknown> | null;   // name/description/tags/messageTTLInDays/runtimeSlug only
+}
+
+/** Canonical, version-blind comparison form of one actor (incl. its edges + position). */
+export const canonicalActorForm = (actor: ExportedCanvasActor): string => {
+  const { version: _version, ...rest } = actor;
+  return stringifyYamlDoc(rest);                   // the ONE deterministic seam — same key ordering as disassemble
+};
+
+export const diffCanvas = (local: CanvasExportDocument, server: CanvasExportDocument): CanvasDiff => { /* … */ };
+
+/** Project a CanvasDiff into ordered batch operations: adds → updates → removes. */
+export const toBatchOperations = (diff: CanvasDiff, local: CanvasExportDocument, forceLocal: boolean): BatchActorOperation[] => { /* … */ };
+```
+
+Rules (all from the spec's verdict table — implement exactly):
+- Compare **exported actor records** (post-assembly for the local side), so `code/` files are already re-inlined and edges/position ride on the actor. Never compare raw bundle files against the server.
+- `version` is excluded from content comparison and used only as the freshness marker.
+- `metadataDelta` compares only `name`, `description`, `tags`, `messageTTLInDays`, `runtimeSlug` — never `slug`, `id`, `imagePath`, `schemaVersion`.
+- `toBatchOperations`: `update`/`remove` ops carry `editVersion: serverVersion`; with `forceLocal`, conflicted actors become plain `update` ops (still with `editVersion` — an in-flight race must still surface in `conflicts[]`).
+- Pure and deterministic: no `Date.now`, no randomness, sorts by `actorId` (plain `<`, not `localeCompare`).
+
+- [ ] **Step 2: Incremental filesystem write**
+
+Extend `src/lib/bundleFs.ts` with `writeBundleDirIncremental(dir, files: BundleFileMap, opts)`:
+- Writes only files whose on-disk bytes differ from `files` (byte compare; untouched files keep their mtime).
+- Deletes managed paths present on disk but absent from `files` **only under `actors/`** (root `canvas.yaml` is always in `files`); prunes emptied actor directories.
+- Companion semantics unchanged: `AGENTS.md`/`.gitignore` created only if missing; unmanaged paths never touched; same `--force`/bundle-detection rules as `writeBundleDir`.
+
+- [ ] **Step 3: Rework push (sync default, `--mode` = legacy)**
+
+`src/commands/bundle/push.ts` — options become `{ canvas?, mode?, create?, forceLocal?, dryRun?, refresh?, strict?, autoLayout?, layoutSourceActorId? }`. Flow, in this exact order (spec "Order of operations"):
+
+1. `--create` unchanged (conflicts with `--canvas`/`--mode`; also with `--force-local`/`--dry-run` — usage error).
+2. Validate + assemble local bundle (before any API call). If `--mode` given → legacy `importCanvasData` path, verbatim current behavior, done.
+3. `exportCanvas(target)` → parse envelope → local vs server `diffCanvas`.
+4. Conflicts and not `--force-local` → write the report to stderr (id, name, bundle path, `bundleVersion → serverVersion`, hint: *re-pull, or `--force-local`*), `output()` the structured diff, exit non-zero. **Nothing is applied.**
+5. `--dry-run` → print the plan (adds/updates/removes/conflicts/unchanged counts + ids, metadata delta), apply nothing, exit 0.
+6. `batchActorOperations` with `toBatchOperations(...)` (skip the call entirely when there are zero ops). Response `conflicts[]` non-empty → report + non-zero exit.
+7. `metadataDelta` → `updateCanvas`.
+8. `--auto-layout` / `--layout-source-actor-id` as today.
+9. Unless `--no-refresh`: implicit incremental pull (Step 4's write path) so local `version` markers advance. Summary: `applied: N added, M updated, K deleted[, metadata]; skipped: U unchanged`.
+
+- [ ] **Step 4: Rework pull (sync default, `--replace` = legacy)**
+
+`src/commands/bundle/pull.ts` — options become `{ replace?, force?, dryRun? }`:
+
+1. Target dir is not an existing bundle (no `canvas.yaml`), or `--replace` given → current full `writeBundleDir` behavior, done.
+2. Otherwise: read + assemble the local bundle (a local bundle that fails validation cannot be sync-pulled — tell the user to fix it or use `--replace`), fetch + parse the export, `diffCanvas`.
+3. Compute the merged actor set per the verdict table: server actors, except `local-edit` actors keep the local record (report "local changes kept — push to publish"); `new-local` actors are kept with their graph nodes/edges; `deleted-on-server` actor folders are dropped.
+4. Disassemble the merged document (existing disassembler — graph/index/dependencies regenerate as projections) → `writeBundleDirIncremental`.
+5. `--dry-run` prints per-actor verdicts and the would-write/would-delete file lists, writes nothing.
+6. Summary: `updated: N actors, kept local: M, deleted: K, unchanged: U`.
+
+- [ ] **Step 5: Registration + help text**
+
+`src/commands/bundle/index.ts`: add `--replace`/`--dry-run` to pull; `--force-local`/`--dry-run`/`--no-refresh` to push; **remove the `'merge'` default from `--mode`** (its presence now selects the legacy path — update the option description to say so). Refresh the help epilogue examples:
+
+```
+  $ borgiq bundle push ./my-canvas.borgiq-canvas              # sync: only modified actors
+  $ borgiq bundle push ./my-canvas.borgiq-canvas --dry-run    # show the sync plan
+  $ borgiq bundle push ./my-canvas.borgiq-canvas --force-local  # conflicted actors: local wins
+  $ borgiq bundle push ./my-canvas.borgiq-canvas --mode replace # legacy whole-document import
+  $ borgiq bundle pull my-canvas                              # sync: only server-changed actors
+  $ borgiq bundle pull my-canvas --replace                    # legacy full rewrite
+```
+
+- [ ] **Step 6: Tests**
+
+`tests/bundle/diff.test.ts` (pure, in-memory documents — reuse Task 5 fixtures):
+- Verdict matrix: every row of the spec table, including formatting-only local reordering → `unchanged`, and `version-missing` → conflict.
+- `toBatchOperations`: ordering adds → updates → removes; `editVersion` present on update/remove; `forceLocal` converts conflicts to updates; zero-diff → zero ops.
+- `metadataDelta`: detects each syncable field; ignores `slug`/`id`/`imagePath`/`schemaVersion`.
+- Pull merge: kept `new-local` actor's node/edges survive `canvas.yaml` regeneration; `local-edit` actor record survives verbatim; `deleted-on-server` folder disappears from the merged file map.
+
+`tests/bundle/bundleFs.test.ts` additions: incremental write leaves identical files untouched (mtime check), deletes only vanished actor folders, still never touches unmanaged paths.
+
+- [ ] **Step 7: Docs + gate + commit**
+
+README bundle section: replace the push/pull example lines with the sync-first examples from Step 5. Then:
+
+```bash
+npm run build && npm test
+```
+
+Optional live smoke test: `pull` a canvas, edit one actor's `actor.yaml`, `push --dry-run` (expect exactly one update), `push`, re-`push` (expect all-unchanged, zero ops).
+
+```bash
+git add src/lib/bundle/diff.ts src/lib/bundleFs.ts src/commands/bundle tests/bundle README.md
+git commit -m "feat(bundle): incremental sync as default push/pull via per-actor batch API"
+```
+
+---
+
 ## Post-plan notes for the implementer
 
 - **PR title** (this repo squash-merges; the title is the release-please commit): `feat(bundle): add canvas bundle init/unpack/pack/validate/pull/push commands`. See `.claude/skills/release-please-prs`.
 - **Determinism review before opening the PR:** grep the new code for `Date.now`, `Math.random`, `localeCompare`, and `toLocale` — only `template.ts`/`ids.ts` usage (ULID minting) is allowed, and only in the init path.
 - **Spec conformance:** `docs/superpowers/specs/2026-07-07-canvas-bundle-cli-design.md` is the contract. If implementation reality forces a deviation, update the spec in the same PR and say so in the task report.
+- **Task 10 ships as its own PR** with title `feat(bundle)!: make incremental sync the default push/pull behavior` — the `!` is deliberate: bare `bundle push`/`bundle pull` change semantics (push no longer implies `--mode merge`; pull no longer full-rewrites), and release-please should cut the corresponding version bump and CHANGELOG entry. Spell out the old→new behavior and the escape hatches (`--mode`, `--replace`) in the PR body.

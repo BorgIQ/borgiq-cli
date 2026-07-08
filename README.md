@@ -109,11 +109,11 @@ Values are resolved in this order (highest priority first):
 | Command | Description |
 |---------|-------------|
 | `borgiq bundle init <dir>` | Create an offline starter bundle folder |
-| `borgiq bundle pull <canvas> [dir]` | Export a canvas by slug or ID from the API and unpack it |
+| `borgiq bundle pull <canvas> [dir]` | Sync a canvas by slug or ID into a bundle folder |
 | `borgiq bundle unpack <file> <dir>` | Expand a canvas export document into a bundle folder |
 | `borgiq bundle validate <dir>` | Validate a bundle with file-scoped findings |
 | `borgiq bundle pack <dir>` | Compile a bundle back to canvas export YAML |
-| `borgiq bundle push <dir>` | Validate and import a bundle into a canvas |
+| `borgiq bundle push <dir>` | Validate and sync a bundle into a canvas |
 
 ### Canvas Actors
 
@@ -393,7 +393,10 @@ borgiq bundle pull my-canvas
 borgiq bundle validate ./my-flow.borgiq-canvas
 borgiq bundle pack ./my-flow.borgiq-canvas -o export.yaml
 borgiq bundle push ./my-flow.borgiq-canvas
+borgiq bundle push ./my-flow.borgiq-canvas --dry-run
+borgiq bundle push ./my-flow.borgiq-canvas --force-local
 borgiq bundle push ./my-flow.borgiq-canvas --auto-layout
+borgiq bundle push ./my-flow.borgiq-canvas --mode replace
 borgiq bundle push ./my-flow.borgiq-canvas --create
 ```
 
@@ -403,10 +406,10 @@ borgiq bundle push ./my-flow.borgiq-canvas --create
 | `borgiq bundle unpack <file\|-> <dir>` | Read raw export YAML or the `{ yaml, errors }` JSON envelope and write a bundle folder. |
 | `borgiq bundle pack <dir>` | Validate and emit platform export YAML to stdout or `-o, --output <file>`. |
 | `borgiq bundle validate <dir>` | Report all bundle errors and warnings; `--strict` treats warnings as fatal. |
-| `borgiq bundle pull <canvas> [dir]` | Export by slug or ID from the API and unpack. Default dir is `./<slug>.borgiq-canvas`. |
-| `borgiq bundle push <dir>` | Validate, pack, and import using `--mode merge\|insert\|replace` (default merge). Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. |
+| `borgiq bundle pull <canvas> [dir]` | Sync by slug or ID from the API. Existing bundles update only server-changed actors; `--replace` does the legacy full managed-path rewrite. |
+| `borgiq bundle push <dir>` | Validate and sync only changed actors by default. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. |
 
-`pull` and `unpack` rewrite only managed paths: `canvas.yaml` and `actors/`.
+`pull --replace` and `unpack` rewrite only managed paths: `canvas.yaml` and `actors/`.
 Files such as `.git/`, `AGENTS.md`, `.gitignore`, and notes are preserved.
 `AGENTS.md` and `.gitignore` are created only when missing.
 
@@ -767,8 +770,8 @@ borgiq bundle validate ./invoice-router.borgiq-canvas --strict
 # Pack without applying
 borgiq bundle pack ./invoice-router.borgiq-canvas -o invoice-router.yaml
 
-# Apply local bundle changes back to the canvas and auto-layout it
-borgiq bundle push ./invoice-router.borgiq-canvas --mode merge --auto-layout
+# Sync local bundle changes back to the canvas and auto-layout it
+borgiq bundle push ./invoice-router.borgiq-canvas --auto-layout
 ```
 
 ### Inspect a Flow Run
