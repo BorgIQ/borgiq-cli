@@ -71,7 +71,10 @@ export const disassemble = (doc: CanvasExportDocument, opts: DisassembleOptions 
       warnings.push(`Actor ${actor.id} uses deprecated type DeprecatedAiAgent.`);
     }
     if (SETUP_SENSITIVE_TYPES.has(type)) {
-      warnings.push(`Actor ${actor.id} (${type}) may require target environment setup after import.`);
+      warnings.push(
+        `Actor ${actor.id} (${type}) was bundled, but trigger setup may not move with it. `
+        + 'After import, verify its trigger URL/key, schedule, or external caller configuration in the target workspace.',
+      );
     }
 
     nodes.push({ actorId: actor.id, position: actor.position ?? { x: 0, y: 0 } });

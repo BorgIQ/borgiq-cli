@@ -119,7 +119,7 @@ describe('disassemble', () => {
       ]),
     );
     expect(warnings.some((warning) => warning.includes('DeprecatedAiAgent'))).toBe(true);
-    expect(warnings.some((warning) => warning.includes('target environment'))).toBe(true);
+    expect(warnings.some((warning) => warning.includes('verify its trigger URL/key, schedule, or external caller configuration'))).toBe(true);
     expect(root(files).warnings).toEqual(warnings);
   });
 
