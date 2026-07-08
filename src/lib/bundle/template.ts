@@ -11,7 +11,13 @@ const DENO_STARTER_CODE = `import type { Request, Response } from '@borgiq/actor
 
 export default async function receive(req: Request): Promise<Response> {
   return {
-    results: {},
+    results: {
+      runtime: {
+        denoVersion: Deno.version,
+        denoBuild: Deno.build,
+      },
+      ctx: req.ctx,
+    },
     memory: req.memory,
   };
 }

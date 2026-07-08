@@ -1,4 +1,5 @@
 import { readBundleDir } from '../../lib/bundleFs.js';
+import { applyCanvasAutoLayout, canvasSlugOrIdFromCreateResult, shouldAutoLayout } from '../../lib/canvasLayout.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { createClientWithContext } from '../../lib/context.js';
 import { CliUsageError, handleError } from '../../lib/errors.js';
@@ -9,7 +10,7 @@ const MODES = new Set(['merge', 'insert', 'replace']);
 
 export const bundlePush = async (
   dir: string,
-  options: { canvas?: string; mode?: string; create?: boolean; strict?: boolean },
+  options: { canvas?: string; mode?: string; create?: boolean; strict?: boolean; autoLayout?: boolean; layoutSourceActorId?: string[] },
   command: { parent: { parent: { opts: () => GlobalOptions } } },
 ): Promise<void> => {
   try {
@@ -34,6 +35,15 @@ export const bundlePush = async (
       if (!globalOpts.json && process.stderr.isTTY) {
         process.stderr.write(`Canvas '${String(metadata.slug)}' created from ${dir}.\n`);
       }
+      if (shouldAutoLayout(options)) {
+        const canvasTarget = canvasSlugOrIdFromCreateResult(result, metadata);
+        if (!canvasTarget) {
+          throw new CliUsageError('Cannot auto-layout created canvas because no canvas slug or ID was returned. Set canvas.slug in the bundle or run `borgiq canvases layout <canvas>` manually.');
+        }
+        const layout = await applyCanvasAutoLayout(client, ctx.org, ctx.workspace, canvasTarget, options, globalOpts);
+        output({ canvas: result, layout }, globalOpts);
+        return;
+      }
       output(result, globalOpts);
       return;
     }
@@ -48,6 +58,11 @@ export const bundlePush = async (
       const applied = (result as { appliedOperations?: unknown[] })?.appliedOperations?.length ?? 0;
       const conflicts = (result as { conflicts?: unknown[] })?.conflicts?.length ?? 0;
       process.stderr.write(`Pushed ${dir} -> '${target}' (${mode} mode): ${applied} operations applied, ${conflicts} conflicts.\n`);
+    }
+    if (shouldAutoLayout(options)) {
+      const layout = await applyCanvasAutoLayout(client, ctx.org, ctx.workspace, target, options, globalOpts);
+      output({ import: result, layout }, globalOpts);
+      return;
     }
     output(result, globalOpts);
   } catch (error) {

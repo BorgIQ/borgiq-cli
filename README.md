@@ -340,6 +340,8 @@ borgiq canvases list --all --json | jq '.data[].slug'
 | Option | Description |
 |--------|-------------|
 | `--file <path>` | Path to JSON/YAML file containing full canvas definition (or pipe YAML/JSON via stdin) |
+| `--auto-layout` | Run canvas auto-layout after the canvas is created |
+| `--layout-source-actor-id <id>` | Auto-layout only downstream of specified actors; implies `--auto-layout` |
 
 **`borgiq canvases update`**
 
@@ -358,6 +360,8 @@ borgiq canvases list --all --json | jq '.data[].slug'
 |--------|-------------|
 | `--file <path>` | Path to JSON/YAML file (or pipe YAML/JSON via stdin) |
 | `--mode <mode>` | Update mode: `merge` (default), `insert`, or `replace` |
+| `--auto-layout` | Run canvas auto-layout after a successful import |
+| `--layout-source-actor-id <id>` | Auto-layout only downstream of specified actors; implies `--auto-layout` |
 
 **`borgiq canvases layout`**
 
@@ -389,6 +393,7 @@ borgiq bundle pull my-canvas
 borgiq bundle validate ./my-flow.borgiq-canvas
 borgiq bundle pack ./my-flow.borgiq-canvas -o export.yaml
 borgiq bundle push ./my-flow.borgiq-canvas
+borgiq bundle push ./my-flow.borgiq-canvas --auto-layout
 borgiq bundle push ./my-flow.borgiq-canvas --create
 ```
 
@@ -399,7 +404,7 @@ borgiq bundle push ./my-flow.borgiq-canvas --create
 | `borgiq bundle pack <dir>` | Validate and emit platform export YAML to stdout or `-o, --output <file>`. |
 | `borgiq bundle validate <dir>` | Report all bundle errors and warnings; `--strict` treats warnings as fatal. |
 | `borgiq bundle pull <canvas> [dir]` | Export by slug or ID from the API and unpack. Default dir is `./<slug>.borgiq-canvas`. |
-| `borgiq bundle push <dir>` | Validate, pack, and import using `--mode merge\|insert\|replace` (default merge). |
+| `borgiq bundle push <dir>` | Validate, pack, and import using `--mode merge\|insert\|replace` (default merge). Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. |
 
 `pull` and `unpack` rewrite only managed paths: `canvas.yaml` and `actors/`.
 Files such as `.git/`, `AGENTS.md`, `.gitignore`, and notes are preserved.
@@ -762,8 +767,8 @@ borgiq bundle validate ./invoice-router.borgiq-canvas --strict
 # Pack without applying
 borgiq bundle pack ./invoice-router.borgiq-canvas -o invoice-router.yaml
 
-# Apply local bundle changes back to the canvas
-borgiq bundle push ./invoice-router.borgiq-canvas --mode merge
+# Apply local bundle changes back to the canvas and auto-layout it
+borgiq bundle push ./invoice-router.borgiq-canvas --mode merge --auto-layout
 ```
 
 ### Inspect a Flow Run

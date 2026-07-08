@@ -43,11 +43,14 @@ export const registerCanvasesCommands = (program: Command): void => {
     .command('create-with-data')
     .description('Create a canvas with full flow data (actors + edges)')
     .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
+    .option('--auto-layout', 'Run canvas auto-layout after creating the canvas')
+    .option('--layout-source-actor-id <actorId...>', 'Auto-layout only downstream of these actors (implies --auto-layout)')
     .addHelpText(
       'after',
       `
 Examples:
   $ borgiq canvases create-with-data --file flow.json
+  $ borgiq canvases create-with-data --file flow.json --auto-layout
   $ borgiq canvases export <canvas> | borgiq canvases create-with-data --file -`,
     )
     .action(canvasesCreateWithData);
@@ -68,6 +71,8 @@ Examples:
     .description('Import canvas data by slug or ID (merge, insert, or replace actors)')
     .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .option('--mode <mode>', 'Import mode: merge (default), insert, or replace', 'merge')
+    .option('--auto-layout', 'Run canvas auto-layout after a successful import')
+    .option('--layout-source-actor-id <actorId...>', 'Auto-layout only downstream of these actors (implies --auto-layout)')
     .action(canvasesUpdateData);
 
   canvases

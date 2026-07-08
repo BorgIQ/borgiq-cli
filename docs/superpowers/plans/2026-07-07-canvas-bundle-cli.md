@@ -1721,6 +1721,9 @@ describe('buildStarterBundle', () => {
       body: { message: 'Hello, world!' },
     });
     expect(task.configuration?.code).toContain('@borgiq/actors');
+    expect(task.configuration?.code).toContain('denoVersion: Deno.version');
+    expect(task.configuration?.code).toContain('denoBuild: Deno.build');
+    expect(task.configuration?.code).toContain('ctx: req.ctx');
   });
 
   it('mints fresh ids per invocation', () => {
@@ -1766,7 +1769,13 @@ const DENO_STARTER_CODE = `import type { Request, Response } from "@borgiq/actor
 
 export default async function receive(req: Request): Promise<Response> {
   return {
-    results: {},
+    results: {
+      runtime: {
+        denoVersion: Deno.version,
+        denoBuild: Deno.build,
+      },
+      ctx: req.ctx,
+    },
     memory: req.memory,
   };
 }
@@ -2517,7 +2526,7 @@ const MODES = new Set(['merge', 'insert', 'replace']);
 /** `borgiq bundle push <dir>` — validate, pack, and import via the API. */
 export const bundlePush = async (
   dir: string,
-  options: { canvas?: string; mode?: string; create?: boolean; strict?: boolean },
+  options: { canvas?: string; mode?: string; create?: boolean; strict?: boolean; autoLayout?: boolean; layoutSourceActorId?: string[] },
   command: { parent: { parent: { opts: () => GlobalOptions } } },
 ): Promise<void> => {
   try {
@@ -2563,6 +2572,8 @@ export const bundlePush = async (
 };
 ```
 
+If `options.autoLayout` is true, or `options.layoutSourceActorId` is provided, call `layoutCanvas` after the successful create/import. For create, resolve the layout target from the created canvas response first and the bundle metadata slug/id second. JSON output wraps the primary response with `layout`; TTY stderr reports the layout actor count.
+
 - [ ] **Step 3: Register pull/push**
 
 Modify `src/commands/bundle/index.ts` — add imports:
@@ -2588,12 +2599,14 @@ and append inside `registerBundleCommands` after the `validate` registration:
     .option('--mode <mode>', 'Import mode: merge (default), insert, or replace', 'merge')
     .option('--create', 'Create a new canvas from the bundle metadata instead of importing')
     .option('--strict', 'Treat validation warnings as errors')
+    .option('--auto-layout', 'Run canvas auto-layout after a successful create/import')
+    .option('--layout-source-actor-id <actorId...>', 'Auto-layout only downstream of these actors (implies --auto-layout)')
     .addHelpText('after', `
 Examples:
   $ borgiq bundle pull my-canvas
   $ borgiq bundle push ./my-canvas.borgiq-canvas
   $ borgiq bundle push ./my-canvas.borgiq-canvas --mode replace
-  $ borgiq bundle push ./my-canvas.borgiq-canvas --create`)
+  $ borgiq bundle push ./my-canvas.borgiq-canvas --create --auto-layout`)
     .action(bundlePush);
 ```
 
@@ -2621,6 +2634,7 @@ borgiq bundle pull my-canvas                    # export + unpack from the API
 borgiq bundle validate ./my-flow.borgiq-canvas  # file-scoped errors/warnings
 borgiq bundle pack ./my-flow.borgiq-canvas -o export.yaml
 borgiq bundle push ./my-flow.borgiq-canvas      # validate + import (merge mode)
+borgiq bundle push ./my-flow.borgiq-canvas --auto-layout   # import, then auto-layout
 borgiq bundle push ./my-flow.borgiq-canvas --create   # create a new canvas
 ```
 ```
@@ -2656,6 +2670,3 @@ git commit -m "feat(bundle): add pull/push commands and document the bundle work
 - **PR title** (this repo squash-merges; the title is the release-please commit): `feat(bundle): add canvas bundle init/unpack/pack/validate/pull/push commands`. See `.claude/skills/release-please-prs`.
 - **Determinism review before opening the PR:** grep the new code for `Date.now`, `Math.random`, `localeCompare`, and `toLocale` — only `template.ts`/`ids.ts` usage (ULID minting) is allowed, and only in the init path.
 - **Spec conformance:** `docs/superpowers/specs/2026-07-07-canvas-bundle-cli-design.md` is the contract. If implementation reality forces a deviation, update the spec in the same PR and say so in the task report.
-
-
-

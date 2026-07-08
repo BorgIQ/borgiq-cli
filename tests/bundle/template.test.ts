@@ -64,6 +64,9 @@ describe('buildStarterBundle', () => {
       },
     });
     expect(task.configuration?.code).toContain('@borgiq/actors');
+    expect(task.configuration?.code).toContain('denoVersion: Deno.version');
+    expect(task.configuration?.code).toContain('denoBuild: Deno.build');
+    expect(task.configuration?.code).toContain('ctx: req.ctx');
   });
 
   it('mints fresh ids per invocation', () => {

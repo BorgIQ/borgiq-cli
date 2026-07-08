@@ -55,12 +55,14 @@ Examples:
     .option('--mode <mode>', 'Import mode: merge (default), insert, or replace')
     .option('--create', 'Create a new canvas from the bundle metadata instead of importing')
     .option('--strict', 'Treat validation warnings as errors')
+    .option('--auto-layout', 'Run canvas auto-layout after a successful create/import')
+    .option('--layout-source-actor-id <actorId...>', 'Auto-layout only downstream of these actors (implies --auto-layout)')
     .addHelpText('after', `
 Examples:
   $ borgiq bundle pull my-canvas-slug
   $ borgiq bundle pull CANV01abc...
   $ borgiq bundle push ./my-canvas.borgiq-canvas
   $ borgiq bundle push ./my-canvas.borgiq-canvas --canvas my-canvas-slug --mode replace
-  $ borgiq bundle push ./my-canvas.borgiq-canvas --create`)
+  $ borgiq bundle push ./my-canvas.borgiq-canvas --create --auto-layout`)
     .action(bundlePush);
 };

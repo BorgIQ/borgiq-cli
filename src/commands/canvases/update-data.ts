@@ -1,10 +1,15 @@
 import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
+import { applyCanvasAutoLayout, shouldAutoLayout } from '../../lib/canvasLayout.js';
 import { readInput } from '../../lib/input.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
 
-export const canvasesUpdateData = async (id: string, options: { file?: string; mode?: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+export const canvasesUpdateData = async (
+  id: string,
+  options: { file?: string; mode?: string; autoLayout?: boolean; layoutSourceActorId?: string[] },
+  command: { parent: { parent: { opts: () => GlobalOptions } } },
+): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
@@ -17,6 +22,11 @@ export const canvasesUpdateData = async (id: string, options: { file?: string; m
       const applied = (result as { appliedOperations?: unknown[] })?.appliedOperations?.length ?? 0;
       const conflicts = (result as { conflicts?: unknown[] })?.conflicts?.length ?? 0;
       process.stderr.write(`Import complete (${mode} mode): ${applied} operations applied, ${conflicts} conflicts.\n`);
+    }
+    if (shouldAutoLayout(options)) {
+      const layout = await applyCanvasAutoLayout(client, ctx.org, ctx.workspace, id, options, globalOpts);
+      output({ import: result, layout }, globalOpts);
+      return;
     }
     output(result, globalOpts);
   } catch (error) {
