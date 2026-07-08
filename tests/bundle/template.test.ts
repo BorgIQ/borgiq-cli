@@ -11,23 +11,58 @@ describe('buildStarterBundle', () => {
     const { doc } = assembleBundle(files);
     expect(doc.metadata.slug).toBe('my-flow');
     expect(doc.metadata.name).toBe('My Flow');
-    expect(Object.keys(doc.data.actors)).toHaveLength(2);
+    expect(Object.keys(doc.data.actors)).toHaveLength(3);
   });
 
-  it('wires a webhook trigger to a deno task with external code', () => {
+  it('creates a webhook trigger, a test sender, and a deno task with external code', () => {
     const files = buildStarterBundle({ name: 'My Flow', slug: 'my-flow' });
     const paths = Object.keys(files).sort();
     expect(paths.some((path) => path.startsWith('actors/triggers/webhook/'))).toBe(true);
+    expect(paths.some((path) => path.startsWith('actors/tasks/http-request/'))).toBe(true);
     expect(paths.some((path) => /^actors\/tasks\/deno\/ACTR[a-z0-9]+\/code\/mod\.ts$/.test(path))).toBe(true);
 
     const { doc } = assembleBundle(files);
     const actors = Object.values(doc.data.actors);
     const trigger = actors.find((actor) => actor.type === 'WebhookTriggerActor')!;
+    const testSender = actors.find((actor) => actor.type === 'HttpRequestActor')!;
     const task = actors.find((actor) => actor.type === 'DenoActor')!;
     const edges = Object.values(trigger.edges ?? {});
     expect(edges).toHaveLength(1);
     expect(edges[0].targetActorId).toBe(task.id);
-    expect(typeof trigger.webhookTriggerKey).toBe('string');
+    expect(trigger.name).toBe('Incoming webhook');
+    expect(trigger.msgVar).toBe('incoming_webhook');
+    expect(trigger.webhookTriggerKey).toBeUndefined();
+    expect(trigger.configuration?.webhook).toEqual({
+      triggerKey: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/),
+      authorizationLevel: 'public',
+      allowedMethods: ['get', 'post'],
+      responseTimeout: 30,
+    });
+    expect(trigger.configuration?.options).toEqual({
+      webhook: {
+        respondImmediately: true,
+        emitRawBody: false,
+        response: {
+          statusCode: 200,
+          headers: {
+            'content-type': 'text/plain; charset=utf-8',
+          },
+          body: 'OK',
+        },
+      },
+    });
+    expect(testSender.name).toBe('Send test event');
+    expect(testSender.msgVar).toBe('send_test_event');
+    expect(testSender.configuration?.options).toEqual({
+      url: '${{ ctx.canvas.webhookTriggers.incoming_webhook.url }}',
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+      },
+      body: {
+        message: 'Hello, world!',
+      },
+    });
     expect(task.configuration?.code).toContain('@borgiq/actors');
   });
 

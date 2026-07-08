@@ -1689,22 +1689,37 @@ describe('buildStarterBundle', () => {
     const { doc } = assembleBundle(files);
     expect(doc.metadata.slug).toBe('my-flow');
     expect(doc.metadata.name).toBe('My Flow');
-    expect(Object.keys(doc.data.actors)).toHaveLength(2);
+    expect(Object.keys(doc.data.actors)).toHaveLength(3);
   });
 
-  it('wires a webhook trigger to a deno task with external code', () => {
+  it('creates a webhook trigger, a test sender, and a deno task with external code', () => {
     const files = buildStarterBundle({ name: 'My Flow', slug: 'my-flow' });
     const paths = Object.keys(files).sort();
     expect(paths.some((p) => p.startsWith('actors/triggers/webhook/'))).toBe(true);
+    expect(paths.some((p) => p.startsWith('actors/tasks/http-request/'))).toBe(true);
     expect(paths.some((p) => /^actors\/tasks\/deno\/ACTR[a-z0-9]+\/code\/mod\.ts$/.test(p))).toBe(true);
     const { doc } = assembleBundle(files);
     const actors = Object.values(doc.data.actors);
     const trigger = actors.find((a) => a.type === 'WebhookTriggerActor')!;
+    const testSender = actors.find((a) => a.type === 'HttpRequestActor')!;
     const task = actors.find((a) => a.type === 'DenoActor')!;
     const edges = Object.values(trigger.edges ?? {});
     expect(edges).toHaveLength(1);
     expect(edges[0].targetActorId).toBe(task.id);
-    expect(typeof trigger.webhookTriggerKey).toBe('string');
+    expect(trigger.msgVar).toBe('incoming_webhook');
+    expect(trigger.webhookTriggerKey).toBeUndefined();
+    expect(trigger.configuration?.webhook).toEqual({
+      triggerKey: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/),
+      authorizationLevel: 'public',
+      allowedMethods: ['get', 'post'],
+      responseTimeout: 30,
+    });
+    expect(testSender.configuration?.options).toEqual({
+      url: '${{ ctx.canvas.webhookTriggers.incoming_webhook.url }}',
+      method: 'POST',
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      body: { message: 'Hello, world!' },
+    });
     expect(task.configuration?.code).toContain('@borgiq/actors');
   });
 
@@ -1766,6 +1781,7 @@ export default async function receive(req: Request): Promise<Response> {
 export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
   const triggerId = Id.create('ACTR');
   const taskId = Id.create('ACTR');
+  const testSenderId = Id.create('ACTR');
   const edgeId = Id.create('EDGE');
 
   const trigger: ExportedActor = {
@@ -1780,8 +1796,29 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
     continueOnError: false,
     enableLTM: false,
     enableSTM: false,
-    webhookTriggerKey: monotonicUlid(),
-    configuration: { options: {} },
+    showInWorkspaceApps: true,
+    runtimeSlug: '',
+    configuration: {
+      webhook: {
+        triggerKey: monotonicUlid(),
+        authorizationLevel: 'public',
+        allowedMethods: ['get', 'post'],
+        responseTimeout: 30,
+      },
+      options: {
+        webhook: {
+          respondImmediately: true,
+          emitRawBody: false,
+          response: {
+            statusCode: 200,
+            headers: {
+              'content-type': 'text/plain; charset=utf-8',
+            },
+            body: 'OK',
+          },
+        },
+      },
+    },
     schemas: {},
     edges: {
       [edgeId]: {
@@ -1794,6 +1831,37 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
       },
     },
     position: { x: 0, y: 0 },
+  };
+
+  const testSender: ExportedActor = {
+    id: testSenderId,
+    version: 1,
+    type: 'HttpRequestActor',
+    name: 'Send test event',
+    msgVar: convertActorNameToMsgVar('Send test event'),
+    description: 'The HTTP Request Actor can make HTTP requests',
+    isActive: true,
+    sourcePorts: [{ id: 'SPRTdefault' }],
+    continueOnError: false,
+    enableLTM: false,
+    enableSTM: false,
+    showInWorkspaceApps: true,
+    runtimeSlug: '',
+    configuration: {
+      options: {
+        url: '${{ ctx.canvas.webhookTriggers.incoming_webhook.url }}',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+        },
+        body: {
+          message: 'Hello, world!',
+        },
+      },
+    },
+    schemas: {},
+    edges: {},
+    position: { x: -320, y: 0 },
   };
 
   const task: ExportedActor = {
@@ -1827,7 +1895,7 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
       messageTTLInDays: 7,
       runtimeSlug: '',
     },
-    data: { schemaVersion: '1', actors: { [triggerId]: trigger, [taskId]: task } },
+    data: { schemaVersion: '1', actors: { [testSenderId]: testSender, [triggerId]: trigger, [taskId]: task } },
   };
 
   return disassemble(doc).files;
@@ -2588,8 +2656,6 @@ git commit -m "feat(bundle): add pull/push commands and document the bundle work
 - **PR title** (this repo squash-merges; the title is the release-please commit): `feat(bundle): add canvas bundle init/unpack/pack/validate/pull/push commands`. See `.claude/skills/release-please-prs`.
 - **Determinism review before opening the PR:** grep the new code for `Date.now`, `Math.random`, `localeCompare`, and `toLocale` — only `template.ts`/`ids.ts` usage (ULID minting) is allowed, and only in the init path.
 - **Spec conformance:** `docs/superpowers/specs/2026-07-07-canvas-bundle-cli-design.md` is the contract. If implementation reality forces a deviation, update the spec in the same PR and say so in the task report.
-
-
 
 
 

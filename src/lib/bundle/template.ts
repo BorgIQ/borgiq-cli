@@ -20,6 +20,7 @@ export default async function receive(req: Request): Promise<Response> {
 export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
   const triggerId = Id.create('ACTR');
   const taskId = Id.create('ACTR');
+  const testSenderId = Id.create('ACTR');
   const edgeId = Id.create('EDGE');
 
   const trigger: ExportedActor = {
@@ -28,14 +29,35 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
     type: 'WebhookTriggerActor',
     name: 'Incoming webhook',
     msgVar: convertActorNameToMsgVar('Incoming webhook'),
-    description: 'Starter trigger - replace or rewire as needed.',
+    description: 'The Webhook Actor will create messages by receiving webhooks from any source to the actor"s webhook URL.',
     isActive: true,
     sourcePorts: [{ id: 'SPRTdefault' }],
     continueOnError: false,
     enableLTM: false,
     enableSTM: false,
-    webhookTriggerKey: monotonicUlid(),
-    configuration: { options: {} },
+    showInWorkspaceApps: true,
+    runtimeSlug: '',
+    configuration: {
+      webhook: {
+        triggerKey: monotonicUlid(),
+        authorizationLevel: 'public',
+        allowedMethods: ['get', 'post'],
+        responseTimeout: 30,
+      },
+      options: {
+        webhook: {
+          respondImmediately: true,
+          emitRawBody: false,
+          response: {
+            statusCode: 200,
+            headers: {
+              'content-type': 'text/plain; charset=utf-8',
+            },
+            body: 'OK',
+          },
+        },
+      },
+    },
     schemas: {},
     edges: {
       [edgeId]: {
@@ -48,6 +70,37 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
       },
     },
     position: { x: 0, y: 0 },
+  };
+
+  const testSender: ExportedActor = {
+    id: testSenderId,
+    version: 1,
+    type: 'HttpRequestActor',
+    name: 'Send test event',
+    msgVar: convertActorNameToMsgVar('Send test event'),
+    description: 'The HTTP Request Actor can make HTTP requests',
+    isActive: true,
+    sourcePorts: [{ id: 'SPRTdefault' }],
+    continueOnError: false,
+    enableLTM: false,
+    enableSTM: false,
+    showInWorkspaceApps: true,
+    runtimeSlug: '',
+    configuration: {
+      options: {
+        url: '${{ ctx.canvas.webhookTriggers.incoming_webhook.url }}',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+        },
+        body: {
+          message: 'Hello, world!',
+        },
+      },
+    },
+    schemas: {},
+    edges: {},
+    position: { x: -320, y: 0 },
   };
 
   const task: ExportedActor = {
@@ -81,7 +134,7 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
       messageTTLInDays: 7,
       runtimeSlug: '',
     },
-    data: { schemaVersion: '1', actors: { [triggerId]: trigger, [taskId]: task } },
+    data: { schemaVersion: '1', actors: { [testSenderId]: testSender, [triggerId]: trigger, [taskId]: task } },
   };
 
   return disassemble(doc).files;

@@ -229,8 +229,9 @@ Path-scoped errors (`actors/tasks/deno/ACTR…/code/mod.ts: <message>`):
 
 `bundle init` creates, offline:
 
-- `canvas.yaml` — metadata from flags/dir name; graph wiring the two starter actors.
-- `actors/triggers/webhook/ACTR…/actor.yaml` — webhook trigger with minted `webhookTriggerKey` (ULID, matching scaffold behavior).
+- `canvas.yaml` — metadata from flags/dir name; graph wiring the webhook trigger to the Deno processor and carrying the unconnected test sender actor.
+- `actors/triggers/webhook/ACTR…/actor.yaml` — webhook trigger with minted `configuration.webhook.triggerKey`, public GET/POST methods, and immediate `200 OK` response defaults matching the UI starter.
+- `actors/tasks/http-request/ACTR…/actor.yaml` — manual test sender that posts `{"message":"Hello, world!"}` to `${{ ctx.canvas.webhookTriggers.incoming_webhook.url }}`.
 - `actors/tasks/deno/ACTR…/actor.yaml` + `code/mod.ts` — Deno task using the existing TypeScript code stub, `codeDir: code`.
 - One `graph.edges` entry (`EDGE` + ULID id) connecting trigger → task via the trigger's default source port.
 - `AGENTS.md` — the bundle contract for coding agents: layout, the three-edit rule for adding an actor, codeDir contract, determinism expectations, and the `bundle validate`/`pack`/`push` loop.
