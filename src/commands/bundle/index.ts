@@ -60,6 +60,7 @@ Examples:
     .option('--dry-run', 'Show the push sync plan without applying changes')
     .option('--no-refresh', 'Skip the post-push pull that refreshes local version markers')
     .option('--strict', 'Treat validation warnings as errors')
+    .option('--raw', 'Include generated operation payloads and raw API responses in output')
     .option('--auto-layout', 'Run canvas auto-layout after a successful create/import')
     .option('--layout-source-actor-id <actorId...>', 'Auto-layout only downstream of these actors (implies --auto-layout)')
     .addHelpText('after', `
@@ -69,6 +70,7 @@ Examples:
   $ borgiq bundle push ./my-canvas.borgiq-canvas
   $ borgiq bundle push ./my-canvas.borgiq-canvas --dry-run
   $ borgiq bundle push ./my-canvas.borgiq-canvas --force-local
+  $ borgiq bundle push ./my-canvas.borgiq-canvas --raw
   $ borgiq bundle push ./my-canvas.borgiq-canvas --canvas my-canvas-slug --mode replace
   $ borgiq bundle push ./my-canvas.borgiq-canvas --create --auto-layout`)
     .action(bundlePush);

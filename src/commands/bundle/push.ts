@@ -1,6 +1,7 @@
 import { diffCanvas, summarizeDiff, toBatchOperations } from '../../lib/bundle/diff.js';
 import { disassemble } from '../../lib/bundle/disassemble.js';
 import { parseExportInput } from '../../lib/bundle/envelope.js';
+import { compactBatchResult, compactLayoutResult, compactOperations, withRaw } from '../../lib/bundle/output.js';
 import { readBundleDir } from '../../lib/bundleFs.js';
 import { writeBundleDirIncremental } from '../../lib/bundleFs.js';
 import { applyCanvasAutoLayout, canvasSlugOrIdFromCreateResult, shouldAutoLayout } from '../../lib/canvasLayout.js';
@@ -24,6 +25,7 @@ export const bundlePush = async (
     strict?: boolean;
     autoLayout?: boolean;
     layoutSourceActorId?: string[];
+    raw?: boolean;
   },
   command: { parent: { parent: { opts: () => GlobalOptions } } },
 ): Promise<void> => {
@@ -99,11 +101,12 @@ export const bundlePush = async (
     });
     const summary = summarizeDiff(diff);
     const operations = toBatchOperations(diff, doc, Boolean(options.forceLocal), Date.now());
+    const compactOps = compactOperations(operations);
 
     if (diff.conflicts.length > 0 && !options.forceLocal) {
       reportPushConflicts(diff.conflicts);
       process.exitCode = ExitCode.CONFLICT;
-      output({ mode: 'sync', target, summary, entries: diff.entries, conflicts: diff.conflicts }, globalOpts);
+      output(withRaw({ mode: 'sync', target, summary, entries: diff.entries, conflicts: diff.conflicts }, options.raw, { operations }), globalOpts);
       return;
     }
 
@@ -111,7 +114,7 @@ export const bundlePush = async (
       if (!globalOpts.json && process.stderr.isTTY) {
         process.stderr.write(`Dry run: would sync ${dir} -> '${target}': ${operations.length} actor operation(s), metadata ${diff.metadataDelta ? 'updated' : 'unchanged'}.\n`);
       }
-      output({ mode: 'sync', target, summary, operations, metadataDelta: diff.metadataDelta, entries: diff.entries }, globalOpts);
+      output(withRaw({ mode: 'sync', target, summary, operations: compactOps, metadataDelta: diff.metadataDelta, entries: diff.entries }, options.raw, { operations }), globalOpts);
       return;
     }
 
@@ -122,7 +125,7 @@ export const bundlePush = async (
       if (conflicts.length > 0) {
         process.stderr.write(`Push hit ${conflicts.length} server-side conflict(s); no refresh was performed.\n`);
         process.exitCode = ExitCode.CONFLICT;
-        output({ mode: 'sync', target, summary, operations, batch: batchResult }, globalOpts);
+        output(withRaw({ mode: 'sync', target, summary, operations: compactOps, batch: compactBatchResult(batchResult) }, options.raw, { operations, batch: batchResult }), globalOpts);
         return;
       }
     }
@@ -155,7 +158,17 @@ export const bundlePush = async (
     if (!globalOpts.json && process.stderr.isTTY) {
       process.stderr.write(`Synced ${dir} -> '${target}': ${summary.added} added, ${summary.updated} updated, ${summary.removed} deleted, ${summary.unchanged} unchanged${diff.metadataDelta ? ', metadata updated' : ''}.\n`);
     }
-    output({ mode: 'sync', target, summary, operations, metadataDelta: diff.metadataDelta, batch: batchResult, metadata: metadataResult, layout, refresh }, globalOpts);
+    output(withRaw({
+      mode: 'sync',
+      target,
+      summary,
+      operations: compactOps,
+      metadataDelta: diff.metadataDelta,
+      batch: compactBatchResult(batchResult),
+      metadata: metadataResult,
+      layout: compactLayoutResult(layout),
+      refresh,
+    }, options.raw, { operations, batch: batchResult, metadata: metadataResult, layout }), globalOpts);
   } catch (error) {
     handleError(error);
   }

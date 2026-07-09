@@ -396,6 +396,7 @@ borgiq bundle pack ./my-flow.borgiq-canvas -o export.yaml
 borgiq bundle push ./my-flow.borgiq-canvas
 borgiq bundle push ./my-flow.borgiq-canvas --dry-run
 borgiq bundle push ./my-flow.borgiq-canvas --force-local
+borgiq bundle push ./my-flow.borgiq-canvas --raw
 borgiq bundle push ./my-flow.borgiq-canvas --auto-layout
 borgiq bundle push ./my-flow.borgiq-canvas --mode replace
 borgiq bundle push ./my-flow.borgiq-canvas --create
@@ -408,7 +409,7 @@ borgiq bundle push ./my-flow.borgiq-canvas --create
 | `borgiq bundle pack <dir>` | Validate and emit platform export YAML to stdout or `-o, --output <file>`. |
 | `borgiq bundle validate <dir>` | Report all bundle errors and warnings; `--strict` treats warnings as fatal. |
 | `borgiq bundle pull <canvas> [dir]` | Sync by slug or ID from the API. Existing bundles update only server-changed actors; `--replace` does the legacy full managed-path rewrite. |
-| `borgiq bundle push <dir>` | Validate and sync only changed actors by default. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. |
+| `borgiq bundle push <dir>` | Validate and sync only changed actors by default. Structured output is compact; use `--raw` for generated operation payloads and raw API responses. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. |
 
 `pull --replace` and `unpack` rewrite only managed paths: `canvas.yaml` and `actors/`.
 Files such as `.git/`, `AGENTS.md`, `.gitignore`, and notes are preserved.

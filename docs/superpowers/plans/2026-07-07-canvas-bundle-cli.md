@@ -2676,6 +2676,8 @@ git commit -m "feat(bundle): add pull/push commands and document the bundle work
 
 *Added 2026-07-08, after Tasks 1–9 shipped. Spec section: "Incremental sync (default push/pull behavior)" — read it first; it is the contract for every rule below (verdict table, conflict policy, ordering, invariants).*
 
+*Update log: 2026-07-09 — Updated by Codex (GPT-5) to add the agent-safe compact output contract and `bundle push --raw` escape hatch.*
+
 **Why:** whole-document import replaces every actor on every push (noisy canvas history, stomps concurrent server edits); full-rewrite pull churns every file's mtime and clobbers local work. Sync converges the two sides by touching only actors that differ, via the per-actor API that already exists in the client.
 
 **Behavior change:** bare `bundle push` and `bundle pull` become sync. The old paths remain: `push --mode <merge|insert|replace>` (presence of `--mode` selects whole-document `importCanvasData`; there is no longer an implicit default mode) and `pull --replace` (full managed-path rewrite). Call this out in the PR body and CHANGELOG-driving PR title.
@@ -2760,7 +2762,7 @@ Extend `src/lib/bundleFs.ts` with `writeBundleDirIncremental(dir, files: BundleF
 
 - [ ] **Step 3: Rework push (sync default, `--mode` = legacy)**
 
-`src/commands/bundle/push.ts` — options become `{ canvas?, mode?, create?, forceLocal?, dryRun?, refresh?, strict?, autoLayout?, layoutSourceActorId? }`. Flow, in this exact order (spec "Order of operations"):
+`src/commands/bundle/push.ts` — options become `{ canvas?, mode?, create?, forceLocal?, dryRun?, refresh?, strict?, raw?, autoLayout?, layoutSourceActorId? }`. Flow, in this exact order (spec "Order of operations"):
 
 1. `--create` unchanged (conflicts with `--canvas`/`--mode`; also with `--force-local`/`--dry-run` — usage error).
 2. Validate + assemble local bundle (before any API call). If `--mode` given → legacy `importCanvasData` path, verbatim current behavior, done.
@@ -2771,6 +2773,11 @@ Extend `src/lib/bundleFs.ts` with `writeBundleDirIncremental(dir, files: BundleF
 7. `metadataDelta` → `updateCanvas`.
 8. `--auto-layout` / `--layout-source-actor-id` as today.
 9. Unless `--no-refresh`: implicit incremental pull (Step 4's write path) so local `sync.actorVersions` advances. Summary: `applied: N added, M updated, K deleted[, metadata]; skipped: U unchanged`.
+
+Default structured output for all sync push paths must be compact:
+- Include `mode`, `target`, `summary`, actor `entries`, `conflicts`, compact `operations` (`type`, `actorId`, `editVersion` only), `metadataDelta`, compact `batch` (`appliedOperations` without `actorData`; `conflicts` without `mergedData`), compact `layout` summaries, and `refresh.writePlan`.
+- Exclude generated actor mutation data (`operations[].data`), operation `timestamp`, API `actorData`, API `mergedData`, code, prompts, schemas, app HTML/CSS/JS, and full actor/config bodies.
+- `--raw` appends a `raw` object with generated operations and raw API responses for debugging. Raw payloads must never appear by default, including `--json` and `--dry-run`.
 
 - [ ] **Step 4: Rework pull (sync default, `--replace` = legacy)**
 
@@ -2785,12 +2792,13 @@ Extend `src/lib/bundleFs.ts` with `writeBundleDirIncremental(dir, files: BundleF
 
 - [ ] **Step 5: Registration + help text**
 
-`src/commands/bundle/index.ts`: add `--replace`/`--dry-run` to pull; `--force-local`/`--dry-run`/`--no-refresh` to push; **remove the `'merge'` default from `--mode`** (its presence now selects the legacy path — update the option description to say so). Refresh the help epilogue examples:
+`src/commands/bundle/index.ts`: add `--replace`/`--dry-run` to pull; `--force-local`/`--dry-run`/`--no-refresh`/`--raw` to push; **remove the `'merge'` default from `--mode`** (its presence now selects the legacy path — update the option description to say so). Refresh the help epilogue examples:
 
 ```
   $ borgiq bundle push ./my-canvas.borgiq-canvas              # sync: only modified actors
   $ borgiq bundle push ./my-canvas.borgiq-canvas --dry-run    # show the sync plan
   $ borgiq bundle push ./my-canvas.borgiq-canvas --force-local  # conflicted actors: local wins
+  $ borgiq bundle push ./my-canvas.borgiq-canvas --raw        # include full debug payloads
   $ borgiq bundle push ./my-canvas.borgiq-canvas --mode replace # legacy whole-document import
   $ borgiq bundle pull my-canvas                              # sync: only server-changed actors
   $ borgiq bundle pull my-canvas --replace                    # legacy full rewrite
@@ -2801,6 +2809,7 @@ Extend `src/lib/bundleFs.ts` with `writeBundleDirIncremental(dir, files: BundleF
 `tests/bundle/diff.test.ts` (pure, in-memory documents — reuse Task 5 fixtures):
 - Verdict matrix: every row of the spec table, including formatting-only local reordering → `unchanged`, and `version-missing` → conflict.
 - `toBatchOperations`: ordering adds → updates → removes; every op has `timestamp`; `editVersion` present on update/remove; mutation `data` has YAML-string configuration/schema fields; `forceLocal` converts conflicts to updates; zero-diff → zero ops.
+- Compact output helpers: default push JSON omits `operations[].data`, `timestamp`, `actorData`, and `mergedData`; `--raw` includes them under `raw`.
 - `metadataDelta`: detects each syncable field; ignores `slug`/`id`/`imagePath`/`schemaVersion`.
 - Pull merge: kept `new-local` actor's node/edges survive `canvas.yaml` regeneration; `local-edit` actor record survives verbatim; `deleted-on-server` folder disappears from the merged file map.
 
