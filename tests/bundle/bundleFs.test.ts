@@ -39,7 +39,7 @@ describe('writeBundleDir and readBundleDir', () => {
     fs.writeFileSync(path.join(dir, '.git', 'HEAD'), 'ref\n');
 
     const next = { 'canvas.yaml': 'format: borgiq.canvas.bundle\n', 'actors/other/echo/ACTR2/actor.yaml': 'id: ACTR2\n' };
-    writeBundleDir(dir, next);
+    writeBundleDir(dir, next, { force: true });
     expect(readBundleDir(dir)).toEqual(next);
     expect(fs.readFileSync(path.join(dir, 'NOTES.md'), 'utf-8')).toBe('mine\n');
     expect(fs.existsSync(path.join(dir, '.git', 'HEAD'))).toBe(true);
@@ -48,7 +48,7 @@ describe('writeBundleDir and readBundleDir', () => {
   it('createIfMissing writes companions once and never overwrites them', () => {
     writeBundleDir(dir, FILES, { createIfMissing: { 'AGENTS.md': 'v1\n' } });
     expect(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf-8')).toBe('v1\n');
-    writeBundleDir(dir, FILES, { createIfMissing: { 'AGENTS.md': 'v2\n' } });
+    writeBundleDir(dir, FILES, { force: true, createIfMissing: { 'AGENTS.md': 'v2\n' } });
     expect(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf-8')).toBe('v1\n');
   });
 
@@ -60,9 +60,16 @@ describe('writeBundleDir and readBundleDir', () => {
     expect(readBundleDir(dir)).toEqual(FILES);
   });
 
-  it('overwrites an existing bundle without force', () => {
+  it('refuses to overwrite an existing bundle without force', () => {
     writeBundleDir(dir, FILES);
-    expect(() => writeBundleDir(dir, FILES)).not.toThrow();
+    expect(() => writeBundleDir(dir, FILES)).toThrow(/--force/);
+  });
+
+  it('overwrites an existing bundle with force', () => {
+    writeBundleDir(dir, FILES);
+    const next = { 'canvas.yaml': 'format: borgiq.canvas.bundle\n', 'actors/other/echo/ACTR2/actor.yaml': 'id: ACTR2\n' };
+    writeBundleDir(dir, next, { force: true });
+    expect(readBundleDir(dir)).toEqual(next);
   });
 
   it('rejects file-map paths that escape the target directory', () => {

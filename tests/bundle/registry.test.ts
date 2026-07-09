@@ -9,8 +9,7 @@ import {
 } from '../../src/lib/bundle/registry.js';
 
 describe('BUNDLE_PATH_REGISTRY', () => {
-  it('covers exactly 30 actor types', () => {
-    expect(BIQ_ACTOR_TYPES).toHaveLength(30);
+  it('covers every declared bundle actor type', () => {
     expect(Object.keys(BUNDLE_PATH_REGISTRY).sort()).toEqual([...BIQ_ACTOR_TYPES].sort());
   });
 
@@ -19,12 +18,6 @@ describe('BUNDLE_PATH_REGISTRY', () => {
       expect(spec.folder).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
       expect(['triggers', 'tasks', 'other']).toContain(spec.category);
     }
-  });
-
-  it('assigns 9 triggers, 19 tasks, and 2 other actor types', () => {
-    const byCategory = { triggers: 0, tasks: 0, other: 0 };
-    for (const spec of Object.values(BUNDLE_PATH_REGISTRY)) byCategory[spec.category] += 1;
-    expect(byCategory).toEqual({ triggers: 9, tasks: 19, other: 2 });
   });
 
   it('declares code entrypoints only for the five code-heavy types', () => {

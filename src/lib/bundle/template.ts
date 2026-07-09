@@ -42,7 +42,7 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
     type: 'WebhookTriggerActor',
     name: 'Incoming webhook',
     msgVar: convertActorNameToMsgVar('Incoming webhook'),
-    description: 'The Webhook Actor will create messages by receiving webhooks from any source to the actor"s webhook URL.',
+    description: "The Webhook Actor will create messages by receiving webhooks from any source to the actor's webhook URL.",
     isActive: true,
     sourcePorts: [{ id: 'SPRTdefault' }],
     continueOnError: false,
@@ -161,7 +161,7 @@ canvas export format. Format: borgiq.canvas.bundle v1.
 ## Layout
 
 - canvas.yaml: authoritative root for canvas metadata, graph.nodes, graph.edges,
-  dependencies, export errors, warnings, and the actor index.
+  dependencies, export errors, warnings, sync.actorVersions, and the actor index.
 - actors/<category>/<type>/<ACTOR_ID>/actor.yaml: one actor per folder. Edges
   and positions do not live here; they live in canvas.yaml.
 - actors/.../<ACTOR_ID>/code/: native code files for Deno, Deno Test,
@@ -176,8 +176,8 @@ canvas export format. Format: borgiq.canvas.bundle v1.
 3. Edit code in code/ files, not in actor.yaml. Only the canonical entrypoint
    file is allowed in code/; helper files are not supported yet.
 4. Folder names are actor IDs and must match actor.yaml and the index.
-5. Extra files under actors/ are ignored with warnings; files outside actors/
-   are left alone by the CLI.
+5. Extra files under actors/ are ignored with warnings. Unmanaged files outside
+   canvas.yaml and actors/ are left alone by the CLI.
 
 ## Workflow
 

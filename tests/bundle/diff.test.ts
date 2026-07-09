@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { diffCanvas, mergeForPull, toBatchOperations, toCanvasActorMutationData } from '../../src/lib/bundle/diff.js';
+import { diffCanvas, mergeForPull, summarizeDiff, toBatchOperations, toCanvasActorMutationData } from '../../src/lib/bundle/diff.js';
 import { makeActor, makeDoc } from './fixtures.js';
 
 const actor = (id: string, version: number | undefined, name = id, extra: Record<string, unknown> = {}) => {
@@ -108,6 +108,18 @@ describe('diffCanvas', () => {
       serverVersion: 7,
     });
   });
+
+  it('counts forced conflict updates in the applied summary', () => {
+    const local = makeDoc([actor('ACTRforced', 1, 'Local wins')]);
+    const server = makeDoc([actor('ACTRforced', 2, 'Server changed')]);
+    const diff = diffCanvas(local, server, {
+      localActorVersions: { ACTRforced: 1 },
+      serverActorVersions: { ACTRforced: 2 },
+    });
+
+    expect(summarizeDiff(diff).updated).toBe(0);
+    expect(summarizeDiff(diff, true).updated).toBe(1);
+  });
 });
 
 describe('toBatchOperations', () => {
@@ -209,5 +221,16 @@ describe('mergeForPull', () => {
     expect(merged.data.actors.ACTRnewlocal.name).toBe('New local');
     expect(merged.data.actors.ACTRserveronly.name).toBe('Server only');
     expect(merged.metadata.name).toBe('Server canvas');
+  });
+
+  it('selects the server record for a server-edit verdict', () => {
+    const local = makeDoc([actor('ACTRserveredit', 1, 'Local edit')]);
+    const server = makeDoc([actor('ACTRserveredit', 2, 'Server edit')]);
+    const diff = diffCanvas(local, server, {
+      localActorVersions: { ACTRserveredit: 1 },
+      serverActorVersions: { ACTRserveredit: 2 },
+    });
+
+    expect(mergeForPull(local, server, diff).data.actors.ACTRserveredit.name).toBe('Server edit');
   });
 });

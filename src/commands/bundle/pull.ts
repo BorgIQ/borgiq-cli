@@ -8,7 +8,7 @@ import { parseExportInput } from '../../lib/bundle/envelope.js';
 import { planBundleDirIncrementalWrite, readBundleDir, writeBundleDir, writeBundleDirIncremental } from '../../lib/bundleFs.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { createClientWithContext } from '../../lib/context.js';
-import { CliUsageError, handleError } from '../../lib/errors.js';
+import { CliUsageError, ExitCode, handleError } from '../../lib/errors.js';
 import { output } from '../../output/index.js';
 import { BUNDLE_COMPANIONS, reportIssues } from './shared.js';
 
@@ -36,6 +36,7 @@ export const bundlePull = async (
     const { files, warnings } = disassemble(input.document, { exportErrors: input.exportErrors, actorVersions });
     const shouldReplace = options.replace || !isBundleDir(target);
     if (shouldReplace) {
+      reportPullWarnings(warnings, input.exportErrors);
       if (options.dryRun) {
         const plan = { mode: 'replace', target, actorCount: actorCount(files), write: Object.keys(files).sort() };
         if (!globalOpts.json && process.stderr.isTTY) {
@@ -45,11 +46,7 @@ export const bundlePull = async (
         return;
       }
 
-      writeBundleDir(target, files, { force: options.force, createIfMissing: BUNDLE_COMPANIONS });
-      for (const warning of warnings) process.stderr.write(`Warning: ${warning}\n`);
-      if (input.exportErrors.length > 0) {
-        process.stderr.write(`Warning: export reported ${input.exportErrors.length} actor error(s) - see exportErrors in canvas.yaml.\n`);
-      }
+      writeBundleDir(target, files, { force: Boolean(options.force || options.replace), createIfMissing: BUNDLE_COMPANIONS });
       process.stderr.write(`Pulled '${slug}' (${actorCount(files)} actor(s)) into ${target}${options.replace ? ' (replace)' : ''}\n`);
       return;
     }
@@ -60,11 +57,19 @@ export const bundlePull = async (
       serverActorVersions: actorVersions,
       assumeServerVersionsWhenLocalMissing: true,
     });
+    const summary = summarizeDiff(diff);
+    if (diff.conflicts.length > 0) {
+      reportPullWarnings(warnings, input.exportErrors);
+      reportPullConflicts(diff.conflicts);
+      process.exitCode = ExitCode.CONFLICT;
+      output({ mode: 'sync', target, summary, entries: diff.entries, conflicts: diff.conflicts, applied: false }, globalOpts);
+      return;
+    }
     const merged = mergeForPull(local.doc, input.document, diff);
     const mergedDisassembly = disassemble(merged, { exportErrors: input.exportErrors, actorVersions });
     const mergedFiles = mergedDisassembly.files;
     const writePlan = planBundleDirIncrementalWrite(target, mergedFiles);
-    const summary = summarizeDiff(diff);
+    reportPullWarnings(mergedDisassembly.warnings, input.exportErrors);
 
     if (options.dryRun) {
       if (!globalOpts.json && process.stderr.isTTY) {
@@ -76,13 +81,25 @@ export const bundlePull = async (
 
     writeBundleDirIncremental(target, mergedFiles, { force: options.force, createIfMissing: BUNDLE_COMPANIONS });
 
-    for (const warning of mergedDisassembly.warnings) process.stderr.write(`Warning: ${warning}\n`);
-    if (input.exportErrors.length > 0) {
-      process.stderr.write(`Warning: export reported ${input.exportErrors.length} actor error(s) - see exportErrors in canvas.yaml.\n`);
-    }
     process.stderr.write(`Synced '${slug}' into ${target}: ${writePlan.write.length} file(s) changed, ${writePlan.delete.length} file(s) deleted; kept ${summary.localKept} local actor(s).\n`);
   } catch (error) {
     handleError(error);
+  }
+};
+
+const reportPullWarnings = (warnings: string[], exportErrors: unknown[]): void => {
+  for (const warning of warnings) process.stderr.write(`Warning: ${warning}\n`);
+  if (exportErrors.length > 0) {
+    process.stderr.write(`Warning: export reported ${exportErrors.length} actor error(s) - see exportErrors in canvas.yaml.\n`);
+  }
+};
+
+const reportPullConflicts = (conflicts: { actorId: string; name: string; bundleVersion?: number; serverVersion?: number }[]): void => {
+  process.stderr.write(`Pull aborted: ${conflicts.length} actor conflict(s) have both local and server changes. No files were written. Reconcile them manually, or re-run with --replace to accept the server versions.\n`);
+  for (const conflict of conflicts) {
+    process.stderr.write(
+      `  ${conflict.actorId} (${conflict.name}): bundle editVersion ${String(conflict.bundleVersion ?? 'missing')} -> server editVersion ${String(conflict.serverVersion ?? 'missing')}\n`,
+    );
   }
 };
 

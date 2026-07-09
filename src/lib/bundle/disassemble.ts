@@ -1,5 +1,5 @@
 import { BUNDLE_PATH_REGISTRY, actorFolderPath, isKnownActorType } from './registry.js';
-import type { BIQActorType, BundleCodeFile } from './registry.js';
+import type { BundleActorType, BundleCodeFile } from './registry.js';
 import {
   ACTOR_FILE,
   ACTOR_KEY_ORDER,
@@ -65,7 +65,7 @@ export const disassemble = (doc: CanvasExportDocument, opts: DisassembleOptions 
   const edges: ExportedEdge[] = [];
 
   for (const actor of actors) {
-    const type = actor.type as BIQActorType;
+    const type = actor.type as BundleActorType;
     const dir = actorFolderPath(type, actor.id);
 
     if (type === 'DeprecatedAiAgent') {
@@ -134,7 +134,7 @@ const syncRoot = (actorVersions: Record<string, number> | undefined): { actorVer
 
 const externalizeActorCode = (
   actor: Omit<ExportedActor, 'edges' | 'position'>,
-  type: BIQActorType,
+  type: BundleActorType,
   dir: string,
   files: BundleFileMap,
 ): Record<string, unknown> => {

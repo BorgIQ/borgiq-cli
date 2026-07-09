@@ -161,16 +161,51 @@ export const diffCanvas = (local: CanvasExportDocument, server: CanvasExportDocu
   return { entries, conflicts, metadataDelta: metadataDelta(local, server) };
 };
 
-export const summarizeDiff = (diff: CanvasDiff): DiffSummary => ({
-  added: diff.entries.filter((entry) => entry.verdict === 'new-local').length,
-  updated: diff.entries.filter((entry) => entry.verdict === 'local-edit').length,
-  removed: diff.entries.filter((entry) => entry.verdict === 'server-only').length,
-  conflicts: diff.conflicts.length,
-  unchanged: diff.entries.filter((entry) => entry.verdict === 'unchanged').length,
-  localKept: diff.entries.filter((entry) => entry.verdict === 'new-local' || entry.verdict === 'local-edit').length,
-  serverChanged: diff.entries.filter((entry) => entry.verdict === 'server-edit').length,
-  deletedOnServer: diff.entries.filter((entry) => entry.verdict === 'deleted-on-server').length,
-});
+export const summarizeDiff = (diff: CanvasDiff, forceLocal = false): DiffSummary => {
+  const summary: DiffSummary = {
+    added: 0,
+    updated: 0,
+    removed: 0,
+    conflicts: diff.conflicts.length,
+    unchanged: 0,
+    localKept: 0,
+    serverChanged: 0,
+    deletedOnServer: 0,
+  };
+
+  for (const entry of diff.entries) {
+    switch (entry.verdict) {
+      case 'new-local':
+        summary.added += 1;
+        summary.localKept += 1;
+        break;
+      case 'local-edit':
+        summary.updated += 1;
+        summary.localKept += 1;
+        break;
+      case 'server-edit':
+        summary.serverChanged += 1;
+        if (forceLocal) summary.updated += 1;
+        break;
+      case 'version-missing':
+        if (forceLocal) summary.updated += 1;
+        break;
+      case 'server-only':
+        summary.removed += 1;
+        break;
+      case 'deleted-on-server':
+        summary.deletedOnServer += 1;
+        break;
+      case 'unchanged':
+        summary.unchanged += 1;
+        break;
+      default:
+        assertNever(entry.verdict);
+    }
+  }
+
+  return summary;
+};
 
 export const toBatchOperations = (
   diff: CanvasDiff,
@@ -184,14 +219,27 @@ export const toBatchOperations = (
 
   for (const entry of diff.entries) {
     const localActor = local.data.actors[entry.actorId] as Record<string, unknown> | undefined;
-    if (entry.verdict === 'new-local' && localActor) {
-      adds.push({ type: 'add', actorId: entry.actorId, timestamp, data: toCanvasActorMutationData(localActor) });
-    } else if (entry.verdict === 'local-edit' && localActor) {
-      updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toCanvasActorMutationData(localActor) });
-    } else if ((entry.verdict === 'server-edit' || entry.verdict === 'version-missing') && forceLocal && localActor) {
-      updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toCanvasActorMutationData(localActor) });
-    } else if (entry.verdict === 'server-only') {
-      removes.push({ type: 'remove', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion });
+    switch (entry.verdict) {
+      case 'new-local':
+        if (localActor) adds.push({ type: 'add', actorId: entry.actorId, timestamp, data: toCanvasActorMutationData(localActor) });
+        break;
+      case 'local-edit':
+        if (localActor) updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toCanvasActorMutationData(localActor) });
+        break;
+      case 'server-edit':
+      case 'version-missing':
+        if (forceLocal && localActor) {
+          updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toCanvasActorMutationData(localActor) });
+        }
+        break;
+      case 'server-only':
+        removes.push({ type: 'remove', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion });
+        break;
+      case 'unchanged':
+      case 'deleted-on-server':
+        break;
+      default:
+        assertNever(entry.verdict);
     }
   }
 
@@ -207,10 +255,21 @@ export const mergeForPull = (
   for (const entry of diff.entries) {
     const localActor = local.data.actors[entry.actorId];
     const serverActor = server.data.actors[entry.actorId];
-    if ((entry.verdict === 'local-edit' || entry.verdict === 'new-local') && localActor) {
-      actors[entry.actorId] = localActor;
-    } else if (serverActor) {
-      actors[entry.actorId] = serverActor;
+    switch (entry.verdict) {
+      case 'local-edit':
+      case 'new-local':
+        if (localActor) actors[entry.actorId] = localActor;
+        break;
+      case 'unchanged':
+      case 'server-edit':
+      case 'version-missing':
+      case 'server-only':
+        if (serverActor) actors[entry.actorId] = serverActor;
+        break;
+      case 'deleted-on-server':
+        break;
+      default:
+        assertNever(entry.verdict);
     }
   }
 
@@ -221,4 +280,8 @@ export const mergeForPull = (
       actors,
     },
   };
+};
+
+const assertNever = (value: never): never => {
+  throw new Error(`Unhandled actor verdict: ${String(value)}`);
 };

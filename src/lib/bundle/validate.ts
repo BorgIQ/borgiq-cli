@@ -2,6 +2,7 @@ import { BUNDLE_PATH_REGISTRY, RESERVED_CODE_FILENAMES, actorFolderPath, isKnown
 import { ACTOR_FILE, CODE_DIR, FORMAT_NAME, FORMAT_VERSION, ROOT_FILE } from './types.js';
 import type { BundleFileMap, BundleIssue } from './types.js';
 import { parseYamlDoc } from './yaml.js';
+import { isSafeBundlePath } from './path.js';
 
 export interface ValidateBundleResult {
   errors: BundleIssue[];
@@ -33,6 +34,7 @@ export const validateBundle = (files: BundleFileMap): ValidateBundleResult => {
   if (root.formatVersion !== FORMAT_VERSION) {
     errors.push({ path: ROOT_FILE, message: `Unsupported formatVersion ${String(root.formatVersion)} - this CLI supports version ${FORMAT_VERSION}.` });
   }
+  validateSync(root.sync, errors);
   if (!Array.isArray(root.actors)) {
     errors.push({ path: ROOT_FILE, message: 'Root document must contain `actors` as a list.' });
   }
@@ -61,6 +63,20 @@ export const validateBundle = (files: BundleFileMap): ValidateBundleResult => {
   validateUnreferencedFiles(files, referenced, warnings);
 
   return { errors, warnings };
+};
+
+const validateSync = (value: unknown, errors: BundleIssue[]): void => {
+  if (value === undefined) return;
+  if (!isPlainObject(value) || !isPlainObject(value.actorVersions)) {
+    errors.push({ path: ROOT_FILE, message: '`sync.actorVersions` must be a mapping of actor IDs to edit-version numbers.' });
+    return;
+  }
+
+  for (const [actorId, version] of Object.entries(value.actorVersions)) {
+    if (typeof version !== 'number' || !Number.isInteger(version) || version < 0) {
+      errors.push({ path: ROOT_FILE, message: `sync.actorVersions.${actorId} must be a non-negative integer.` });
+    }
+  }
 };
 
 const parseRoot = (files: BundleFileMap, errors: BundleIssue[]): Record<string, unknown> | undefined => {
@@ -310,8 +326,3 @@ const validateUnreferencedFiles = (files: BundleFileMap, referenced: Set<string>
     }
   }
 };
-
-const isSafeBundlePath = (path: string): boolean =>
-  !path.startsWith('/')
-  && !path.includes('\\')
-  && !path.split('/').some((segment) => segment === '' || segment === '.' || segment === '..');

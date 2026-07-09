@@ -161,7 +161,7 @@ When adding a new command:
 ### Input Handling
 
 - JSON and YAML input accepted via `--file <path>` (format detected by file extension: `.yaml`/`.yml` for YAML, all others as JSON)
-- Piped stdin is always parsed as JSON
+- Piped stdin is parsed as YAML (JSON remains supported because it is valid YAML)
 - `src/lib/input.ts` handles reading, format detection, and parsing with clear error messages
 
 ## Packaging & Distribution

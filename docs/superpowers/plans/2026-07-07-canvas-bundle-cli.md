@@ -4,7 +4,7 @@
 
 **Goal:** Add a `borgiq bundle` command group that deterministically compiles the platform's single-document canvas export (`{metadata, data}` YAML) into a git/AI-friendly filesystem bundle and back, plus an offline `init` starter — zero platform changes. **Amended 2026-07-08 (Task 10):** `push` and `pull` default to *incremental sync* — a per-actor diff against the server applied through the per-actor API — with the original whole-document behavior behind `--mode` (push) / `--replace` (pull).
 
-**Architecture:** A pure compiler core in `src/lib/bundle/` operating on an in-memory `BundleFileMap` (`Record<relativePath, string>`): `disassemble` (export doc → files), `assemble` (files → export doc), `validate` (path-scoped errors/warnings), `diff` (per-actor sync classification), an exhaustive 30-type path registry, and one deterministic YAML serialization seam. Filesystem I/O lives in `src/lib/bundleFs.ts`; API transport reuses existing `BorgIQClient` methods (`exportCanvas`, `createCanvasWithData`, `importCanvasData`, and for sync `batchActorOperations` + `updateCanvas`) — no client changes.
+**Architecture:** A pure compiler core in `src/lib/bundle/` operating on an in-memory `BundleFileMap` (`Record<relativePath, string>`): `disassemble` (export doc → files), `assemble` (files → export doc), `validate` (path-scoped errors/warnings), `diff` (per-actor sync classification), a bundle actor path registry, and one deterministic YAML serialization seam. Filesystem I/O lives in `src/lib/bundleFs.ts`; API transport reuses existing `BorgIQClient` methods (`exportCanvas`, `createCanvasWithData`, `importCanvasData`, and for sync `batchActorOperations` + `updateCanvas`). The local response type for `batchActorOperations` must mirror the server's `processed`, `appliedOperations`, `conflicts`, optional `warnings`, and `updatedAt` fields.
 
 **Tech Stack:** TypeScript (strict, NodeNext ESM), commander 15, `yaml` 2.9.0 (already pinned), `ulidx` (already present), Vitest (new devDependency — first test infra in this repo).
 
@@ -29,7 +29,7 @@
 |---|---|
 | Create `src/lib/bundle/types.ts` | `BundleFileMap`, export-document/actor/edge types, root-doc types, `BundleIssue`, `BundleError`, format + key-order constants |
 | Create `src/lib/bundle/yaml.ts` | `parseYamlDoc`, `stringifyYamlDoc` (the ONE deterministic serialization seam), `orderKeys` |
-| Create `src/lib/bundle/registry.ts` | 30-type `BUNDLE_PATH_REGISTRY`, `BIQActorType`, `actorFolderPath`, `isKnownActorType`, reserved filenames |
+| Create `src/lib/bundle/registry.ts` | `BUNDLE_PATH_REGISTRY`, `BundleActorType`, `actorFolderPath`, `isKnownActorType`, reserved filenames |
 | Create `src/lib/bundle/envelope.ts` | `parseExportInput` — raw YAML doc or `{yaml, errors}` JSON envelope → `{document, exportErrors}` |
 | Create `src/lib/bundle/disassemble.ts` | export doc → `BundleFileMap` (+ warnings): graph lifting, code externalization, dependency walk |
 | Create `src/lib/bundle/validate.ts` | `validateBundle(files)` → `{errors, warnings}`, all 8 spec check groups |
@@ -332,14 +332,14 @@ git commit -m "test(lib): add vitest infra + deterministic bundle YAML helpers"
 **Interfaces:**
 - Consumes: nothing.
 - Produces:
-  - `BIQ_ACTOR_TYPES: readonly string[]` (30 entries), `type BIQActorType`
+  - `BIQ_ACTOR_TYPES: readonly string[]`, `type BundleActorType`
   - `type BundleCategory = 'triggers' | 'tasks' | 'other'`
   - `type CodeSource = { kind: 'code' } | { kind: 'option'; key: 'html' | 'css' | 'script' }`
   - `interface BundleCodeFile { file: string; source: CodeSource }`
   - `interface BundlePathSpec { category: BundleCategory; folder: string; codeFiles: BundleCodeFile[] }`
-  - `BUNDLE_PATH_REGISTRY: Record<BIQActorType, BundlePathSpec>`
-  - `isKnownActorType(type: string): type is BIQActorType`
-  - `actorFolderPath(type: BIQActorType, actorId: string): string` → `actors/<category>/<folder>/<actorId>`
+  - `BUNDLE_PATH_REGISTRY: Record<BundleActorType, BundlePathSpec>`
+  - `isKnownActorType(type: string): type is BundleActorType`
+  - `actorFolderPath(type: BundleActorType, actorId: string): string` → `actors/<category>/<folder>/<actorId>`
   - `RESERVED_CODE_FILENAMES: ReadonlySet<string>`
 
 - [ ] **Step 1: Write the failing test**
@@ -358,8 +358,7 @@ import {
 } from '../../src/lib/bundle/registry.js';
 
 describe('BUNDLE_PATH_REGISTRY', () => {
-  it('covers exactly 30 actor types', () => {
-    expect(BIQ_ACTOR_TYPES).toHaveLength(30);
+  it('covers every declared bundle actor type', () => {
     expect(Object.keys(BUNDLE_PATH_REGISTRY).sort()).toEqual([...BIQ_ACTOR_TYPES].sort());
   });
 
@@ -425,7 +424,7 @@ Create `src/lib/bundle/registry.ts`:
 ```typescript
 /**
  * BORG-565 Canvas Bundle v1 actor-type path registry. Exhaustive over every
- * BIQActorType the platform defines (packages/runtime-types/src/canvas.ts) —
+ * bundle actor type names mirrored from the platform —
  * adding a type here without a BundlePathSpec is a compile error. Categories
  * mirror the platform's actor definition folders (actors/{trigger,task,other}).
  */
@@ -440,7 +439,7 @@ export const BIQ_ACTOR_TYPES = [
   'SendEmailActor', 'UniversalTriggerActor', 'WebhookResponseActor', 'WebhookTriggerActor',
 ] as const;
 
-export type BIQActorType = (typeof BIQ_ACTOR_TYPES)[number];
+export type BundleActorType = (typeof BIQ_ACTOR_TYPES)[number];
 
 export type BundleCategory = 'triggers' | 'tasks' | 'other';
 
@@ -460,7 +459,7 @@ export interface BundlePathSpec {
 
 const modTs = (): BundleCodeFile[] => [{ file: 'mod.ts', source: { kind: 'code' } }];
 
-export const BUNDLE_PATH_REGISTRY: Record<BIQActorType, BundlePathSpec> = {
+export const BUNDLE_PATH_REGISTRY: Record<BundleActorType, BundlePathSpec> = {
   // triggers (9)
   AppTriggerActor: {
     category: 'triggers',
@@ -504,10 +503,10 @@ export const BUNDLE_PATH_REGISTRY: Record<BIQActorType, BundlePathSpec> = {
   EchoActor: { category: 'other', folder: 'echo', codeFiles: [] },
 };
 
-export const isKnownActorType = (type: string): type is BIQActorType =>
+export const isKnownActorType = (type: string): type is BundleActorType =>
   (BIQ_ACTOR_TYPES as readonly string[]).includes(type);
 
-export const actorFolderPath = (type: BIQActorType, actorId: string): string => {
+export const actorFolderPath = (type: BundleActorType, actorId: string): string => {
   const spec = BUNDLE_PATH_REGISTRY[type];
   return `actors/${spec.category}/${spec.folder}/${actorId}`;
 };
@@ -809,7 +808,7 @@ Create `src/lib/bundle/disassemble.ts`:
 
 ```typescript
 import { BUNDLE_PATH_REGISTRY, actorFolderPath, isKnownActorType } from './registry.js';
-import type { BIQActorType } from './registry.js';
+import type { BundleActorType } from './registry.js';
 import {
   ACTOR_FILE, ACTOR_KEY_ORDER, BundleError, CANVAS_KEY_ORDER, CODE_DIR, CONFIGURATION_KEY_ORDER,
   EDGE_KEY_ORDER, FORMAT_NAME, FORMAT_VERSION, ROOT_FILE, ROOT_KEY_ORDER,
@@ -860,7 +859,7 @@ export const disassemble = (doc: CanvasExportDocument, opts: DisassembleOptions 
   const edges: ExportedEdge[] = [];
 
   for (const actor of actors) {
-    const type = actor.type as BIQActorType;
+    const type = actor.type as BundleActorType;
     const spec = BUNDLE_PATH_REGISTRY[type];
     const dir = actorFolderPath(type, actor.id);
 
@@ -1563,7 +1562,7 @@ Create `src/lib/bundle/assemble.ts`:
 
 ```typescript
 import { BUNDLE_PATH_REGISTRY } from './registry.js';
-import type { BIQActorType } from './registry.js';
+import type { BundleActorType } from './registry.js';
 import { ACTOR_FILE, CANVAS_KEY_ORDER, CODE_DIR, ROOT_FILE } from './types.js';
 import type {
   BundleFileMap, BundleIssue, BundleRootDoc, CanvasExportDocument, ExportedActor, ExportedEdge,
@@ -1614,7 +1613,7 @@ export const assembleBundle = (files: BundleFileMap): AssembleResult => {
   const actors: Record<string, ExportedActor> = {};
   for (const entry of root.actors) {
     const actorDoc = parseYamlDoc(files[`${entry.path}/${ACTOR_FILE}`]) as Record<string, unknown>;
-    const spec = BUNDLE_PATH_REGISTRY[entry.type as BIQActorType];
+    const spec = BUNDLE_PATH_REGISTRY[entry.type as BundleActorType];
     const configuration: Record<string, unknown> = { ...(isPlainObject(actorDoc.configuration) ? actorDoc.configuration : {}) };
 
     if (configuration.codeDir === CODE_DIR) {
@@ -2396,7 +2395,7 @@ export const registerBundleCommands = (program: Command): void => {
   bundle
     .command('unpack <file> <dir>')
     .description("Expand a canvas export document into a bundle folder ('-' reads stdin; accepts raw YAML or the {yaml, errors} JSON envelope)")
-    .option('--force', 'Write into a non-empty directory that is not a bundle')
+    .option('--force', 'Replace managed files in an existing bundle or write into another non-empty directory')
     .addHelpText('after', `
 Examples:
   $ borgiq canvases export my-canvas --json | borgiq bundle unpack - ./my-canvas.borgiq-canvas
@@ -2579,7 +2578,7 @@ export const bundlePush = async (
 };
 ```
 
-If `options.autoLayout` is true, or `options.layoutSourceActorId` is provided, call `layoutCanvas` after the successful create/import. For create, resolve the layout target from the created canvas response first and the bundle metadata slug/id second. JSON output wraps the primary response with `layout`; TTY stderr reports the layout actor count.
+If `options.autoLayout` is true, or `options.layoutSourceActorId` is provided, call `layoutCanvas` after a successful sync, create, or legacy import. For create, resolve the layout target from the created canvas response first and the bundle metadata slug/id second. JSON output wraps the primary response with `layout`; TTY stderr reports the layout actor count.
 
 - [ ] **Step 3: Register pull/push**
 
@@ -2606,7 +2605,7 @@ and append inside `registerBundleCommands` after the `validate` registration:
     .option('--mode <mode>', 'Import mode: merge (default), insert, or replace', 'merge')
     .option('--create', 'Create a new canvas from the bundle metadata instead of importing')
     .option('--strict', 'Treat validation warnings as errors')
-    .option('--auto-layout', 'Run canvas auto-layout after a successful create/import')
+    .option('--auto-layout', 'Run canvas auto-layout after a successful sync, create, or legacy import')
     .option('--layout-source-actor-id <actorId...>', 'Auto-layout only downstream of these actors (implies --auto-layout)')
     .addHelpText('after', `
 Examples:
@@ -2676,7 +2675,7 @@ git commit -m "feat(bundle): add pull/push commands and document the bundle work
 
 *Added 2026-07-08, after Tasks 1–9 shipped. Spec section: "Incremental sync (default push/pull behavior)" — read it first; it is the contract for every rule below (verdict table, conflict policy, ordering, invariants).*
 
-*Update log: 2026-07-09 — Updated by Codex (GPT-5) to add the agent-safe compact output contract and `bundle push --raw` escape hatch.*
+*Update log: 2026-07-09 — Updated by Codex (GPT-5) to add the agent-safe compact output contract and `bundle push --raw` escape hatch; review hardening now also fails closed on incomplete exports/batch confirmations, aborts pull conflicts before writes, and adds command-handler regression coverage.*
 
 **Why:** whole-document import replaces every actor on every push (noisy canvas history, stomps concurrent server edits); full-rewrite pull churns every file's mtime and clobbers local work. Sync converges the two sides by touching only actors that differ, via the per-actor API that already exists in the client.
 
@@ -2690,7 +2689,7 @@ git commit -m "feat(bundle): add pull/push commands and document the bundle work
 - Modify: `README.md` (bundle section — sync examples)
 
 **Interfaces:**
-- Consumes: `assemble`/`disassemble`, the `yaml.ts` canonical seam, and existing client methods: `client.exportCanvas`, `client.getCanvas(..., true)` for `actorVersions`, `client.batchActorOperations(org, workspace, canvas, { operations })` (ops `{ type: 'add' | 'update' | 'remove', actorId, timestamp, editVersion?, data? }` → `{ appliedOperations, conflicts, updatedAt }`), `client.updateCanvas`.
+- Consumes: `assemble`/`disassemble`, the `yaml.ts` canonical seam, and existing client methods: `client.exportCanvas`, `client.getCanvas(..., true)` for `actorVersions`, `client.batchActorOperations(org, workspace, canvas, { operations })` (ops `{ type: 'add' | 'update' | 'remove', actorId, timestamp, editVersion?, data? }` → `{ processed, appliedOperations, conflicts, warnings?, updatedAt }`), `client.updateCanvas`.
 - Produces: `diffCanvas`, `writeBundleDirIncremental`, and the sync-by-default command surface.
 
 - [ ] **Step 1: Pure diff core**
@@ -2766,13 +2765,13 @@ Extend `src/lib/bundleFs.ts` with `writeBundleDirIncremental(dir, files: BundleF
 
 1. `--create` unchanged (conflicts with `--canvas`/`--mode`; also with `--force-local`/`--dry-run` — usage error).
 2. Validate + assemble local bundle (before any API call). If `--mode` given → legacy `importCanvasData` path, verbatim current behavior, done.
-3. `exportCanvas(target)` + `getCanvas(target, true)` → parse envelope → local vs server `diffCanvas` using `sync.actorVersions` and server `actorVersions`.
+3. `exportCanvas(target)` + `getCanvas(target, true)` → validate the envelope shape; any `exportErrors` abort because the baseline is not safe for sync. Then compute local vs server `diffCanvas` using `sync.actorVersions` and server `actorVersions`. If the bundle has no sync map, print that conflict detection is disabled for this compatibility push and local content wins.
 4. Conflicts and not `--force-local` → write the report to stderr (id, name, bundle path, `bundle editVersion → server editVersion`, hint: *re-pull, or `--force-local`*), `output()` the structured diff, exit non-zero. **Nothing is applied.**
 5. `--dry-run` → print the plan (adds/updates/removes/conflicts/unchanged counts + ids, metadata delta), apply nothing, exit 0.
-6. `batchActorOperations` with `toBatchOperations(...)` (skip the call entirely when there are zero ops). Response `conflicts[]` non-empty → report + non-zero exit.
+6. `batchActorOperations` with `toBatchOperations(...)` (skip the call entirely when there are zero ops). Response `conflicts[]` non-empty → report how many operations were already applied, skip later mutations/refresh, and exit non-zero. Verify every requested actor ID appears in `processed` or a successful `appliedOperations` entry; any unconfirmed/failed operation gets the same fail-closed behavior.
 7. `metadataDelta` → `updateCanvas`.
 8. `--auto-layout` / `--layout-source-actor-id` as today.
-9. Unless `--no-refresh`: implicit incremental pull (Step 4's write path) so local `sync.actorVersions` advances. Summary: `applied: N added, M updated, K deleted[, metadata]; skipped: U unchanged`.
+9. Unless `--no-refresh`: implicit incremental pull (Step 4's write path) so local `sync.actorVersions` advances. A refresh export with `exportErrors` must not touch local files. Summary includes added, updated (including `--force-local` updates), deleted, deleted-on-server, and unchanged counts.
 
 Default structured output for all sync push paths must be compact:
 - Include `mode`, `target`, `summary`, actor `entries`, `conflicts`, compact `operations` (`type`, `actorId`, `editVersion` only), `metadataDelta`, compact `batch` (`appliedOperations` without `actorData`; `conflicts` without `mergedData`), compact `layout` summaries, and `refresh.writePlan`.
@@ -2783,10 +2782,10 @@ Default structured output for all sync push paths must be compact:
 
 `src/commands/bundle/pull.ts` — options become `{ replace?, force?, dryRun? }`:
 
-1. Target dir is not an existing bundle (no `canvas.yaml`), or `--replace` given → current full `writeBundleDir` behavior, done.
+1. Target dir is not an existing bundle (no `canvas.yaml`), or `--replace` given → current full `writeBundleDir` behavior, done. `--replace` is explicit authorization to rewrite an existing bundle's managed paths.
 2. Otherwise: read + assemble the local bundle (a local bundle that fails validation cannot be sync-pulled — tell the user to fix it or use `--replace`), fetch + parse the export plus `actorVersions`, `diffCanvas`.
-3. Compute the merged actor set per the verdict table: server actors, except `local-edit` actors keep the local record (report "local changes kept — push to publish"); `new-local` actors are kept with their graph nodes/edges; `deleted-on-server` actor folders are dropped.
-4. Disassemble the merged document (existing disassembler — graph/index/dependencies regenerate as projections) → `writeBundleDirIncremental`.
+3. If `diff.conflicts` is non-empty, list the actor IDs/version markers, set the conflict exit code, and return before any write. The resolution is manual reconciliation or `--replace` for explicit server wins.
+4. Compute the merged actor set per the verdict table: server actors, except `local-edit` actors keep the local record (report "local changes kept — push to publish"); `new-local` actors are kept with their graph nodes/edges; `deleted-on-server` actor folders are dropped. Disassemble the merged document (existing disassembler — graph/index/dependencies regenerate as projections) → `writeBundleDirIncremental`.
 5. `--dry-run` prints per-actor verdicts and the would-write/would-delete file lists, writes nothing.
 6. Summary: `updated: N actors, kept local: M, deleted: K, unchanged: U`.
 
@@ -2814,6 +2813,8 @@ Default structured output for all sync push paths must be compact:
 - Pull merge: kept `new-local` actor's node/edges survive `canvas.yaml` regeneration; `local-edit` actor record survives verbatim; `deleted-on-server` folder disappears from the merged file map.
 
 `tests/bundle/bundleFs.test.ts` additions: incremental write leaves identical files untouched (mtime check), deletes only vanished actor folders, still never touches unmanaged paths.
+
+`tests/commands/bundle-sync.test.ts` uses a mocked API client and real temporary bundle folders to cover dry-run mutation safety, preflight conflict exits, incomplete batch confirmation, post-push marker refresh, deleted-on-server reporting, marker-less warnings, export-error aborts, pull conflict refusal, and explicit `--replace` server-wins behavior.
 
 - [ ] **Step 7: Docs + gate + commit**
 

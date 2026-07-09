@@ -6,10 +6,10 @@ import { BUNDLE_AGENTS_MD, BUNDLE_GITIGNORE } from '../../lib/bundle/template.js
 import type { BundleFileMap, BundleIssue } from '../../lib/bundle/types.js';
 import { CliUsageError } from '../../lib/errors.js';
 
-export const BUNDLE_COMPANIONS: BundleFileMap = {
+export const BUNDLE_COMPANIONS: Readonly<BundleFileMap> = Object.freeze({
   'AGENTS.md': BUNDLE_AGENTS_MD,
   '.gitignore': BUNDLE_GITIGNORE,
-};
+});
 
 export const readRawInput = async (file: string): Promise<string> => {
   if (file !== '-') return fs.readFileSync(file, 'utf-8');

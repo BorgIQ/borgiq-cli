@@ -36,7 +36,7 @@ export const BIQ_ACTOR_TYPES = [
   'WebhookTriggerActor',
 ] as const;
 
-export type BIQActorType = (typeof BIQ_ACTOR_TYPES)[number];
+export type BundleActorType = (typeof BIQ_ACTOR_TYPES)[number];
 
 export type BundleCategory = 'triggers' | 'tasks' | 'other';
 
@@ -55,7 +55,7 @@ export interface BundlePathSpec {
 
 const modTs = (): BundleCodeFile[] => [{ file: 'mod.ts', source: { kind: 'code' } }];
 
-export const BUNDLE_PATH_REGISTRY: Record<BIQActorType, BundlePathSpec> = {
+export const BUNDLE_PATH_REGISTRY: Readonly<Record<BundleActorType, BundlePathSpec>> = Object.freeze({
   AppTriggerActor: {
     category: 'triggers',
     folder: 'app',
@@ -96,12 +96,12 @@ export const BUNDLE_PATH_REGISTRY: Record<BIQActorType, BundlePathSpec> = {
 
   CommentActor: { category: 'other', folder: 'comment', codeFiles: [] },
   EchoActor: { category: 'other', folder: 'echo', codeFiles: [] },
-};
+});
 
-export const isKnownActorType = (type: string): type is BIQActorType =>
+export const isKnownActorType = (type: string): type is BundleActorType =>
   (BIQ_ACTOR_TYPES as readonly string[]).includes(type);
 
-export const actorFolderPath = (type: BIQActorType, actorId: string): string => {
+export const actorFolderPath = (type: BundleActorType, actorId: string): string => {
   const spec = BUNDLE_PATH_REGISTRY[type];
   return `actors/${spec.category}/${spec.folder}/${actorId}`;
 };

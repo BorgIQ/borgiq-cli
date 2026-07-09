@@ -20,9 +20,12 @@ export const parseExportInput = (raw: string): ExportInput => {
   }
 
   if (isPlainObject(json) && typeof json.yaml === 'string') {
+    if (!Array.isArray(json.errors)) {
+      throw new BundleError('Canvas export envelope is malformed (expected `errors` to be an array).');
+    }
     return {
       document: parseDocument(json.yaml),
-      exportErrors: Array.isArray(json.errors) ? json.errors : [],
+      exportErrors: json.errors,
     };
   }
 
@@ -31,8 +34,8 @@ export const parseExportInput = (raw: string): ExportInput => {
 
 const parseDocument = (text: string): CanvasExportDocument => {
   const parsed = parseYamlDoc(text);
-  if (!isPlainObject(parsed) || !isPlainObject(parsed.metadata) || !isPlainObject(parsed.data)) {
-    throw new BundleError('Input is not a canvas export document (expected `metadata` and `data` keys).');
+  if (!isPlainObject(parsed) || !isPlainObject(parsed.metadata) || !isPlainObject(parsed.data) || !isPlainObject(parsed.data.actors)) {
+    throw new BundleError('Input is not a canvas export document (expected `metadata` and `data.actors` keys).');
   }
   return parsed as unknown as CanvasExportDocument;
 };

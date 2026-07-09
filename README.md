@@ -405,15 +405,16 @@ borgiq bundle push ./my-flow.borgiq-canvas --create
 | Command | Description |
 |---------|-------------|
 | `borgiq bundle init <dir>` | Create an offline starter bundle folder. Refuses non-empty directories. |
-| `borgiq bundle unpack <file\|-> <dir>` | Read raw export YAML or the `{ yaml, errors }` JSON envelope and write a bundle folder. |
+| `borgiq bundle unpack <file\|-> <dir>` | Read raw export YAML or the `{ yaml, errors }` JSON envelope and write a bundle folder. Pass `--force` to replace an existing bundle's managed files. |
 | `borgiq bundle pack <dir>` | Validate and emit platform export YAML to stdout or `-o, --output <file>`. |
 | `borgiq bundle validate <dir>` | Report all bundle errors and warnings; `--strict` treats warnings as fatal. |
-| `borgiq bundle pull <canvas> [dir]` | Sync by slug or ID from the API. Existing bundles update only server-changed actors; `--replace` does the legacy full managed-path rewrite. |
+| `borgiq bundle pull <canvas> [dir]` | Sync by slug or ID from the API. Existing bundles preserve local edits and abort on concurrent local/server edits; `--replace` explicitly accepts the server state with a full managed-path rewrite. |
 | `borgiq bundle push <dir>` | Validate and sync only changed actors by default. Structured output is compact; use `--raw` for generated operation payloads and raw API responses. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. |
 
 `pull --replace` and `unpack` rewrite only managed paths: `canvas.yaml` and `actors/`.
 Files such as `.git/`, `AGENTS.md`, `.gitignore`, and notes are preserved.
 `AGENTS.md` and `.gitignore` are created only when missing.
+Push refuses exports with actor errors, verifies that the batch API confirmed every requested actor operation, and skips local refresh after any incomplete response. A bundle without `sync.actorVersions` can still perform one compatibility push, but the CLI warns that conflict detection is disabled and local actor content wins.
 
 ---
 

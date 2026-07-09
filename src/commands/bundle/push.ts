@@ -1,9 +1,9 @@
+import type { BatchActorOperation, BatchActorOperationsResponse } from '../../client/types.js';
 import { diffCanvas, summarizeDiff, toBatchOperations } from '../../lib/bundle/diff.js';
 import { disassemble } from '../../lib/bundle/disassemble.js';
 import { parseExportInput } from '../../lib/bundle/envelope.js';
 import { compactBatchResult, compactLayoutResult, compactOperations, withRaw } from '../../lib/bundle/output.js';
-import { readBundleDir } from '../../lib/bundleFs.js';
-import { writeBundleDirIncremental } from '../../lib/bundleFs.js';
+import { readBundleDir, writeBundleDirIncremental } from '../../lib/bundleFs.js';
 import { applyCanvasAutoLayout, canvasSlugOrIdFromCreateResult, shouldAutoLayout } from '../../lib/canvasLayout.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { createClientWithContext } from '../../lib/context.js';
@@ -29,6 +29,10 @@ export const bundlePush = async (
   },
   command: { parent: { parent: { opts: () => GlobalOptions } } },
 ): Promise<void> => {
+  let appliedActorOperationCount = 0;
+  let metadataWasUpdated = false;
+  let layoutWasApplied = false;
+
   try {
     if (options.create && (options.canvas || options.mode || options.forceLocal || options.dryRun || options.refresh === false)) {
       throw new CliUsageError('--create cannot be combined with --canvas, --mode, --force-local, --dry-run, or --no-refresh.');
@@ -54,16 +58,15 @@ export const bundlePush = async (
       if (!globalOpts.json && process.stderr.isTTY) {
         process.stderr.write(`Canvas '${String(metadata.slug)}' created from ${dir}.\n`);
       }
+      let layout: unknown;
       if (shouldAutoLayout(options)) {
         const canvasTarget = canvasSlugOrIdFromCreateResult(result, metadata);
         if (!canvasTarget) {
           throw new CliUsageError('Cannot auto-layout created canvas because no canvas slug or ID was returned. Set canvas.slug in the bundle or run `borgiq canvases layout <canvas>` manually.');
         }
-        const layout = await applyCanvasAutoLayout(client, ctx.org, ctx.workspace, canvasTarget, options, globalOpts);
-        output({ canvas: result, layout }, globalOpts);
-        return;
+        layout = await applyCanvasAutoLayout(client, ctx.org, ctx.workspace, canvasTarget, options, globalOpts);
       }
-      output(result, globalOpts);
+      output(withRaw({ mode: 'create', canvas: result, layout: compactLayoutResult(layout) }, options.raw, { canvas: result, layout }), globalOpts);
       return;
     }
 
@@ -79,12 +82,10 @@ export const bundlePush = async (
         const conflicts = (result as { conflicts?: unknown[] })?.conflicts?.length ?? 0;
         process.stderr.write(`Pushed ${dir} -> '${target}' (${options.mode} mode): ${applied} operations applied, ${conflicts} conflicts.\n`);
       }
-      if (shouldAutoLayout(options)) {
-        const layout = await applyCanvasAutoLayout(client, ctx.org, ctx.workspace, target, options, globalOpts);
-        output({ import: result, layout }, globalOpts);
-        return;
-      }
-      output(result, globalOpts);
+      const layout = shouldAutoLayout(options)
+        ? await applyCanvasAutoLayout(client, ctx.org, ctx.workspace, target, options, globalOpts)
+        : undefined;
+      output(withRaw({ mode: options.mode, target, import: compactBatchResult(result), layout: compactLayoutResult(layout) }, options.raw, { import: result, layout }), globalOpts);
       return;
     }
 
@@ -93,15 +94,26 @@ export const bundlePush = async (
       client.getCanvas(ctx.org, ctx.workspace, target, true),
     ]);
     const server = parseExportInput(JSON.stringify(serverEnvelope));
+    if (server.exportErrors.length > 0) {
+      reportExportErrors(server.exportErrors);
+      process.exitCode = ExitCode.GENERAL;
+      output({ mode: 'sync', target, exportErrors: server.exportErrors, applied: false }, globalOpts);
+      return;
+    }
     const actorVersions = canvasDetail.actorVersions ?? {};
+    const conflictDetectionDisabled = local.sync.actorVersions === undefined && Object.keys(doc.data.actors).length > 0;
+    if (conflictDetectionDisabled) {
+      process.stderr.write('Warning: this bundle has no sync.actorVersions markers. Conflict detection is disabled for this push; local actor content wins. Pull first to establish version markers.\n');
+    }
     const diff = diffCanvas(doc, server.document, {
       localActorVersions: local.sync.actorVersions,
       serverActorVersions: actorVersions,
       assumeServerVersionsWhenLocalMissing: true,
     });
-    const summary = summarizeDiff(diff);
+    const summary = summarizeDiff(diff, Boolean(options.forceLocal));
     const operations = toBatchOperations(diff, doc, Boolean(options.forceLocal), Date.now());
     const compactOps = compactOperations(operations);
+    reportDeletedOnServer(diff.entries, options.refresh !== false);
 
     if (diff.conflicts.length > 0 && !options.forceLocal) {
       reportPushConflicts(diff.conflicts);
@@ -118,26 +130,41 @@ export const bundlePush = async (
       return;
     }
 
-    let batchResult: unknown;
+    let batchResult: BatchActorOperationsResponse | undefined;
     if (operations.length > 0) {
       batchResult = await client.batchActorOperations(ctx.org, ctx.workspace, target, { operations });
-      const conflicts = (batchResult as { conflicts?: unknown[] })?.conflicts ?? [];
+      const conflicts = batchResult.conflicts ?? [];
       if (conflicts.length > 0) {
-        process.stderr.write(`Push hit ${conflicts.length} server-side conflict(s); no refresh was performed.\n`);
+        appliedActorOperationCount = confirmedOperationCount(operations, batchResult);
+        process.stderr.write(`Push hit ${conflicts.length} server-side conflict(s); ${appliedActorOperationCount} actor operation(s) were applied and no refresh was performed. Run \`borgiq bundle pull ${target} ${dir}\` to resync before retrying.\n`);
         process.exitCode = ExitCode.CONFLICT;
         output(withRaw({ mode: 'sync', target, summary, operations: compactOps, batch: compactBatchResult(batchResult) }, options.raw, { operations, batch: batchResult }), globalOpts);
         return;
       }
+
+      const unconfirmedActorIds = unconfirmedOperationActorIds(operations, batchResult);
+      if (unconfirmedActorIds.length > 0) {
+        appliedActorOperationCount = confirmedOperationCount(operations, batchResult);
+        process.stderr.write(`Push stopped: the API did not confirm ${unconfirmedActorIds.length} actor operation(s); no metadata update, layout, or refresh was performed.\n`);
+        for (const actorId of unconfirmedActorIds) process.stderr.write(`  ${actorId}\n`);
+        process.stderr.write(`Run \`borgiq bundle pull ${target} ${dir}\` to inspect and resync the server state.\n`);
+        process.exitCode = ExitCode.GENERAL;
+        output(withRaw({ mode: 'sync', target, summary, operations: compactOps, batch: compactBatchResult(batchResult), unconfirmedActorIds }, options.raw, { operations, batch: batchResult }), globalOpts);
+        return;
+      }
+      appliedActorOperationCount = operations.length;
     }
 
     let metadataResult: unknown;
     if (diff.metadataDelta) {
       metadataResult = await client.updateCanvas(ctx.org, ctx.workspace, target, diff.metadataDelta);
+      metadataWasUpdated = true;
     }
 
     let layout: unknown;
     if (shouldAutoLayout(options)) {
       layout = await applyCanvasAutoLayout(client, ctx.org, ctx.workspace, target, options, globalOpts);
+      layoutWasApplied = true;
     }
 
     let refresh: unknown;
@@ -147,6 +174,19 @@ export const bundlePush = async (
         client.getCanvas(ctx.org, ctx.workspace, target, true),
       ]);
       const refreshed = parseExportInput(JSON.stringify(refreshEnvelope));
+      if (refreshed.exportErrors.length > 0) {
+        process.stderr.write(`Push mutations were applied, but the refresh export reported ${refreshed.exportErrors.length} actor error(s). No local files were refreshed. Run \`borgiq bundle pull ${target} ${dir}\` after fixing the export errors.\n`);
+        process.exitCode = ExitCode.GENERAL;
+        output(withRaw({
+          mode: 'sync',
+          target,
+          summary,
+          operations: compactOps,
+          batch: compactBatchResult(batchResult),
+          refresh: { applied: false, exportErrors: refreshed.exportErrors },
+        }, options.raw, { operations, batch: batchResult, metadata: metadataResult, layout, refresh: refreshed }), globalOpts);
+        return;
+      }
       const refreshedFiles = disassemble(refreshed.document, {
         exportErrors: refreshed.exportErrors,
         actorVersions: refreshCanvasDetail.actorVersions ?? {},
@@ -156,7 +196,7 @@ export const bundlePush = async (
     }
 
     if (!globalOpts.json && process.stderr.isTTY) {
-      process.stderr.write(`Synced ${dir} -> '${target}': ${summary.added} added, ${summary.updated} updated, ${summary.removed} deleted, ${summary.unchanged} unchanged${diff.metadataDelta ? ', metadata updated' : ''}.\n`);
+      process.stderr.write(`Synced ${dir} -> '${target}': ${summary.added} added, ${summary.updated} updated, ${summary.removed} deleted, ${summary.deletedOnServer} deleted on server, ${summary.unchanged} unchanged${diff.metadataDelta ? ', metadata updated' : ''}.\n`);
     }
     output(withRaw({
       mode: 'sync',
@@ -170,9 +210,69 @@ export const bundlePush = async (
       refresh,
     }, options.raw, { operations, batch: batchResult, metadata: metadataResult, layout }), globalOpts);
   } catch (error) {
+    if (appliedActorOperationCount > 0 || metadataWasUpdated || layoutWasApplied) {
+      const completed = [
+        appliedActorOperationCount > 0 ? `${appliedActorOperationCount} actor operation(s)` : undefined,
+        metadataWasUpdated ? 'canvas metadata' : undefined,
+        layoutWasApplied ? 'canvas layout' : undefined,
+      ].filter((value): value is string => value !== undefined);
+      process.stderr.write(`Warning: push partially completed before the error (${completed.join(', ')} applied). Run \`borgiq bundle pull\` to resync local version markers before retrying.\n`);
+    }
     handleError(error);
   }
 };
+
+const reportDeletedOnServer = (entries: { actorId: string; name: string; verdict: string }[], refreshEnabled: boolean): void => {
+  for (const entry of entries) {
+    if (entry.verdict !== 'deleted-on-server') continue;
+    const refreshMessage = refreshEnabled
+      ? 'The post-push refresh will remove its local actor folder.'
+      : 'Its local actor folder is being kept because --no-refresh was used.';
+    process.stderr.write(`Warning: ${entry.actorId} (${entry.name}) was deleted on the server. No actor operation will be generated. ${refreshMessage}\n`);
+  }
+};
+
+const reportExportErrors = (errors: unknown[]): void => {
+  process.stderr.write(`Push aborted: the server export reported ${errors.length} actor error(s), so the sync baseline is incomplete. Fix the export errors and retry.\n`);
+  for (const error of errors) {
+    const value = isRecord(error) ? error : {};
+    const actorId = typeof value.actorId === 'string' ? value.actorId : 'unknown actor';
+    const field = typeof value.field === 'string' ? ` ${value.field}` : '';
+    const message = typeof value.error === 'string' ? `: ${value.error}` : '';
+    process.stderr.write(`  ${actorId}${field}${message}\n`);
+  }
+};
+
+const unconfirmedOperationActorIds = (operations: BatchActorOperation[], result: BatchActorOperationsResponse): string[] => {
+  const confirmed = confirmedActorIds(result);
+  return [...new Set(operations.map((operation) => operation.actorId).filter((actorId) => !confirmed.has(actorId)))].sort();
+};
+
+const confirmedOperationCount = (operations: BatchActorOperation[], result: BatchActorOperationsResponse): number => {
+  const confirmed = confirmedActorIds(result);
+  return new Set(operations.map((operation) => operation.actorId).filter((actorId) => confirmed.has(actorId))).size;
+};
+
+const confirmedActorIds = (result: BatchActorOperationsResponse): Set<string> => {
+  const confirmed = new Set(Array.isArray(result.processed) ? result.processed.filter((value): value is string => typeof value === 'string') : []);
+  const failed = new Set<string>();
+
+  for (const operation of Array.isArray(result.appliedOperations) ? result.appliedOperations : []) {
+    const value = operation as unknown as Record<string, unknown>;
+    if (typeof value.actorId !== 'string') continue;
+    const status = typeof value.status === 'string' ? value.status.toLowerCase() : undefined;
+    if (status !== undefined && status !== 'applied' && status !== 'success') {
+      failed.add(value.actorId);
+      continue;
+    }
+    confirmed.add(value.actorId);
+  }
+  for (const actorId of failed) confirmed.delete(actorId);
+  return confirmed;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const reportPushConflicts = (conflicts: { actorId: string; name: string; bundleVersion?: number; serverVersion?: number }[]): void => {
   process.stderr.write(`Push aborted: ${conflicts.length} actor conflict(s). Re-pull, or re-run with --force-local for local wins.\n`);

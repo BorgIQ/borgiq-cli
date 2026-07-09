@@ -248,8 +248,15 @@ export interface BatchActorOperation {
 
 /** Patch actors response */
 export interface BatchActorOperationsResponse {
-  appliedOperations: { type: string; actorId: string; status: string }[];
+  processed: string[];
+  appliedOperations: {
+    type: string;
+    actorId: string;
+    newEditVersion: number;
+    actorData?: Record<string, unknown>;
+  }[];
   conflicts: unknown[];
+  warnings?: unknown[];
   updatedAt: string;
 }
 

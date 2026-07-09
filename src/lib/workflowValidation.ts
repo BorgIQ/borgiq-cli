@@ -168,13 +168,6 @@ export interface ActorConfig {
     configuration?: {
       inputs?: Record<string, unknown>;
       vars?: Array<Record<string, unknown>>;
-      webhook?: {
-        triggerKey?: string;
-        authorizationLevel?: string;
-        allowedMethods?: string[];
-        responseTimeout?: number;
-      };
-      webhookTriggerKey?: string;
       options?: {
         // HttpRequestActor options
         url?: string;
@@ -183,11 +176,6 @@ export interface ActorConfig {
         queryParams?: Record<string, unknown>;
         body?: unknown;
         auth?: string;
-        webhook?: {
-          respondImmediately?: boolean;
-          emitRawBody?: boolean;
-          response?: { statusCode?: number; body?: unknown; headers?: unknown };
-        };
         // DenoActor options (code is at configuration.code, NOT here)
         allowNet?: boolean;
         allowNetList?: string[];
@@ -784,8 +772,6 @@ export async function validateYaml(
           );
         } else if (actor.type === "CallableTriggerActor") {
           validateCallableTriggerActor(actorId, config, errors, warnings);
-        } else if (actor.type === "WebhookTriggerActor") {
-          validateWebhookTriggerActor(actorId, config, errors, warnings);
         } else if (actor.type === "SendEmailActor") {
           validateSendEmailActor(actorId, config, errors, warnings);
         } else if (actor.type === "CommentActor") {
@@ -1492,67 +1478,6 @@ function validateCallableTriggerActor(
     errors.push(
       `${prefix}: CallableTriggerActor should not have 'configuration.options'. Remove the options field.`,
     );
-  }
-}
-
-function validateWebhookTriggerActor(
-  actorId: string,
-  config: ActorConfiguration,
-  errors: string[],
-  _warnings: string[],
-): void {
-  const prefix = `Actor '${actorId}'`;
-
-  const webhookConfig = config.webhook;
-  const webhookTriggerKey = webhookConfig?.triggerKey ?? config.webhookTriggerKey;
-  if (!webhookTriggerKey) {
-    errors.push(
-      `${prefix}: Missing required 'configuration.webhook.triggerKey'. ` +
-      `Generate a 26-character ULID and store it at configuration.webhook.triggerKey.`,
-    );
-  } else if (typeof webhookTriggerKey !== "string") {
-    errors.push(
-      `${prefix}: 'configuration.webhook.triggerKey' must be a string`,
-    );
-  } else if (webhookTriggerKey.length !== 26) {
-    errors.push(
-      `${prefix}: 'configuration.webhook.triggerKey' must be 26 characters (ULID format), got ${webhookTriggerKey.length}`,
-    );
-  }
-
-  if (webhookConfig?.responseTimeout !== undefined) {
-    if (typeof webhookConfig.responseTimeout === "number") {
-      if (webhookConfig.responseTimeout < 1 || webhookConfig.responseTimeout > 60) {
-        errors.push(
-          `${prefix}: 'configuration.webhook.responseTimeout' must be between 1 and 60 seconds, got ${webhookConfig.responseTimeout}`,
-        );
-      }
-    }
-  }
-
-  if (webhookConfig?.allowedMethods && Array.isArray(webhookConfig.allowedMethods)) {
-    const validMethods = ["get", "post", "put", "patch", "delete"];
-    for (const method of webhookConfig.allowedMethods) {
-      if (!validMethods.includes(method)) {
-        errors.push(
-          `${prefix}: Invalid HTTP method '${method}' in 'configuration.webhook.allowedMethods'. ` +
-          `Valid methods: ${validMethods.join(", ")}`,
-        );
-      }
-    }
-  }
-
-  if (config?.options) {
-    const options = (config.options.webhook ?? config.options) as {
-      respondImmediately?: boolean;
-      response?: { statusCode?: number; body?: unknown; headers?: unknown };
-    };
-
-    if (options.respondImmediately === true && !options.response) {
-      errors.push(
-        `${prefix}: 'response' is required when 'respondImmediately' is true`,
-      );
-    }
   }
 }
 

@@ -22,7 +22,7 @@ export const registerBundleCommands = (program: Command): void => {
   bundle
     .command('unpack <file> <dir>')
     .description("Expand a canvas export document into a bundle folder ('-' reads stdin)")
-    .option('--force', 'Write into a non-empty directory that is not a bundle')
+    .option('--force', 'Replace managed files in an existing bundle or write into another non-empty directory')
     .addHelpText('after', `
 Examples:
   $ borgiq canvases export my-canvas --json | borgiq bundle unpack - ./my-canvas.borgiq-canvas
@@ -61,7 +61,7 @@ Examples:
     .option('--no-refresh', 'Skip the post-push pull that refreshes local version markers')
     .option('--strict', 'Treat validation warnings as errors')
     .option('--raw', 'Include generated operation payloads and raw API responses in output')
-    .option('--auto-layout', 'Run canvas auto-layout after a successful create/import')
+    .option('--auto-layout', 'Run canvas auto-layout after a successful sync, create, or legacy import')
     .option('--layout-source-actor-id <actorId...>', 'Auto-layout only downstream of these actors (implies --auto-layout)')
     .addHelpText('after', `
 Examples:

@@ -35,6 +35,16 @@ describe('validateBundle', () => {
     expect(messages(validateBundle(badVersion).errors)).toMatch(/formatVersion/);
   });
 
+  it('rejects malformed sync version markers instead of silently disabling conflict checks', () => {
+    const missingMap = mutateRoot(validFiles(), (root) => { root.sync = {}; });
+    const invalidVersion = mutateRoot(validFiles(), (root) => {
+      root.sync = { actorVersions: { [TASK_ID]: 'old' } };
+    });
+
+    expect(messages(validateBundle(missingMap).errors)).toMatch(/sync\.actorVersions.*mapping/);
+    expect(messages(validateBundle(invalidVersion).errors)).toMatch(/non-negative integer/);
+  });
+
   it('rejects path escapes and registry mismatches', () => {
     const escape = mutateRoot(validFiles(), (root) => {
       (root.actors as { path: string }[])[0].path = 'actors/tasks/deno/../../../etc';

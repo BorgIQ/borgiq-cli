@@ -3,13 +3,14 @@ import path from 'node:path';
 
 import { ROOT_FILE } from './bundle/types.js';
 import type { BundleFileMap } from './bundle/types.js';
+import { isSafeBundlePath } from './bundle/path.js';
 import { CliUsageError } from './errors.js';
 
 const MANAGED_DIR = 'actors';
 
 export interface WriteBundleOptions {
   force?: boolean;
-  createIfMissing?: BundleFileMap;
+  createIfMissing?: Readonly<BundleFileMap>;
 }
 
 export interface IncrementalWritePlan {
@@ -37,9 +38,11 @@ export const writeBundleDir = (dir: string, files: BundleFileMap, opts: WriteBun
       throw new CliUsageError(`${dir} exists and is not a directory.`);
     }
     const entries = fs.readdirSync(dir);
-    const isBundle = entries.includes(ROOT_FILE);
-    if (entries.length > 0 && !isBundle && !opts.force) {
-      throw new CliUsageError(`${dir} is not empty and not a canvas bundle - pass --force to write into it anyway.`);
+    if (entries.length > 0 && !opts.force) {
+      const message = entries.includes(ROOT_FILE)
+        ? `${dir} already contains a canvas bundle - pass --force to replace its managed files.`
+        : `${dir} is not empty and not a canvas bundle - pass --force to write into it anyway.`;
+      throw new CliUsageError(message);
     }
     fs.rmSync(path.join(dir, ROOT_FILE), { force: true });
     fs.rmSync(path.join(dir, MANAGED_DIR), { recursive: true, force: true });
@@ -153,7 +156,7 @@ const pruneEmptyDirs = (currentDir: string, stopDir: string): void => {
 };
 
 const resolveInside = (dir: string, rel: string): string => {
-  if (!isSafeRelativePath(rel)) {
+  if (!isSafeBundlePath(rel)) {
     throw new CliUsageError(`Refusing to write '${rel}' - it escapes the bundle directory.`);
   }
 
@@ -164,11 +167,5 @@ const resolveInside = (dir: string, rel: string): string => {
   }
   return abs;
 };
-
-const isSafeRelativePath = (rel: string): boolean =>
-  rel.length > 0
-  && !rel.startsWith('/')
-  && !rel.includes('\\')
-  && !rel.split('/').some((segment) => segment === '' || segment === '.' || segment === '..');
 
 const compareStrings = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);

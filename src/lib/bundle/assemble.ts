@@ -1,5 +1,5 @@
 import { BUNDLE_PATH_REGISTRY } from './registry.js';
-import type { BIQActorType } from './registry.js';
+import type { BundleActorType } from './registry.js';
 import { ACTOR_FILE, CANVAS_KEY_ORDER, CODE_DIR, ROOT_FILE } from './types.js';
 import type {
   BundleFileMap,
@@ -55,7 +55,7 @@ export const assembleBundle = (files: BundleFileMap): AssembleResult => {
   const actors: Record<string, ExportedActor> = {};
   for (const entry of root.actors) {
     const actorDoc = parseYamlDoc(files[`${entry.path}/${ACTOR_FILE}`]) as Record<string, unknown>;
-    const actor = rehydrateActorCode(actorDoc, entry.type as BIQActorType, entry.path, files);
+    const actor = rehydrateActorCode(actorDoc, entry.type as BundleActorType, entry.path, files);
     actors[entry.id] = {
       ...actor,
       edges: edgesBySource.get(entry.id) ?? {},
@@ -90,7 +90,7 @@ const parseSync = (value: unknown): BundleSync => {
 
 const rehydrateActorCode = (
   actorDoc: Record<string, unknown>,
-  type: BIQActorType,
+  type: BundleActorType,
   actorPath: string,
   files: BundleFileMap,
 ): Record<string, unknown> => {
