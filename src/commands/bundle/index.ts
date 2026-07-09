@@ -10,7 +10,7 @@ import { bundleValidate } from './validate.js';
 export const registerBundleCommands = (program: Command): void => {
   const bundle = program
     .command('bundle')
-    .description('Convert canvases to/from git-friendly bundle folders (BORG-565)');
+    .description('Convert canvases to/from git-friendly bundle folders');
 
   bundle
     .command('init <dir>')
