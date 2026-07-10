@@ -308,8 +308,15 @@ export class BorgIQClient {
     return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/data`, body);
   }
 
-  async batchActorOperations(org: string, workspace: string, canvasSlugOrId: string, body: unknown): Promise<BatchActorOperationsResponse> {
-    return this.request('PATCH', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/actors`, body);
+  async batchActorOperations(
+    org: string,
+    workspace: string,
+    canvasSlugOrId: string,
+    body: unknown,
+    options?: { strict?: boolean },
+  ): Promise<BatchActorOperationsResponse> {
+    const qs = options?.strict ? '?strict=true' : '';
+    return this.request('PATCH', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/actors${qs}`, body);
   }
 
   async importCanvasData(org: string, workspace: string, canvasSlugOrId: string, body: unknown): Promise<unknown> {

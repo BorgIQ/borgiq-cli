@@ -6,6 +6,7 @@ import type {
   BundleIssue,
   BundleRootDoc,
   BundleSync,
+  BundleSyncActor,
   CanvasExportDocument,
   ExportedActor,
   ExportedEdge,
@@ -80,12 +81,15 @@ export const assembleBundle = (files: BundleFileMap): AssembleResult => {
 };
 
 const parseSync = (value: unknown): BundleSync => {
-  if (!isPlainObject(value) || !isPlainObject(value.actorVersions)) return {};
-  const actorVersions: Record<string, number> = {};
-  for (const [actorId, version] of Object.entries(value.actorVersions)) {
-    if (typeof version === 'number') actorVersions[actorId] = version;
+  if (!isPlainObject(value)) return {};
+  const actors: Record<string, BundleSyncActor> = {};
+  if (isPlainObject(value.actors)) {
+    for (const [actorId, rawState] of Object.entries(value.actors)) {
+      if (!isPlainObject(rawState) || typeof rawState.editVersion !== 'number' || typeof rawState.contentHash !== 'string') continue;
+      actors[actorId] = { editVersion: rawState.editVersion, contentHash: rawState.contentHash };
+    }
   }
-  return Object.keys(actorVersions).length > 0 ? { actorVersions } : {};
+  return Object.keys(actors).length > 0 ? { actors } : {};
 };
 
 const rehydrateActorCode = (

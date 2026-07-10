@@ -161,7 +161,8 @@ canvas export format. Format: borgiq.canvas.bundle v1.
 ## Layout
 
 - canvas.yaml: authoritative root for canvas metadata, graph.nodes, graph.edges,
-  dependencies, export errors, warnings, sync.actorVersions, and the actor index.
+  dependencies, export errors, warnings, sync.actors baselines, and the actor
+  index. Do not edit sync metadata by hand.
 - actors/<category>/<type>/<ACTOR_ID>/actor.yaml: one actor per folder. Edges
   and positions do not live here; they live in canvas.yaml.
 - actors/.../<ACTOR_ID>/code/: native code files for Deno, Deno Test,

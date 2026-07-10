@@ -35,14 +35,18 @@ describe('validateBundle', () => {
     expect(messages(validateBundle(badVersion).errors)).toMatch(/formatVersion/);
   });
 
-  it('rejects malformed sync version markers instead of silently disabling conflict checks', () => {
+  it('rejects malformed or inconsistent sync baselines', () => {
     const missingMap = mutateRoot(validFiles(), (root) => { root.sync = {}; });
     const invalidVersion = mutateRoot(validFiles(), (root) => {
-      root.sync = { actorVersions: { [TASK_ID]: 'old' } };
+      root.sync = { actors: { [TASK_ID]: { editVersion: 'old', contentHash: `sha256:${'a'.repeat(64)}` } } };
+    });
+    const invalidHash = mutateRoot(validFiles(), (root) => {
+      root.sync = { actors: { [TASK_ID]: { editVersion: 2, contentHash: 'sha256:not-a-digest' } } };
     });
 
-    expect(messages(validateBundle(missingMap).errors)).toMatch(/sync\.actorVersions.*mapping/);
+    expect(messages(validateBundle(missingMap).errors)).toMatch(/sync\.actors.*mapping/);
     expect(messages(validateBundle(invalidVersion).errors)).toMatch(/non-negative integer/);
+    expect(messages(validateBundle(invalidHash).errors)).toMatch(/sha256-prefixed/);
   });
 
   it('rejects path escapes and registry mismatches', () => {

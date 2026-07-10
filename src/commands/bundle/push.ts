@@ -101,24 +101,22 @@ export const bundlePush = async (
       return;
     }
     const actorVersions = canvasDetail.actorVersions ?? {};
-    const conflictDetectionDisabled = local.sync.actorVersions === undefined && Object.keys(doc.data.actors).length > 0;
-    if (conflictDetectionDisabled) {
-      process.stderr.write('Warning: this bundle has no sync.actorVersions markers. Conflict detection is disabled for this push; local actor content wins. Pull first to establish version markers.\n');
+    const hasActors = Object.keys(doc.data.actors).length > 0;
+    if (local.sync.actors === undefined && hasActors) {
+      process.stderr.write('Warning: this bundle has no content-hash sync baseline. Existing actors with differing server content will fail closed. Pull first to establish sync metadata.\n');
     }
     const diff = diffCanvas(doc, server.document, {
-      localActorVersions: local.sync.actorVersions,
+      localActorStates: local.sync.actors,
       serverActorVersions: actorVersions,
-      assumeServerVersionsWhenLocalMissing: true,
     });
-    const summary = summarizeDiff(diff, Boolean(options.forceLocal));
+    const summary = summarizeDiff(diff, { direction: 'push', forceLocal: Boolean(options.forceLocal) });
     const operations = toBatchOperations(diff, doc, Boolean(options.forceLocal), Date.now());
     const compactOps = compactOperations(operations);
-    reportDeletedOnServer(diff.entries, options.refresh !== false);
 
-    if (diff.conflicts.length > 0 && !options.forceLocal) {
-      reportPushConflicts(diff.conflicts);
+    if (diff.pushConflicts.length > 0 && !options.forceLocal) {
+      reportPushConflicts(diff.pushConflicts);
       process.exitCode = ExitCode.CONFLICT;
-      output(withRaw({ mode: 'sync', target, summary, entries: diff.entries, conflicts: diff.conflicts }, options.raw, { operations }), globalOpts);
+      output(withRaw({ mode: 'sync', target, summary, entries: diff.entries, conflicts: diff.pushConflicts }, options.raw, { operations }), globalOpts);
       return;
     }
 
@@ -132,7 +130,7 @@ export const bundlePush = async (
 
     let batchResult: BatchActorOperationsResponse | undefined;
     if (operations.length > 0) {
-      batchResult = await client.batchActorOperations(ctx.org, ctx.workspace, target, { operations });
+      batchResult = await client.batchActorOperations(ctx.org, ctx.workspace, target, { operations }, { strict: options.strict });
       const conflicts = batchResult.conflicts ?? [];
       if (conflicts.length > 0) {
         appliedActorOperationCount = confirmedOperationCount(operations, batchResult);
@@ -222,16 +220,6 @@ export const bundlePush = async (
   }
 };
 
-const reportDeletedOnServer = (entries: { actorId: string; name: string; verdict: string }[], refreshEnabled: boolean): void => {
-  for (const entry of entries) {
-    if (entry.verdict !== 'deleted-on-server') continue;
-    const refreshMessage = refreshEnabled
-      ? 'The post-push refresh will remove its local actor folder.'
-      : 'Its local actor folder is being kept because --no-refresh was used.';
-    process.stderr.write(`Warning: ${entry.actorId} (${entry.name}) was deleted on the server. No actor operation will be generated. ${refreshMessage}\n`);
-  }
-};
-
 const reportExportErrors = (errors: unknown[]): void => {
   process.stderr.write(`Push aborted: the server export reported ${errors.length} actor error(s), so the sync baseline is incomplete. Fix the export errors and retry.\n`);
   for (const error of errors) {
@@ -274,11 +262,11 @@ const confirmedActorIds = (result: BatchActorOperationsResponse): Set<string> =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const reportPushConflicts = (conflicts: { actorId: string; name: string; bundleVersion?: number; serverVersion?: number }[]): void => {
+const reportPushConflicts = (conflicts: { actorId: string; name: string; verdict: string; bundleVersion?: number; serverVersion?: number }[]): void => {
   process.stderr.write(`Push aborted: ${conflicts.length} actor conflict(s). Re-pull, or re-run with --force-local for local wins.\n`);
   for (const conflict of conflicts) {
     process.stderr.write(
-      `  ${conflict.actorId} (${conflict.name}): bundle editVersion ${String(conflict.bundleVersion ?? 'missing')} -> server editVersion ${String(conflict.serverVersion ?? 'missing')}\n`,
+      `  ${conflict.actorId} (${conflict.name}): ${conflict.verdict}; bundle editVersion ${String(conflict.bundleVersion ?? 'missing')} -> server editVersion ${String(conflict.serverVersion ?? 'missing')}\n`,
     );
   }
 };

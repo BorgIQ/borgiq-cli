@@ -20,6 +20,7 @@ vi.mock('../../src/output/index.js', () => ({
 import { bundlePull } from '../../src/commands/bundle/pull.js';
 import { bundlePush } from '../../src/commands/bundle/push.js';
 import { assembleBundle } from '../../src/lib/bundle/assemble.js';
+import { actorContentHash, actorContentHashes } from '../../src/lib/bundle/diff.js';
 import { disassemble } from '../../src/lib/bundle/disassemble.js';
 import type { CanvasExportDocument } from '../../src/lib/bundle/types.js';
 import { stringifyYamlDoc } from '../../src/lib/bundle/yaml.js';
@@ -83,15 +84,22 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const writeLocal = (doc: CanvasExportDocument, actorVersions?: Record<string, number>): void => {
-  writeBundleDir(bundleDir, disassemble(doc, { actorVersions }).files);
+const writeLocal = (
+  doc: CanvasExportDocument,
+  actorVersions?: Record<string, number>,
+  baseline: CanvasExportDocument = doc,
+): void => {
+  writeBundleDir(bundleDir, disassemble(doc, {
+    actorVersions,
+    actorHashes: actorVersions ? actorContentHashes(baseline) : undefined,
+  }).files);
 };
 
 describe('bundle push sync orchestration', () => {
   it('performs no mutations during a dry run', async () => {
     const local = makeDoc([actor('Local edit')]);
     const server = makeDoc([actor('Server copy')]);
-    writeLocal(local, { [ACTOR_ID]: 1 });
+    writeLocal(local, { [ACTOR_ID]: 1 }, server);
     client.exportCanvas.mockResolvedValue(envelope(server));
     client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 1 } });
 
@@ -107,7 +115,7 @@ describe('bundle push sync orchestration', () => {
   it('aborts a preflight conflict without mutating or refreshing', async () => {
     const local = makeDoc([actor('Local edit')]);
     const server = makeDoc([actor('Server edit')]);
-    writeLocal(local, { [ACTOR_ID]: 1 });
+    writeLocal(local, { [ACTOR_ID]: 1 }, makeDoc([actor('Common base')]));
     client.exportCanvas.mockResolvedValue(envelope(server));
     client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 2 } });
 
@@ -122,7 +130,7 @@ describe('bundle push sync orchestration', () => {
   it('stops before metadata and refresh when the batch response does not confirm an operation', async () => {
     const local = makeDoc([actor('Local edit')], { name: 'Local canvas' });
     const server = makeDoc([actor('Server copy')], { name: 'Server canvas' });
-    writeLocal(local, { [ACTOR_ID]: 1 });
+    writeLocal(local, { [ACTOR_ID]: 1 }, server);
     client.exportCanvas.mockResolvedValue(envelope(server));
     client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 1 } });
     client.batchActorOperations.mockResolvedValue({
@@ -143,7 +151,7 @@ describe('bundle push sync orchestration', () => {
   it('treats a non-success operation status as unconfirmed even when processed includes the actor', async () => {
     const local = makeDoc([actor('Local edit')]);
     const server = makeDoc([actor('Server copy')]);
-    writeLocal(local, { [ACTOR_ID]: 1 });
+    writeLocal(local, { [ACTOR_ID]: 1 }, server);
     client.exportCanvas.mockResolvedValue(envelope(server));
     client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 1 } });
     client.batchActorOperations.mockResolvedValue({
@@ -162,7 +170,7 @@ describe('bundle push sync orchestration', () => {
   it('reports in-flight conflicts and skips the refresh', async () => {
     const local = makeDoc([actor('Local edit')]);
     const server = makeDoc([actor('Server copy')]);
-    writeLocal(local, { [ACTOR_ID]: 1 });
+    writeLocal(local, { [ACTOR_ID]: 1 }, server);
     client.exportCanvas.mockResolvedValue(envelope(server));
     client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 1 } });
     client.batchActorOperations.mockResolvedValue({
@@ -182,7 +190,7 @@ describe('bundle push sync orchestration', () => {
   it('refreshes local actor version markers after a confirmed batch', async () => {
     const local = makeDoc([actor('Local edit')]);
     const server = makeDoc([actor('Server copy')]);
-    writeLocal(local, { [ACTOR_ID]: 1 });
+    writeLocal(local, { [ACTOR_ID]: 1 }, server);
     client.exportCanvas
       .mockResolvedValueOnce(envelope(server))
       .mockResolvedValueOnce(envelope(local));
@@ -196,10 +204,32 @@ describe('bundle push sync orchestration', () => {
     expect(process.exitCode).toBeUndefined();
     expect(client.batchActorOperations).toHaveBeenCalledTimes(1);
     expect(client.exportCanvas).toHaveBeenCalledTimes(2);
-    expect(assembleBundle(readBundleDir(bundleDir)).sync.actorVersions).toEqual({ [ACTOR_ID]: 2 });
+    const refreshed = assembleBundle(readBundleDir(bundleDir));
+    expect(refreshed.sync.actors).toEqual({
+      [ACTOR_ID]: { editVersion: 2, contentHash: actorContentHash(local.data.actors[ACTOR_ID]) },
+    });
   });
 
-  it('reports deleted-on-server actors in dry-run output', async () => {
+  it('forwards --strict to the actor batch API', async () => {
+    const local = makeDoc([actor('Local edit')]);
+    const server = makeDoc([actor('Server copy')]);
+    writeLocal(local, { [ACTOR_ID]: 1 }, server);
+    client.exportCanvas.mockResolvedValue(envelope(server));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 1 } });
+    client.batchActorOperations.mockResolvedValue(successfulBatch());
+
+    await bundlePush(bundleDir, { strict: true, refresh: false }, command);
+
+    expect(client.batchActorOperations).toHaveBeenCalledWith(
+      'test-org',
+      'test-workspace',
+      'test-canvas',
+      expect.objectContaining({ operations: expect.any(Array) }),
+      { strict: true },
+    );
+  });
+
+  it('treats a server deletion as a push conflict instead of resurrecting it', async () => {
     const local = makeDoc([actor('Deleted remotely')]);
     const server = makeDoc([]);
     writeLocal(local, { [ACTOR_ID]: 1 });
@@ -208,13 +238,14 @@ describe('bundle push sync orchestration', () => {
 
     await bundlePush(bundleDir, { dryRun: true }, command);
 
-    expect(stderr).toHaveBeenCalledWith(expect.stringContaining(`${ACTOR_ID} (Deleted remotely) was deleted on the server`));
+    expect(process.exitCode).toBe(ExitCode.CONFLICT);
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('deleted-on-server'));
     expect(mocks.output).toHaveBeenCalledWith(expect.objectContaining({
       summary: expect.objectContaining({ deletedOnServer: 1 }),
     }), { json: true });
   });
 
-  it('warns when compatibility sync disables conflict detection', async () => {
+  it('warns and fails closed when the bundle has no sync baseline', async () => {
     const local = makeDoc([actor('Local edit')]);
     const server = makeDoc([actor('Server copy')]);
     writeLocal(local);
@@ -223,7 +254,8 @@ describe('bundle push sync orchestration', () => {
 
     await bundlePush(bundleDir, { dryRun: true }, command);
 
-    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('Conflict detection is disabled for this push'));
+    expect(process.exitCode).toBe(ExitCode.CONFLICT);
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('no content-hash sync baseline'));
   });
 
   it('aborts before diffing when the server export reports actor errors', async () => {
@@ -242,7 +274,7 @@ describe('bundle push sync orchestration', () => {
   it('does not refresh local files when the post-push export reports errors', async () => {
     const local = makeDoc([actor('Local edit')]);
     const server = makeDoc([actor('Server copy')]);
-    writeLocal(local, { [ACTOR_ID]: 1 });
+    writeLocal(local, { [ACTOR_ID]: 1 }, server);
     const before = readBundleDir(bundleDir);
     client.exportCanvas
       .mockResolvedValueOnce(envelope(server))
@@ -290,7 +322,7 @@ describe('bundle pull sync orchestration', () => {
   it('refuses to overwrite concurrent local and server edits', async () => {
     const local = makeDoc([actor('Local edit')]);
     const server = makeDoc([actor('Server edit')]);
-    writeLocal(local, { [ACTOR_ID]: 1 });
+    writeLocal(local, { [ACTOR_ID]: 1 }, makeDoc([actor('Common base')]));
     const before = readBundleDir(bundleDir);
     client.exportCanvas.mockResolvedValue(envelope(server));
     client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 2 } });
@@ -300,6 +332,41 @@ describe('bundle pull sync orchestration', () => {
     expect(process.exitCode).toBe(ExitCode.CONFLICT);
     expect(readBundleDir(bundleDir)).toEqual(before);
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('No files were written'));
+  });
+
+  it('fast-forwards a server-only edit when the local actor is unchanged', async () => {
+    const baseline = makeDoc([actor('Common base')]);
+    const server = makeDoc([actor('Server edit')]);
+    writeLocal(baseline, { [ACTOR_ID]: 1 }, baseline);
+    client.exportCanvas.mockResolvedValue(envelope(server));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 2 } });
+
+    await bundlePull('test-canvas', bundleDir, {}, command);
+
+    const pulled = assembleBundle(readBundleDir(bundleDir));
+    expect(process.exitCode).toBeUndefined();
+    expect(pulled.doc.data.actors[ACTOR_ID].name).toBe('Server edit');
+    expect(pulled.sync.actors?.[ACTOR_ID]).toEqual({
+      editVersion: 2,
+      contentHash: actorContentHash(server.data.actors[ACTOR_ID]),
+    });
+  });
+
+  it('preserves a local deletion when the server actor is unchanged', async () => {
+    const baseline = makeDoc([actor('Delete locally')]);
+    writeLocal(makeDoc([]), { [ACTOR_ID]: 1 }, baseline);
+    client.exportCanvas.mockResolvedValue(envelope(baseline));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 1 } });
+
+    await bundlePull('test-canvas', bundleDir, {}, command);
+
+    const pulled = assembleBundle(readBundleDir(bundleDir));
+    expect(process.exitCode).toBeUndefined();
+    expect(pulled.doc.data.actors[ACTOR_ID]).toBeUndefined();
+    expect(pulled.sync.actors?.[ACTOR_ID]).toEqual({
+      editVersion: 1,
+      contentHash: actorContentHash(baseline.data.actors[ACTOR_ID]),
+    });
   });
 
   it('uses --replace as an explicit server-wins pull', async () => {
@@ -314,7 +381,7 @@ describe('bundle pull sync orchestration', () => {
     const pulled = assembleBundle(readBundleDir(bundleDir));
     expect(process.exitCode).toBeUndefined();
     expect(pulled.doc.data.actors[ACTOR_ID].name).toBe('Server edit');
-    expect(pulled.sync.actorVersions).toEqual({ [ACTOR_ID]: 2 });
+    expect(pulled.sync.actors?.[ACTOR_ID].editVersion).toBe(2);
   });
 
   it('prints export warnings during dry-run', async () => {

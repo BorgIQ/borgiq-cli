@@ -1,0 +1,1322 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Canvas Bundle Sync: A First-Principles Guide</title>
+  <style>
+    :root {
+      --ink: #15211d;
+      --muted: #52635d;
+      --line: #cbd6d2;
+      --paper: #ffffff;
+      --soft: #f5f8f7;
+      --green: #2f6f60;
+      --green-soft: #dceee9;
+      --yellow: #8a6515;
+      --yellow-soft: #fff3cb;
+      --red: #9c4033;
+      --red-soft: #fde5df;
+      --blue: #315f87;
+      --blue-soft: #e3eef8;
+      --code: #1e2925;
+      --max: 1180px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.62;
+      letter-spacing: 0;
+    }
+
+    a {
+      color: var(--blue);
+      text-underline-offset: 3px;
+    }
+
+    code,
+    pre {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      letter-spacing: 0;
+    }
+
+    code {
+      padding: 0.12rem 0.32rem;
+      border: 1px solid #d9e1de;
+      border-radius: 3px;
+      background: #f3f6f5;
+      font-size: 0.9em;
+    }
+
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      font-size: inherit;
+    }
+
+    .topbar {
+      position: sticky;
+      z-index: 20;
+      top: 0;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar-inner {
+      display: flex;
+      max-width: var(--max);
+      min-height: 52px;
+      margin: 0 auto;
+      padding: 0 24px;
+      align-items: center;
+      gap: 22px;
+    }
+
+    .topbar-title {
+      flex: 0 0 auto;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 760;
+      text-decoration: none;
+    }
+
+    .topbar nav {
+      display: flex;
+      overflow-x: auto;
+      align-items: center;
+      gap: 18px;
+      scrollbar-width: none;
+      white-space: nowrap;
+    }
+
+    .topbar nav::-webkit-scrollbar {
+      display: none;
+    }
+
+    .topbar nav a {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+      text-decoration: none;
+    }
+
+    .topbar nav a:hover,
+    .topbar nav a:focus-visible {
+      color: var(--ink);
+      text-decoration: underline;
+    }
+
+    main {
+      display: block;
+    }
+
+    .band {
+      border-bottom: 1px solid #e3e9e7;
+    }
+
+    .band.alt {
+      background: var(--soft);
+    }
+
+    .wrap {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 64px 24px;
+    }
+
+    .intro .wrap {
+      padding-top: 70px;
+      padding-bottom: 58px;
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      max-width: 900px;
+      font-size: 42px;
+      font-weight: 800;
+    }
+
+    h2 {
+      max-width: 880px;
+      font-size: 30px;
+      font-weight: 780;
+    }
+
+    h3 {
+      font-size: 19px;
+      font-weight: 750;
+    }
+
+    .lede {
+      max-width: 830px;
+      margin: 20px 0 0;
+      color: #364640;
+      font-size: 19px;
+      line-height: 1.55;
+    }
+
+    .section-head {
+      display: grid;
+      margin-bottom: 30px;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
+      align-items: end;
+      gap: 36px;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .state-grid {
+      display: grid;
+      margin-top: 38px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .state {
+      min-width: 0;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-top-width: 4px;
+      border-radius: 6px;
+      background: var(--paper);
+    }
+
+    .state.baseline {
+      border-top-color: var(--yellow);
+    }
+
+    .state.local {
+      border-top-color: var(--blue);
+    }
+
+    .state.server {
+      border-top-color: var(--green);
+    }
+
+    .state .symbol {
+      display: inline-block;
+      min-width: 32px;
+      margin-bottom: 10px;
+      color: var(--ink);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 24px;
+      font-weight: 800;
+    }
+
+    .state p {
+      margin: 8px 0 0;
+      color: var(--muted);
+    }
+
+    .callout {
+      margin: 26px 0 0;
+      padding: 18px 20px;
+      border-left: 5px solid var(--red);
+      background: var(--red-soft);
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .callout.warning {
+      border-left-color: var(--yellow);
+      background: var(--yellow-soft);
+    }
+
+    .callout.safe {
+      border-left-color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .diagram-shell {
+      overflow-x: auto;
+      margin: 26px 0 0;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+    }
+
+    .diagram-shell.compact {
+      padding: 18px;
+    }
+
+    .diagram-shell .mermaid {
+      min-width: 760px;
+      text-align: center;
+    }
+
+    .diagram-shell.sequence .mermaid {
+      min-width: 980px;
+    }
+
+    .mermaid svg {
+      display: block;
+      height: auto;
+      margin: 0 auto;
+    }
+
+    .diagram-shell:not(.sequence) .mermaid svg {
+      max-width: 100% !important;
+    }
+
+    .caption {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .legend {
+      display: flex;
+      margin: 0 0 18px;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+    }
+
+    .dot.safe {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .dot.caution {
+      color: var(--yellow);
+      background: var(--yellow-soft);
+    }
+
+    .dot.danger {
+      color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .table-scroll {
+      overflow-x: auto;
+      margin-top: 26px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+    }
+
+    table {
+      width: 100%;
+      min-width: 860px;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid #dde5e2;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #edf3f1;
+      color: #31433c;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    tbody tr:hover td {
+      background: #f8faf9;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 2px 7px;
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .status.safe {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .status.caution {
+      color: var(--yellow);
+      background: var(--yellow-soft);
+    }
+
+    .status.danger {
+      color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .two-col {
+      display: grid;
+      margin-top: 28px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 28px;
+    }
+
+    .plain-panel {
+      min-width: 0;
+      padding-top: 18px;
+      border-top: 4px solid var(--line);
+    }
+
+    .plain-panel.current {
+      border-top-color: var(--red);
+    }
+
+    .plain-panel.proposed {
+      border-top-color: var(--green);
+    }
+
+    .plain-panel p,
+    .plain-panel ul {
+      color: var(--muted);
+    }
+
+    .plain-panel ul {
+      padding-left: 20px;
+    }
+
+    .code-block {
+      overflow-x: auto;
+      margin: 18px 0 0;
+      padding: 18px 20px;
+      border-radius: 6px;
+      background: var(--code);
+      color: #f4f8f6;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .steps {
+      display: grid;
+      margin: 28px 0 0;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 18px;
+      counter-reset: study-step;
+    }
+
+    .step {
+      min-width: 0;
+      padding: 18px 0 0;
+      border-top: 1px solid var(--line);
+      counter-increment: study-step;
+    }
+
+    .step::before {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--green);
+      content: "0" counter(study-step);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .step p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .render-status {
+      position: fixed;
+      z-index: 30;
+      right: 16px;
+      bottom: 16px;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--paper);
+      color: var(--muted);
+      box-shadow: 0 5px 18px rgba(21, 33, 29, 0.12);
+      font-size: 13px;
+    }
+
+    footer {
+      padding: 30px 24px 48px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 13px;
+    }
+
+    @media (max-width: 820px) {
+      .topbar-inner {
+        padding: 0 16px;
+      }
+
+      .topbar-title {
+        display: none;
+      }
+
+      .wrap,
+      .intro .wrap {
+        padding: 46px 18px;
+      }
+
+      h1 {
+        font-size: 34px;
+      }
+
+      h2 {
+        font-size: 26px;
+      }
+
+      .lede {
+        font-size: 17px;
+      }
+
+      .section-head {
+        grid-template-columns: 1fr;
+        align-items: start;
+        gap: 14px;
+      }
+
+      .state-grid,
+      .two-col,
+      .steps {
+        grid-template-columns: 1fr;
+      }
+
+      .diagram-shell {
+        margin-right: -18px;
+        margin-left: -18px;
+        padding: 18px;
+        border-right: 0;
+        border-left: 0;
+        border-radius: 0;
+      }
+
+      .diagram-shell .mermaid {
+        min-width: 700px;
+      }
+
+      .diagram-shell.sequence .mermaid {
+        min-width: 900px;
+      }
+    }
+
+    @media print {
+      .topbar,
+      .render-status {
+        display: none !important;
+      }
+
+      .band,
+      .band.alt {
+        background: #fff;
+        break-inside: avoid;
+      }
+
+      .wrap,
+      .intro .wrap {
+        max-width: none;
+        padding: 30px 0;
+      }
+
+      .diagram-shell,
+      .table-scroll {
+        overflow: visible;
+      }
+
+      .diagram-shell .mermaid,
+      .diagram-shell.sequence .mermaid,
+      table {
+        min-width: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="topbar-title" href="#top">Canvas Bundle Sync</a>
+      <nav aria-label="Study sections">
+        <a href="#mental-model">Mental model</a>
+        <a href="#current-classifier">Previous classifier</a>
+        <a href="#information-gap">Information gap</a>
+        <a href="#current-sequences">Command sequences</a>
+        <a href="#edge-cases">Edge cases</a>
+        <a href="#three-way">Three-way model</a>
+        <a href="#api-boundary">API boundary</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="band intro">
+      <div class="wrap">
+        <p class="eyebrow">First-principles study guide</p>
+        <h1>Canvas Bundle Sync: what the CLI knows, what it cannot know, and why</h1>
+        <p class="lede">
+          Sync is a comparison between a local filesystem bundle and the current server canvas. The subtlety is not the comparison itself. The subtlety is remembering enough about the last synchronized state to tell who changed what.
+        </p>
+
+        <div class="state-grid" aria-label="The three sync states">
+          <article class="state baseline">
+            <span class="symbol">B</span>
+            <h3>Baseline</h3>
+            <p>What the server actor looked like at the last successful pull or refresh. This is the common ancestor needed for a true three-way comparison.</p>
+          </article>
+          <article class="state local">
+            <span class="symbol">L</span>
+            <h3>Local</h3>
+            <p>The actor assembled from <code>actor.yaml</code>, native code files, its graph edges, and its position in <code>canvas.yaml</code>.</p>
+          </article>
+          <article class="state server">
+            <span class="symbol">S</span>
+            <h3>Server</h3>
+            <p>The actor exported by the API now, plus its current platform <code>editVersion</code>.</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <strong>The previous implementation stored the baseline version, but not the baseline content.</strong>
+          It has <code>V<sub>B</sub></code>, <code>L</code>, <code>S</code>, and <code>V<sub>S</sub></code>. It does not have <code>B</code>. That missing value is the source of the sync ambiguity.
+        </div>
+      </div>
+    </section>
+
+    <section class="band alt" id="mental-model">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">01 / Mental model</p>
+            <h2>Content answers “is it different?” Version answers “did the server move?”</h2>
+          </div>
+          <p>Neither fact alone proves whether the local filesystem was edited after the baseline was created.</p>
+        </div>
+
+        <div class="diagram-shell compact">
+          <pre class="mermaid">
+flowchart LR
+  B["Last observed server state B<br/><b>content not stored</b>"]
+  VB["Stored marker V<sub>B</sub><br/>sync.actorVersions[id]"]
+  L["Local actor L<br/>assembled from bundle files"]
+  S["Current server actor S<br/>from exportData"]
+  VS["Current marker V<sub>S</sub><br/>from getCanvas"]
+  CMP["Previous classifier"]
+
+  B -. "missing input" .-> CMP
+  VB --> CMP
+  L --> CMP
+  S --> CMP
+  VS --> CMP
+
+  classDef missing fill:#fde5df,stroke:#9c4033,color:#58251e;
+  classDef marker fill:#fff3cb,stroke:#8a6515,color:#4d3a0f;
+  classDef local fill:#e3eef8,stroke:#315f87,color:#193650;
+  classDef server fill:#dceee9,stroke:#2f6f60,color:#173d34;
+  classDef process fill:#ffffff,stroke:#52635d,color:#15211d,stroke-width:2px;
+  class B missing;
+  class VB,VS marker;
+  class L local;
+  class S server;
+  class CMP process;
+          </pre>
+        </div>
+        <p class="caption">The exported actor's own <code>version</code> field is not the concurrency marker. The platform's separate <code>editVersion</code> is.</p>
+      </div>
+    </section>
+
+    <section class="band" id="current-classifier">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">02 / Previous behavior</p>
+            <h2>The edit-version-only decision tree before this change</h2>
+          </div>
+          <p>The CLI runs this classification over the union of actor IDs found locally and on the server.</p>
+        </div>
+
+        <div class="legend" aria-label="Diagram legend">
+          <span><i class="dot safe"></i>Converged or directly actionable</span>
+          <span><i class="dot caution"></i>Direction-dependent behavior</span>
+          <span><i class="dot danger"></i>Command aborts</span>
+        </div>
+
+        <div class="diagram-shell">
+          <pre class="mermaid">
+flowchart TD
+  A["For each actor ID in Local + Server"] --> B{"Local actor exists?"}
+  B -- Yes --> C{"Server actor exists?"}
+  B -- No --> SO["server-only"]
+
+  C -- No --> D{"Stored local editVersion exists?"}
+  D -- No --> NL["new-local"]
+  D -- Yes --> DS["deleted-on-server"]
+
+  C -- Yes --> E{"canonical(L) == canonical(S)?"}
+  E -- Yes --> U["unchanged"]
+  E -- No --> F{"Stored local editVersion exists?"}
+  F -- No --> VM["version-missing"]
+  F -- Yes --> G{"V<sub>B</sub> == V<sub>S</sub>?"}
+  G -- Yes --> LE["local-edit"]
+  G -- No --> SE["server-edit"]
+
+  U --> UA["Push: skip<br/>Pull: skip"]
+  LE --> LEA["Push: update<br/>Pull: keep local"]
+  SE --> SEA["Push: abort<br/><b>Pull: aborted before this change</b>"]
+  VM --> VMA["Push: abort<br/>Pull: abort"]
+  NL --> NLA["Push: add<br/>Pull: keep local"]
+  DS --> DSA["Push: no operation<br/>Refresh/pull: remove local"]
+  SO --> SOA["Push: remove server actor<br/>Pull: write locally"]
+
+  classDef decision fill:#ffffff,stroke:#52635d,color:#15211d,stroke-width:1.5px;
+  classDef safe fill:#dceee9,stroke:#2f6f60,color:#173d34;
+  classDef caution fill:#fff3cb,stroke:#8a6515,color:#4d3a0f;
+  classDef danger fill:#fde5df,stroke:#9c4033,color:#58251e;
+  classDef action fill:#f5f8f7,stroke:#9aaba5,color:#25342f;
+  class B,C,D,E,F,G decision;
+  class U,LE,NL safe;
+  class DS,SO caution;
+  class SE,VM danger;
+  class UA,LEA,NLA,DSA,SOA action;
+  class SEA,VMA danger;
+          </pre>
+        </div>
+
+        <div class="callout warning">
+          <strong><code>server-edit</code> does not mean “both sides edited.”</strong>
+          In the current classifier it means only: content differs and the server version advanced. Local cleanliness is unknown.
+        </div>
+      </div>
+    </section>
+
+    <section class="band alt" id="information-gap">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">03 / The information gap</p>
+            <h2>Two different histories collapse into the same observation</h2>
+          </div>
+          <p>This is an information problem, not a more-clever-if-statement problem. The missing baseline content makes the two histories indistinguishable.</p>
+        </div>
+
+        <div class="diagram-shell">
+          <pre class="mermaid">
+flowchart TB
+  subgraph ONE["History A — only the server changed"]
+    direction LR
+    B1["Baseline B = Alpha<br/>V<sub>B</sub> = 1"] --> L1["Local L = Alpha<br/>untouched"]
+    B1 --> S1["Server S = Bravo<br/>V<sub>S</sub> = 2"]
+  end
+
+  subgraph TWO["History B — both sides changed"]
+    direction LR
+    B2["Baseline B = Alpha<br/>V<sub>B</sub> = 1"] --> L2["Local L = Charlie<br/>edited"]
+    B2 --> S2["Server S = Bravo<br/>V<sub>S</sub> = 2"]
+  end
+
+  L1 --> O1["Observed now:<br/>L ≠ S and V<sub>B</sub> ≠ V<sub>S</sub>"]
+  S1 --> O1
+  L2 --> O2["Observed now:<br/>L ≠ S and V<sub>B</sub> ≠ V<sub>S</sub>"]
+  S2 --> O2
+  O1 --> SAME["Previous verdict: server-edit conflict"]
+  O2 --> SAME
+
+  classDef baseline fill:#fff3cb,stroke:#8a6515,color:#4d3a0f;
+  classDef local fill:#e3eef8,stroke:#315f87,color:#193650;
+  classDef server fill:#dceee9,stroke:#2f6f60,color:#173d34;
+  classDef observed fill:#ffffff,stroke:#52635d,color:#15211d;
+  classDef danger fill:#fde5df,stroke:#9c4033,color:#58251e,stroke-width:2px;
+  class B1,B2 baseline;
+  class L1,L2 local;
+  class S1,S2 server;
+  class O1,O2 observed;
+  class SAME danger;
+          </pre>
+        </div>
+
+        <div class="two-col">
+          <article class="plain-panel current">
+            <h3>What bare pull does now</h3>
+            <p>Both histories enter <code>diff.conflicts</code>. Pull exits with the conflict code before its merge function runs. A clean local bundle cannot fast-forward a server edit.</p>
+          </article>
+          <article class="plain-panel proposed">
+            <h3>What a baseline hash would prove</h3>
+            <p>History A has <code>hash(L) == hash(B)</code>, so pull can safely take the server actor. History B has both hashes different from the baseline, so pull must abort.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="band" id="current-sequences">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">04 / Command sequences</p>
+            <h2>Where push and pull stop, mutate, and refresh</h2>
+          </div>
+          <p>Preflight conflict detection is read-only. The actor batch can still partially apply if an edit lands between preflight and the API transaction.</p>
+        </div>
+
+        <h3>Previous incremental push</h3>
+        <div class="diagram-shell sequence">
+          <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as User / Agent
+  participant C as CLI
+  participant F as Bundle files
+  participant A as BorgIQ API
+
+  U->>C: bundle push dir [--strict]
+  C->>F: read + assemble + local format validation
+  Note over C,F: --strict makes local bundle warnings fatal
+  par Fetch current actor content
+    C->>A: GET exportData
+    A-->>C: exported server document
+  and Fetch edit versions
+    C->>A: GET canvas?includeData=true
+    A-->>C: actorVersions
+  end
+  C->>C: diff local vs server
+  alt preflight conflict
+    C-->>U: exit conflict, no mutations
+  else dry run
+    C-->>U: compact plan, no mutations
+  else apply
+    C->>A: PATCH actor operations
+    A-->>C: processed + applied + conflicts
+    alt in-flight conflict or unconfirmed operation
+      C-->>U: nonzero exit, skip metadata/layout/refresh
+      Note over U,A: Some actor operations may already be applied
+    else actor batch confirmed
+      opt metadata changed
+        C->>A: PUT canvas metadata
+      end
+      opt auto-layout requested
+        C->>A: POST layout
+      end
+      par Refresh content
+        C->>A: GET exportData
+      and Refresh versions
+        C->>A: GET canvas?includeData=true
+      end
+      alt refresh export has errors
+        C-->>U: nonzero exit, local files untouched
+      else refresh valid
+        C->>F: incremental managed-file write
+        C-->>U: success summary
+      end
+    end
+  end
+          </pre>
+        </div>
+
+        <h3 style="margin-top: 42px;">Previous incremental pull</h3>
+        <div class="diagram-shell sequence">
+          <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as User / Agent
+  participant C as CLI
+  participant F as Bundle files
+  participant A as BorgIQ API
+
+  U->>C: bundle pull canvas dir
+  par Fetch current actor content
+    C->>A: GET exportData
+  and Fetch edit versions
+    C->>A: GET canvas?includeData=true
+  end
+  alt target is new or --replace supplied
+    C->>F: full managed-path rewrite
+    C-->>U: pulled server state
+  else existing bundle, normal sync
+    C->>F: assemble local bundle
+    C->>C: diff local vs server
+    alt any server-edit or version-missing verdict
+      C-->>U: exit conflict, write nothing
+      Note over C,F: mergeForPull's server-edit branch is not reached
+    else no conflicts
+      C->>C: merge safe verdicts
+      C->>F: incremental managed-file write
+      C-->>U: sync summary
+    end
+  end
+          </pre>
+        </div>
+
+        <div class="callout">
+          <strong>The current recovery loop can deadlock conceptually.</strong>
+          Push says “pull or force local.” Bare pull sees the same <code>server-edit</code> and also aborts. Today, explicit server-wins recovery is <code>bundle pull --replace</code>, which rewrites all managed bundle paths.
+        </div>
+      </div>
+    </section>
+
+    <section class="band alt" id="edge-cases">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">05 / Previous edge cases</p>
+            <h2>What every current verdict actually means</h2>
+          </div>
+          <p>These are actor-level outcomes. Canvas metadata follows a separate local-versus-server comparison and has no stored metadata baseline.</p>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Observed state</th>
+                <th>Previous verdict</th>
+                <th>Push</th>
+                <th>Pull</th>
+                <th>Nuance</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Both exist; canonical content equal</td>
+                <td><span class="status safe">unchanged</span></td>
+                <td>Skip</td>
+                <td>Skip without file churn</td>
+                <td>A server version may have advanced and returned to identical content; equality makes convergence safe.</td>
+              </tr>
+              <tr>
+                <td>Both exist; content differs; stored and server edit versions equal</td>
+                <td><span class="status safe">local-edit</span></td>
+                <td>Update with current editVersion</td>
+                <td>Keep local</td>
+                <td>The unchanged server version proves the server did not move after the baseline.</td>
+              </tr>
+              <tr>
+                <td>Both exist; content differs; server edit version advanced</td>
+                <td><span class="status danger">server-edit</span></td>
+                <td>Abort unless <code>--force-local</code></td>
+                <td>Abort</td>
+                <td>Could be server-only or concurrent editing. Edit-version-only state cannot distinguish them.</td>
+              </tr>
+              <tr>
+                <td>Both exist; content differs; this actor has no stored version</td>
+                <td><span class="status danger">version-missing</span></td>
+                <td>Abort unless forced</td>
+                <td>Abort</td>
+                <td>Freshness is unknowable. A completely marker-less bundle gets a warned local-wins compatibility push.</td>
+              </tr>
+              <tr>
+                <td>Local only; no stored version</td>
+                <td><span class="status safe">new-local</span></td>
+                <td>Add</td>
+                <td>Keep local</td>
+                <td>Treated as intentionally created in the bundle.</td>
+              </tr>
+              <tr>
+                <td>Local only; stored version exists</td>
+                <td><span class="status caution">deleted-on-server</span></td>
+                <td>No actor operation</td>
+                <td>Delete local folder</td>
+                <td>Edit-version-only state cannot tell whether the local actor was edited before the server deletion.</td>
+              </tr>
+              <tr>
+                <td>Server only; local actor absent</td>
+                <td><span class="status caution">server-only</span></td>
+                <td>Remove from server</td>
+                <td>Write locally</td>
+                <td>Edit-version-only state cannot tell a new server actor from a locally deleted baseline actor.</td>
+              </tr>
+              <tr>
+                <td>Preflight succeeds; another writer edits before batch apply</td>
+                <td><span class="status danger">in-flight conflict</span></td>
+                <td>Some operations may apply; later stages stop</td>
+                <td>Not applicable</td>
+                <td>The API checks edit versions per operation inside one batch; conflicts do not currently make the whole batch all-or-nothing.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="band" id="three-way">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">06 / Implemented three-way sync</p>
+            <h2>Store a fingerprint of the common ancestor</h2>
+          </div>
+          <p>A content hash is enough. The CLI does not need to store a second full actor document.</p>
+        </div>
+
+        <div class="two-col">
+          <article class="plain-panel proposed">
+            <h3>Implemented visible sync state</h3>
+            <pre class="code-block"><code>sync:
+  actors:
+    ACTR...:
+      editVersion: 7
+      contentHash: sha256:4f3c...</code></pre>
+            <p>Pairing the version and hash under one actor key prevents two parallel maps from drifting apart.</p>
+          </article>
+          <article class="plain-panel proposed">
+            <h3>What the hash represents</h3>
+            <ul>
+              <li>Canonical actor fields from <code>actor.yaml</code>.</li>
+              <li>Externalized native code re-inlined.</li>
+              <li>Outgoing edges and graph position.</li>
+              <li>Exported actor <code>version</code> excluded.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="diagram-shell">
+          <pre class="mermaid">
+flowchart TD
+  A["Both local and server actor exist"] --> E{"hash(L) == hash(S)?"}
+  E -- Yes --> U["unchanged"]
+  E -- No --> B{"Baseline hash B exists?"}
+  B -- No --> X["legacy / unknown baseline<br/>conservative conflict or explicit migration"]
+  B -- Yes --> L{"hash(L) == B?"}
+  L -- Yes --> SE["server-only edit"]
+  L -- No --> S{"hash(S) == B?"}
+  S -- Yes --> LE["local-only edit"]
+  S -- No --> CE["concurrent edit"]
+
+  SE --> SEA["Push: abort and ask for pull<br/>Pull: fast-forward server actor"]
+  LE --> LEA["Push: update<br/>Pull: keep local"]
+  CE --> CEA["Push: abort<br/>Pull: abort<br/>Require explicit resolution"]
+  U --> UA["Push: skip<br/>Pull: skip"]
+
+  classDef decision fill:#ffffff,stroke:#52635d,color:#15211d,stroke-width:1.5px;
+  classDef safe fill:#dceee9,stroke:#2f6f60,color:#173d34;
+  classDef caution fill:#fff3cb,stroke:#8a6515,color:#4d3a0f;
+  classDef danger fill:#fde5df,stroke:#9c4033,color:#58251e;
+  class E,B,L,S decision;
+  class U,SE,LE,UA,SEA,LEA safe;
+  class X caution;
+  class CE,CEA danger;
+          </pre>
+        </div>
+
+        <div class="callout safe">
+          <strong>Direction-specific conflicts are essential.</strong>
+          A server-only edit is a push conflict because local is stale, but it is not a pull conflict because local is provably untouched. A concurrent edit is a conflict in both directions.
+        </div>
+      </div>
+    </section>
+
+    <section class="band alt" id="deletions">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">07 / Deletions</p>
+            <h2>Presence is also part of the three-way state</h2>
+          </div>
+          <p>Hashes fix more than server fast-forward. They distinguish intentional deletion from a new actor, and detect edit-versus-delete conflicts.</p>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Baseline</th>
+                <th>Local now</th>
+                <th>Server now</th>
+                <th>Three-way meaning</th>
+                <th>Safe behavior</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Absent</td>
+                <td>Present</td>
+                <td>Absent</td>
+                <td><span class="status safe">new local</span></td>
+                <td>Push adds; pull keeps local.</td>
+              </tr>
+              <tr>
+                <td>Absent</td>
+                <td>Absent</td>
+                <td>Present</td>
+                <td><span class="status safe">new server</span></td>
+                <td>Pull writes locally; push policy must deliberately decide whether bundle authority removes it.</td>
+              </tr>
+              <tr>
+                <td>Present as B</td>
+                <td>Absent</td>
+                <td>Equal to B</td>
+                <td><span class="status safe">local deletion</span></td>
+                <td>Pull preserves absence; push removes with editVersion.</td>
+              </tr>
+              <tr>
+                <td>Present as B</td>
+                <td>Absent</td>
+                <td>Different from B</td>
+                <td><span class="status danger">delete / server-edit conflict</span></td>
+                <td>Abort both directions; require explicit choice.</td>
+              </tr>
+              <tr>
+                <td>Present as B</td>
+                <td>Equal to B</td>
+                <td>Absent</td>
+                <td><span class="status safe">server deletion</span></td>
+                <td>Pull removes locally; push should not resurrect silently.</td>
+              </tr>
+              <tr>
+                <td>Present as B</td>
+                <td>Different from B</td>
+                <td>Absent</td>
+                <td><span class="status danger">local-edit / delete conflict</span></td>
+                <td>Abort both directions; preserve local files until resolved.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="band" id="api-boundary">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">08 / API boundary</p>
+            <h2>The baseline fix belongs in the CLI; stronger guarantees cross into the API</h2>
+          </div>
+          <p>The current API already exposes actor content and edit versions, so content-hash classification needs no server storage.</p>
+        </div>
+
+        <div class="diagram-shell compact">
+          <pre class="mermaid">
+flowchart LR
+  F["Bundle filesystem<br/>L + stored baseline hash"] --> C["CLI compiler + three-way classifier"]
+  A1["Existing API<br/>exportData"] --> C
+  A2["Existing API<br/>actorVersions"] --> C
+  C --> A3["Existing API<br/>batch actor operations"]
+  C --> F
+
+  OPT1["Recommended API extension<br/>atomic conflict mode"] -. strengthens .-> A3
+  OPT2["Recommended API extension<br/>metadata expectedVersion"] -. protects .-> META["Canvas metadata update"]
+  OPT3["Recommended API extension<br/>content + versions in one snapshot"] -. simplifies .-> C
+
+  classDef cli fill:#e3eef8,stroke:#315f87,color:#193650;
+  classDef fs fill:#fff3cb,stroke:#8a6515,color:#4d3a0f;
+  classDef api fill:#dceee9,stroke:#2f6f60,color:#173d34;
+  classDef optional fill:#f5f8f7,stroke:#7a8c85,color:#33443e,stroke-dasharray:5 4;
+  class C cli;
+  class F fs;
+  class A1,A2,A3,META api;
+  class OPT1,OPT2,OPT3 optional;
+          </pre>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Capability</th>
+                <th>API change?</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Store canonical actor baseline hashes</td>
+                <td><span class="status safe">No</span></td>
+                <td>The CLI computes and writes them into <code>canvas.yaml</code>.</td>
+              </tr>
+              <tr>
+                <td>Fast-forward server-only actor edits on pull</td>
+                <td><span class="status safe">No</span></td>
+                <td>Current export content plus actor edit versions are sufficient once the local baseline hash exists.</td>
+              </tr>
+              <tr>
+                <td>Reject invalid actor configuration in strict batch mode</td>
+                <td><span class="status safe">Already supported</span></td>
+                <td>The API accepts <code>?strict=true</code>, and the CLI now passes it from <code>push --strict</code>.</td>
+              </tr>
+              <tr>
+                <td>All-or-nothing actor batch when one editVersion conflicts</td>
+                <td><span class="status caution">Recommended</span></td>
+                <td>Today non-conflicting operations can commit while conflicting operations are skipped.</td>
+              </tr>
+              <tr>
+                <td>Optimistic concurrency for canvas metadata</td>
+                <td><span class="status caution">Recommended</span></td>
+                <td>The metadata update currently accepts no expected canvas version.</td>
+              </tr>
+              <tr>
+                <td>One atomic export containing content and actor versions</td>
+                <td><span class="status caution">Recommended</span></td>
+                <td>The CLI currently makes two requests. A combined snapshot removes pairing races; a CLI retry fence can mitigate them meanwhile.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout warning">
+          <strong><code>push --strict</code> now reaches strict actor batch validation.</strong>
+          It makes local bundle warnings fatal and passes the batch API's existing <code>strict=true</code> query flag. It does not separately call <code>canvases validate</code>.
+        </div>
+      </div>
+    </section>
+
+    <section class="band alt" id="study-path">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">09 / Study path</p>
+            <h2>A compact way to reason about any sync report</h2>
+          </div>
+          <p>Work in this order. It prevents command flags from obscuring the underlying state transition.</p>
+        </div>
+
+        <div class="steps">
+          <article class="step">
+            <h3>Check presence</h3>
+            <p>Does the actor exist in the baseline, local bundle, and current server export?</p>
+          </article>
+          <article class="step">
+            <h3>Check content</h3>
+            <p>Compare canonical local and server forms. Formatting alone should disappear.</p>
+          </article>
+          <article class="step">
+            <h3>Check ancestry</h3>
+            <p>Ask whether local and server each still equal the baseline. The implemented <code>sync.actors</code> hashes answer this per actor.</p>
+          </article>
+          <article class="step">
+            <h3>Choose direction</h3>
+            <p>Push makes the server follow intentional local work. Pull incorporates safe server work without discarding local work.</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <strong>Practical rule until baseline hashes exist</strong>
+          Treat bare pull as fail-closed on any advanced server actor. Use <code>pull --replace</code> only when you explicitly accept a full server-wins rewrite, and use <code>push --force-local</code> only when you explicitly accept local wins.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Canvas bundle sync explainer · Three-way local CLI behavior updated 2026-07-10; API hardening remains tracked separately.
+  </footer>
+
+  <div class="render-status" id="render-status" role="status">Rendering diagrams…</div>
+
+  <script type="module">
+    const status = document.getElementById('render-status');
+    try {
+      const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs');
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'loose',
+        theme: 'base',
+        fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+        flowchart: {
+          curve: 'basis',
+          htmlLabels: true,
+          nodeSpacing: 34,
+          rankSpacing: 46,
+          useMaxWidth: false
+        },
+        sequence: {
+          useMaxWidth: false,
+          wrap: true,
+          diagramMarginX: 28,
+          diagramMarginY: 20,
+          actorMargin: 70,
+          messageMargin: 34
+        },
+        themeVariables: {
+          background: '#ffffff',
+          primaryColor: '#dceee9',
+          primaryTextColor: '#15211d',
+          primaryBorderColor: '#2f6f60',
+          secondaryColor: '#fff3cb',
+          secondaryTextColor: '#15211d',
+          secondaryBorderColor: '#8a6515',
+          tertiaryColor: '#e3eef8',
+          tertiaryTextColor: '#15211d',
+          tertiaryBorderColor: '#315f87',
+          lineColor: '#52635d',
+          textColor: '#15211d',
+          mainBkg: '#ffffff',
+          nodeBorder: '#52635d',
+          clusterBkg: '#f5f8f7',
+          clusterBorder: '#9aaba5',
+          actorBkg: '#ffffff',
+          actorBorder: '#52635d',
+          actorTextColor: '#15211d',
+          signalColor: '#52635d',
+          signalTextColor: '#15211d',
+          noteBkgColor: '#fff3cb',
+          noteBorderColor: '#8a6515',
+          noteTextColor: '#4d3a0f',
+          labelBoxBkgColor: '#ffffff',
+          labelBoxBorderColor: '#9aaba5',
+          labelTextColor: '#15211d',
+          activationBkgColor: '#dceee9',
+          activationBorderColor: '#2f6f60',
+          fontSize: '15px'
+        }
+      });
+      await mermaid.run({ querySelector: '.mermaid' });
+      document.documentElement.dataset.mermaidReady = 'true';
+      status.hidden = true;
+    } catch (error) {
+      document.documentElement.dataset.mermaidReady = 'false';
+      status.textContent = 'Diagram rendering failed. Check network access and reload.';
+      status.style.color = '#9c4033';
+      console.error(error);
+    }
+  </script>
+</body>
+</html>

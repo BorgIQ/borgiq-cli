@@ -67,14 +67,27 @@ export const validateBundle = (files: BundleFileMap): ValidateBundleResult => {
 
 const validateSync = (value: unknown, errors: BundleIssue[]): void => {
   if (value === undefined) return;
-  if (!isPlainObject(value) || !isPlainObject(value.actorVersions)) {
-    errors.push({ path: ROOT_FILE, message: '`sync.actorVersions` must be a mapping of actor IDs to edit-version numbers.' });
+  if (!isPlainObject(value)) {
+    errors.push({ path: ROOT_FILE, message: '`sync.actors` must be a mapping of actor IDs to sync baselines.' });
     return;
   }
 
-  for (const [actorId, version] of Object.entries(value.actorVersions)) {
-    if (typeof version !== 'number' || !Number.isInteger(version) || version < 0) {
-      errors.push({ path: ROOT_FILE, message: `sync.actorVersions.${actorId} must be a non-negative integer.` });
+  const actors = isPlainObject(value.actors) ? value.actors : undefined;
+  if (!actors) {
+    errors.push({ path: ROOT_FILE, message: '`sync.actors` must be a mapping of actor IDs to sync baselines.' });
+    return;
+  }
+
+  for (const [actorId, rawState] of Object.entries(actors)) {
+    if (!isPlainObject(rawState)) {
+      errors.push({ path: ROOT_FILE, message: `sync.actors.${actorId} must contain editVersion and contentHash.` });
+      continue;
+    }
+    if (typeof rawState.editVersion !== 'number' || !Number.isInteger(rawState.editVersion) || rawState.editVersion < 0) {
+      errors.push({ path: ROOT_FILE, message: `sync.actors.${actorId}.editVersion must be a non-negative integer.` });
+    }
+    if (typeof rawState.contentHash !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(rawState.contentHash)) {
+      errors.push({ path: ROOT_FILE, message: `sync.actors.${actorId}.contentHash must be a sha256-prefixed lowercase hex digest.` });
     }
   }
 };

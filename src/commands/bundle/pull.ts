@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { assembleBundle, BundleValidationError } from '../../lib/bundle/assemble.js';
-import { diffCanvas, mergeForPull, summarizeDiff } from '../../lib/bundle/diff.js';
+import { actorContentHashes, diffCanvas, mergeForPull, summarizeDiff } from '../../lib/bundle/diff.js';
 import { disassemble } from '../../lib/bundle/disassemble.js';
 import { parseExportInput } from '../../lib/bundle/envelope.js';
 import { planBundleDirIncrementalWrite, readBundleDir, writeBundleDir, writeBundleDirIncremental } from '../../lib/bundleFs.js';
@@ -53,20 +53,23 @@ export const bundlePull = async (
 
     const local = assembleLocalBundle(target);
     const diff = diffCanvas(local.doc, input.document, {
-      localActorVersions: local.sync.actorVersions,
+      localActorStates: local.sync.actors,
       serverActorVersions: actorVersions,
-      assumeServerVersionsWhenLocalMissing: true,
     });
-    const summary = summarizeDiff(diff);
-    if (diff.conflicts.length > 0) {
+    const summary = summarizeDiff(diff, { direction: 'pull' });
+    if (diff.pullConflicts.length > 0) {
       reportPullWarnings(warnings, input.exportErrors);
-      reportPullConflicts(diff.conflicts);
+      reportPullConflicts(diff.pullConflicts);
       process.exitCode = ExitCode.CONFLICT;
-      output({ mode: 'sync', target, summary, entries: diff.entries, conflicts: diff.conflicts, applied: false }, globalOpts);
+      output({ mode: 'sync', target, summary, entries: diff.entries, conflicts: diff.pullConflicts, applied: false }, globalOpts);
       return;
     }
     const merged = mergeForPull(local.doc, input.document, diff);
-    const mergedDisassembly = disassemble(merged, { exportErrors: input.exportErrors, actorVersions });
+    const mergedDisassembly = disassemble(merged, {
+      exportErrors: input.exportErrors,
+      actorVersions,
+      actorHashes: actorContentHashes(input.document),
+    });
     const mergedFiles = mergedDisassembly.files;
     const writePlan = planBundleDirIncrementalWrite(target, mergedFiles);
     reportPullWarnings(mergedDisassembly.warnings, input.exportErrors);
@@ -94,11 +97,11 @@ const reportPullWarnings = (warnings: string[], exportErrors: unknown[]): void =
   }
 };
 
-const reportPullConflicts = (conflicts: { actorId: string; name: string; bundleVersion?: number; serverVersion?: number }[]): void => {
+const reportPullConflicts = (conflicts: { actorId: string; name: string; verdict: string; bundleVersion?: number; serverVersion?: number }[]): void => {
   process.stderr.write(`Pull aborted: ${conflicts.length} actor conflict(s) have both local and server changes. No files were written. Reconcile them manually, or re-run with --replace to accept the server versions.\n`);
   for (const conflict of conflicts) {
     process.stderr.write(
-      `  ${conflict.actorId} (${conflict.name}): bundle editVersion ${String(conflict.bundleVersion ?? 'missing')} -> server editVersion ${String(conflict.serverVersion ?? 'missing')}\n`,
+      `  ${conflict.actorId} (${conflict.name}): ${conflict.verdict}; bundle editVersion ${String(conflict.bundleVersion ?? 'missing')} -> server editVersion ${String(conflict.serverVersion ?? 'missing')}\n`,
     );
   }
 };

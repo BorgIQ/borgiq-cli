@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { assembleBundle, BundleValidationError } from '../../src/lib/bundle/assemble.js';
+import { actorContentHash } from '../../src/lib/bundle/diff.js';
 import { disassemble } from '../../src/lib/bundle/disassemble.js';
 import { stringifyYamlDoc } from '../../src/lib/bundle/yaml.js';
 import type { CanvasExportDocument } from '../../src/lib/bundle/types.js';
@@ -59,11 +60,15 @@ describe('round-trip guarantees', () => {
     expect(doc.metadata.slug).toBe('test-canvas');
   });
 
-  it('keeps bundle sync edit versions outside the packed canvas document', () => {
-    const { files } = disassemble(makeWiredDoc(), { actorVersions: { [TRIGGER_ID]: 4, [TASK_ID]: 5 } });
+  it('keeps bundle sync baselines outside the packed canvas document', () => {
+    const source = makeWiredDoc();
+    const { files } = disassemble(source, { actorVersions: { [TRIGGER_ID]: 4, [TASK_ID]: 5 } });
     const assembled = assembleBundle(files);
 
-    expect(assembled.sync.actorVersions).toEqual({ [TASK_ID]: 5, [TRIGGER_ID]: 4 });
+    expect(assembled.sync.actors).toEqual({
+      [TASK_ID]: { editVersion: 5, contentHash: actorContentHash(source.data.actors[TASK_ID]) },
+      [TRIGGER_ID]: { editVersion: 4, contentHash: actorContentHash(source.data.actors[TRIGGER_ID]) },
+    });
     expect(assembled.doc.metadata.sync).toBeUndefined();
     expect(assembled.doc.data.actors[TRIGGER_ID].version).toBe(1);
   });

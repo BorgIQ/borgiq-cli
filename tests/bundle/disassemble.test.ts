@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { actorContentHash } from '../../src/lib/bundle/diff.js';
 import { disassemble } from '../../src/lib/bundle/disassemble.js';
 import { parseExportInput } from '../../src/lib/bundle/envelope.js';
 import { parseYamlDoc } from '../../src/lib/bundle/yaml.js';
@@ -111,17 +112,18 @@ describe('disassemble', () => {
     expect(doc.formatVersion).toBe(1);
   });
 
-  it('records sync actor edit versions when supplied', () => {
-    const doc = root(disassemble(makeWiredDoc(), {
+  it('records content-hash sync baselines', () => {
+    const source = makeWiredDoc();
+    const doc = root(disassemble(source, {
       actorVersions: {
         [TRIGGER_ID]: 3,
         [TASK_ID]: 2,
       },
     }).files);
 
-    expect(doc.sync?.actorVersions).toEqual({
-      [TASK_ID]: 2,
-      [TRIGGER_ID]: 3,
+    expect(doc.sync?.actors).toEqual({
+      [TASK_ID]: { editVersion: 2, contentHash: actorContentHash(source.data.actors[TASK_ID]) },
+      [TRIGGER_ID]: { editVersion: 3, contentHash: actorContentHash(source.data.actors[TRIGGER_ID]) },
     });
   });
 

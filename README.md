@@ -381,12 +381,14 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 Canvas bundles expand the platform's canvas export document into a git-friendly
 folder. `canvas.yaml` holds canvas metadata, graph nodes/edges, dependencies,
-export errors, warnings, sync edit versions, and the actor index. Each actor lives in
+export errors, warnings, sync baselines, and the actor index. Each actor lives in
 `actors/<category>/<type>/<ACTOR_ID>/actor.yaml`; Deno, Deno Test, Python,
 Universal Trigger, and App actors use native files under `code/` for editable source.
 
-Pack/unpack is deterministic and lossless over managed bundle paths.
-Push/pull refresh `canvas.yaml` `sync.actorVersions` from the platform's actor edit versions for conflict detection.
+Pack/unpack is deterministic and lossless over managed bundle paths. Push/pull
+refresh `canvas.yaml` `sync.actors` with each server actor's edit version and
+canonical SHA-256 content hash. The hash is the common ancestor used to distinguish
+server-only changes from concurrent edits.
 
 ```bash
 borgiq bundle init ./my-flow.borgiq-canvas
@@ -408,13 +410,13 @@ borgiq bundle push ./my-flow.borgiq-canvas --create
 | `borgiq bundle unpack <file\|-> <dir>` | Read raw export YAML or the `{ yaml, errors }` JSON envelope and write a bundle folder. Pass `--force` to replace an existing bundle's managed files. |
 | `borgiq bundle pack <dir>` | Validate and emit platform export YAML to stdout or `-o, --output <file>`. |
 | `borgiq bundle validate <dir>` | Report all bundle errors and warnings; `--strict` treats warnings as fatal. |
-| `borgiq bundle pull <canvas> [dir]` | Sync by slug or ID from the API. Existing bundles preserve local edits and abort on concurrent local/server edits; `--replace` explicitly accepts the server state with a full managed-path rewrite. |
-| `borgiq bundle push <dir>` | Validate and sync only changed actors by default. Structured output is compact; use `--raw` for generated operation payloads and raw API responses. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. |
+| `borgiq bundle pull <canvas> [dir]` | Sync by slug or ID from the API. Existing bundles fast-forward server-only changes, preserve local edits/deletions, and abort on genuine concurrent or unknown-baseline conflicts; `--replace` explicitly accepts the server state with a full managed-path rewrite. |
+| `borgiq bundle push <dir>` | Validate and sync only changed actors by default. A server-side change blocks push until it is pulled, unless `--force-local` explicitly selects local wins. `--strict` also enables strict actor batch validation on the API. Structured output is compact; use `--raw` for generated operation payloads and raw API responses. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. |
 
 `pull --replace` and `unpack` rewrite only managed paths: `canvas.yaml` and `actors/`.
 Files such as `.git/`, `AGENTS.md`, `.gitignore`, and notes are preserved.
 `AGENTS.md` and `.gitignore` are created only when missing.
-Push refuses exports with actor errors, verifies that the batch API confirmed every requested actor operation, and skips local refresh after any incomplete response. A bundle without `sync.actorVersions` can still perform one compatibility push, but the CLI warns that conflict detection is disabled and local actor content wins.
+Push refuses exports with actor errors, verifies that the batch API confirmed every requested actor operation, and skips local refresh after any incomplete response. Bundles without `sync.actors` fail closed when an existing local actor differs from the server. Run `bundle pull` to establish the visible sync baseline, or choose `--replace`/`--force-local` explicitly.
 
 ---
 

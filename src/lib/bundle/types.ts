@@ -62,8 +62,14 @@ export interface BundleDependencies {
   secrets: BundleDependencyRef[];
 }
 
+export interface BundleSyncActor {
+  editVersion: number;
+  contentHash: string;
+}
+
 export interface BundleSync {
-  actorVersions?: Record<string, number>;
+  /** Canonical baseline used for three-way actor sync. */
+  actors?: Record<string, BundleSyncActor>;
 }
 
 export interface BundleRootDoc {

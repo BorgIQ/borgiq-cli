@@ -1,15 +1,22 @@
+import { createHash } from 'node:crypto';
+
 import type { BatchActorOperation } from '../../client/types.js';
-import type { CanvasExportDocument, ExportedActor } from './types.js';
+import type { BundleSyncActor, CanvasExportDocument, ExportedActor } from './types.js';
 import { stringifyYamlDoc } from './yaml.js';
 
 export type ActorVerdict =
   | 'unchanged'
   | 'local-edit'
   | 'server-edit'
-  | 'version-missing'
+  | 'concurrent-edit'
+  | 'baseline-missing'
   | 'new-local'
+  | 'new-server'
+  | 'deleted-local'
   | 'deleted-on-server'
-  | 'server-only';
+  | 'local-edit-server-delete'
+  | 'local-delete-server-edit'
+  | 'deleted-both';
 
 export interface ActorDiffEntry {
   actorId: string;
@@ -21,14 +28,21 @@ export interface ActorDiffEntry {
 
 export interface CanvasDiff {
   entries: ActorDiffEntry[];
+  /** Conflicts that block either direction. */
   conflicts: ActorDiffEntry[];
+  pushConflicts: ActorDiffEntry[];
+  pullConflicts: ActorDiffEntry[];
   metadataDelta: Record<string, unknown> | null;
 }
 
 export interface CanvasDiffOptions {
-  localActorVersions?: Record<string, number>;
+  localActorStates?: Record<string, BundleSyncActor>;
   serverActorVersions?: Record<string, number>;
-  assumeServerVersionsWhenLocalMissing?: boolean;
+}
+
+export interface DiffSummaryOptions {
+  direction?: 'push' | 'pull';
+  forceLocal?: boolean;
 }
 
 export interface DiffSummary {
@@ -40,6 +54,8 @@ export interface DiffSummary {
   localKept: number;
   serverChanged: number;
   deletedOnServer: number;
+  deletedLocally: number;
+  newOnServer: number;
 }
 
 const SYNC_METADATA_FIELDS = ['name', 'description', 'tags', 'messageTTLInDays', 'runtimeSlug'] as const;
@@ -76,6 +92,16 @@ export const canonicalActorForm = (actor: ExportedActor): string => {
   void _version;
   return stringifyYamlDoc(stableValue(rest));
 };
+
+export const actorContentHash = (actor: ExportedActor): string =>
+  `sha256:${createHash('sha256').update(canonicalActorForm(actor)).digest('hex')}`;
+
+export const actorContentHashes = (doc: CanvasExportDocument): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(doc.data.actors)
+      .sort(([a], [b]) => compareStrings(a, b))
+      .map(([actorId, actor]) => [actorId, actorContentHash(actor)]),
+  );
 
 const valuesEqual = (a: unknown, b: unknown): boolean =>
   stringifyYamlDoc(stableValue(a)) === stringifyYamlDoc(stableValue(b));
@@ -122,30 +148,54 @@ const metadataDelta = (local: CanvasExportDocument, server: CanvasExportDocument
 };
 
 export const diffCanvas = (local: CanvasExportDocument, server: CanvasExportDocument, options: CanvasDiffOptions = {}): CanvasDiff => {
-  const actorIds = [...new Set([...Object.keys(local.data.actors), ...Object.keys(server.data.actors)])].sort(compareStrings);
-  const hasLocalActorVersions = options.localActorVersions !== undefined;
+  const actorIds = [...new Set([
+    ...Object.keys(local.data.actors),
+    ...Object.keys(server.data.actors),
+    ...Object.keys(options.localActorStates ?? {}),
+  ])].sort(compareStrings);
   const entries: ActorDiffEntry[] = actorIds.map((actorId) => {
     const localActor = local.data.actors[actorId];
     const serverActor = server.data.actors[actorId];
+    const baseline = options.localActorStates?.[actorId];
+    const baselineHash = baseline?.contentHash;
+    const localHash = localActor ? actorContentHash(localActor) : undefined;
+    const serverHash = serverActor ? actorContentHash(serverActor) : undefined;
     const serverVersion = actorVersion(options.serverActorVersions, actorId);
-    const bundleVersion = actorVersion(options.localActorVersions, actorId)
-      ?? (!hasLocalActorVersions && options.assumeServerVersionsWhenLocalMissing ? serverVersion : undefined);
+    const bundleVersion = baseline?.editVersion;
     let verdict: ActorVerdict;
 
     if (localActor && serverActor) {
-      if (canonicalActorForm(localActor) === canonicalActorForm(serverActor)) {
+      if (localHash === serverHash) {
         verdict = 'unchanged';
-      } else if (bundleVersion === undefined) {
-        verdict = 'version-missing';
-      } else if (bundleVersion === serverVersion) {
-        verdict = 'local-edit';
+      } else if (baselineHash !== undefined) {
+        const localChanged = localHash !== baselineHash;
+        const serverChanged = serverHash !== baselineHash;
+        if (!localChanged && serverChanged) {
+          verdict = 'server-edit';
+        } else if (localChanged && !serverChanged && serverVersion !== undefined) {
+          verdict = 'local-edit';
+        } else if (localChanged && serverChanged) {
+          verdict = 'concurrent-edit';
+        } else {
+          verdict = 'baseline-missing';
+        }
       } else {
-        verdict = 'server-edit';
+        verdict = 'baseline-missing';
       }
     } else if (localActor) {
-      verdict = bundleVersion === undefined ? 'new-local' : 'deleted-on-server';
+      if (baselineHash === undefined) {
+        verdict = 'new-local';
+      } else {
+        verdict = localHash === baselineHash ? 'deleted-on-server' : 'local-edit-server-delete';
+      }
+    } else if (serverActor) {
+      if (baselineHash === undefined) {
+        verdict = 'new-server';
+      } else {
+        verdict = serverHash === baselineHash && serverVersion !== undefined ? 'deleted-local' : 'local-delete-server-edit';
+      }
     } else {
-      verdict = 'server-only';
+      verdict = 'deleted-both';
     }
 
     return {
@@ -157,20 +207,39 @@ export const diffCanvas = (local: CanvasExportDocument, server: CanvasExportDocu
     };
   });
 
-  const conflicts = entries.filter((entry) => entry.verdict === 'server-edit' || entry.verdict === 'version-missing');
-  return { entries, conflicts, metadataDelta: metadataDelta(local, server) };
+  const conflicts = entries.filter((entry) =>
+    entry.verdict === 'concurrent-edit'
+    || entry.verdict === 'baseline-missing'
+    || entry.verdict === 'local-edit-server-delete'
+    || entry.verdict === 'local-delete-server-edit');
+  const pushConflicts = entries.filter((entry) =>
+    conflicts.includes(entry)
+    || entry.verdict === 'server-edit'
+    || entry.verdict === 'new-server'
+    || entry.verdict === 'deleted-on-server');
+  return {
+    entries,
+    conflicts,
+    pushConflicts,
+    pullConflicts: conflicts,
+    metadataDelta: metadataDelta(local, server),
+  };
 };
 
-export const summarizeDiff = (diff: CanvasDiff, forceLocal = false): DiffSummary => {
+export const summarizeDiff = (diff: CanvasDiff, options: DiffSummaryOptions = {}): DiffSummary => {
+  const forceLocal = options.forceLocal ?? false;
+  const direction = options.direction ?? 'push';
   const summary: DiffSummary = {
     added: 0,
     updated: 0,
     removed: 0,
-    conflicts: diff.conflicts.length,
+    conflicts: (direction === 'push' ? diff.pushConflicts : diff.pullConflicts).length,
     unchanged: 0,
     localKept: 0,
     serverChanged: 0,
     deletedOnServer: 0,
+    deletedLocally: 0,
+    newOnServer: 0,
   };
 
   for (const entry of diff.entries) {
@@ -187,16 +256,33 @@ export const summarizeDiff = (diff: CanvasDiff, forceLocal = false): DiffSummary
         summary.serverChanged += 1;
         if (forceLocal) summary.updated += 1;
         break;
-      case 'version-missing':
+      case 'concurrent-edit':
+      case 'baseline-missing':
         if (forceLocal) summary.updated += 1;
         break;
-      case 'server-only':
+      case 'local-edit-server-delete':
+        if (forceLocal) summary.added += 1;
+        break;
+      case 'local-delete-server-edit':
+        if (forceLocal) summary.removed += 1;
+        break;
+      case 'new-server':
+        summary.newOnServer += 1;
+        summary.serverChanged += 1;
+        if (forceLocal) summary.removed += 1;
+        break;
+      case 'deleted-local':
+        summary.deletedLocally += 1;
         summary.removed += 1;
+        summary.localKept += 1;
         break;
       case 'deleted-on-server':
         summary.deletedOnServer += 1;
+        summary.serverChanged += 1;
+        if (forceLocal) summary.added += 1;
         break;
       case 'unchanged':
+      case 'deleted-both':
         summary.unchanged += 1;
         break;
       default:
@@ -227,16 +313,30 @@ export const toBatchOperations = (
         if (localActor) updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toCanvasActorMutationData(localActor) });
         break;
       case 'server-edit':
-      case 'version-missing':
-        if (forceLocal && localActor) {
+      case 'concurrent-edit':
+      case 'baseline-missing':
+        if (!forceLocal) break;
+        if (localActor) {
           updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toCanvasActorMutationData(localActor) });
         }
         break;
-      case 'server-only':
+      case 'local-edit-server-delete':
+      case 'deleted-on-server':
+        if (forceLocal && localActor) {
+          adds.push({ type: 'add', actorId: entry.actorId, timestamp, data: toCanvasActorMutationData(localActor) });
+        }
+        break;
+      case 'local-delete-server-edit':
+      case 'new-server':
+        if (forceLocal) {
+          removes.push({ type: 'remove', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion });
+        }
+        break;
+      case 'deleted-local':
         removes.push({ type: 'remove', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion });
         break;
       case 'unchanged':
-      case 'deleted-on-server':
+      case 'deleted-both':
         break;
       default:
         assertNever(entry.verdict);
@@ -262,12 +362,18 @@ export const mergeForPull = (
         break;
       case 'unchanged':
       case 'server-edit':
-      case 'version-missing':
-      case 'server-only':
+      case 'new-server':
         if (serverActor) actors[entry.actorId] = serverActor;
         break;
+      case 'deleted-local':
       case 'deleted-on-server':
+      case 'deleted-both':
         break;
+      case 'concurrent-edit':
+      case 'baseline-missing':
+      case 'local-edit-server-delete':
+      case 'local-delete-server-edit':
+        throw new Error(`Cannot merge unresolved actor ${entry.actorId} (${entry.verdict}).`);
       default:
         assertNever(entry.verdict);
     }
