@@ -1,23 +1,23 @@
 # AGENTS.md
 
-This file provides guidance to AI coding agents (Claude Code, OpenAI Codex, etc.) when working with code in this repository.
+This file provides guidance to AI coding agents working with code in this repository.
 
 ## Overview
 
-`borgiq-cli` is the official command-line interface for the BorgIQ workflow automation platform. It talks to the BorgIQ API over HTTPS to manage canvases, actors, flow runs, connections, secrets, and more.
+`borgiq-cli` is the official command-line interface for BorgIQ. It talks to the BorgIQ API over HTTPS to manage canvases, actors, flow runs, connections, secrets, and more.
 
 This repo is fully standalone: it has no npm dependencies on other BorgIQ packages, defines its own API request/response types in `src/client/types.ts`, and needs no other services running locally to build (only for runtime API calls against a live BorgIQ instance).
 
-## Design Principle: Thin Client — the API Owns Platform Semantics
+## Design Principle: Thin Client — the BorgIQ API Owns Product Semantics
 
-The CLI is installed on user machines and can be arbitrarily stale; the platform evolves continuously. Every piece of platform knowledge baked into the CLI (actor types, actor names, port/ID conventions, per-actor config rules, canvas structure) is a fact that silently goes wrong as the platform changes: an old CLI "validates" against yesterday's rules, scaffolds shapes the API no longer accepts, or rejects configs the platform now allows. A thin client's only compatibility surface is the API contract, which the server can version and deprecate gracefully.
+The CLI is installed on user machines and can be arbitrarily stale; the BorgIQ API evolves continuously. Every piece of product knowledge baked into the CLI (actor types, actor names, port/ID conventions, per-actor config rules, canvas structure) can silently become wrong as the API changes: an old CLI "validates" against yesterday's rules, scaffolds shapes the API no longer accepts, or rejects configurations the API now allows. A thin client's only compatibility surface is the API contract, which the service can version and deprecate gracefully.
 
 **Rules:**
 
-1. **Server-side first.** Anything that depends on platform semantics — validation, canvas init/creation, actor schemas, layout — must be an API call. If the endpoint doesn't exist yet, the fix is to add it to `borgiq-platform`, not to reimplement the logic in the CLI. `canvases validate` is the model: it calls `GET .../canvases/:id/validate` and renders the server's verdict.
-2. **No new hardcoded platform knowledge.** Do not add actor name lists, valid-type enums, port/ID format rules, or per-actor validators. Existing offenders — `src/lib/workflowValidation.ts` (~2,400 lines of actor-specific validators, port conventions, type enums) and parts of `src/lib/bundle/` (type registry, local validation) — are legacy being migrated to the API, **not** patterns to extend. When touching them, prefer deleting local rules in favor of a server call.
-3. **Semantics vs. format.** The CLI legitimately owns *format* concerns: bundle folder layout on disk, YAML/JSON parsing, config-file handling, output rendering. It must not own *semantics*: what makes an actor or canvas valid, which actor types exist, what ports they expose. When unsure which side something falls on, ask: "would the platform team ever change this without touching the CLI?" If yes, it's semantics — fetch it from the API.
-4. **Local checks are pre-filters, never authority.** Where fast offline feedback is genuinely useful (e.g. `bundle validate` before a push), treat local checks as best-effort and clearly label them as such; the flow must still round-trip through the API before reporting success. Never pre-reject input based on baked-in rules the server might no longer enforce — send it to the API and render the server's errors.
+1. **Server-side first.** Anything that depends on product semantics — validation, canvas init/creation, actor schemas, layout — must be a BorgIQ API call. If the endpoint does not exist yet, add it to the BorgIQ API rather than reimplementing the logic in the CLI. `canvases validate` is the model: it calls `GET .../canvases/:id/validate` and renders the API's verdict.
+2. **No new hardcoded product knowledge.** Do not add actor name lists, valid-type enums, port/ID format rules, or per-actor validators. Existing offenders — `src/lib/workflowValidation.ts` (~2,400 lines of actor-specific validators, port conventions, type enums) and parts of `src/lib/bundle/` (type registry, local validation) — are legacy being migrated to the API, **not** patterns to extend. When touching them, prefer deleting local rules in favor of an API call.
+3. **Semantics vs. format.** The CLI legitimately owns *format* concerns: bundle folder layout on disk, YAML/JSON parsing, config-file handling, output rendering. It must not own *semantics*: what makes an actor or canvas valid, which actor types exist, what ports they expose. When unsure which side something falls on, ask: "could the BorgIQ API change this without changing the CLI?" If yes, it is semantics; fetch it from the API.
+4. **Local checks are pre-filters, never authority.** Where fast offline feedback is genuinely useful (e.g. `bundle validate` before a push), treat local checks as best-effort and clearly label them as such; the flow must still round-trip through the API before reporting success. Never pre-reject input based on baked-in rules the API might no longer enforce; send it to the API and render the API's errors.
 
 ## Development Environment Setup
 
@@ -72,7 +72,7 @@ src/
 │   ├── workspaces/       # list
 │   ├── actors/           # list, schema
 │   ├── canvases/         # list, get, create, update, delete, export, validate, layout, etc.
-│   ├── bundle/           # init, unpack, pack, validate, pull, push - canvas bundle folders (BORG-565)
+│   ├── bundle/           # init, unpack, pack, validate, pull, push - canvas bundle folders
 │   ├── canvas-actors/    # list, get, flow, verify, create, update, delete, batch
 │   ├── flowruns/         # list, get, status, summary, interrupt
 │   ├── flowrun-jobs/     # list, test-run, re-run, runtime-data, ai-timeline, source-message
