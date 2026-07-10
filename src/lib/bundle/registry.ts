@@ -1,5 +1,5 @@
 /**
- * BORG-565 Canvas Bundle v1 actor-type path registry. This is exhaustive over
+ * Canvas Bundle v1 actor-type path registry. This is exhaustive over
  * the platform actor types supported by this CLI version.
  */
 
