@@ -772,8 +772,6 @@ export async function validateYaml(
           );
         } else if (actor.type === "CallableTriggerActor") {
           validateCallableTriggerActor(actorId, config, errors, warnings);
-        } else if (actor.type === "WebhookTriggerActor") {
-          validateWebhookTriggerActor(actorId, config, errors, warnings);
         } else if (actor.type === "SendEmailActor") {
           validateSendEmailActor(actorId, config, errors, warnings);
         } else if (actor.type === "CommentActor") {
@@ -1480,68 +1478,6 @@ function validateCallableTriggerActor(
     errors.push(
       `${prefix}: CallableTriggerActor should not have 'configuration.options'. Remove the options field.`,
     );
-  }
-}
-
-function validateWebhookTriggerActor(
-  actorId: string,
-  config: ActorConfiguration,
-  errors: string[],
-  _warnings: string[],
-): void {
-  const prefix = `Actor '${actorId}'`;
-
-  const webhookTriggerKey = (config as { webhookTriggerKey?: string })?.webhookTriggerKey;
-  if (!webhookTriggerKey) {
-    errors.push(
-      `${prefix}: Missing required 'configuration.webhookTriggerKey'. ` +
-      `Generate one using: npx tsx scripts/generate.ts id webhooktriggerkey`,
-    );
-  } else if (typeof webhookTriggerKey !== "string") {
-    errors.push(
-      `${prefix}: 'configuration.webhookTriggerKey' must be a string`,
-    );
-  } else if (webhookTriggerKey.length !== 26) {
-    errors.push(
-      `${prefix}: 'configuration.webhookTriggerKey' must be 26 characters (ULID format), got ${webhookTriggerKey.length}`,
-    );
-  }
-
-  if (config?.options) {
-    const options = config.options as {
-      respondImmediately?: boolean;
-      response?: { statusCode?: number; body?: unknown; headers?: unknown };
-      allowedMethods?: string[];
-      responseTimeout?: number;
-    };
-
-    if (options.respondImmediately === true && !options.response) {
-      errors.push(
-        `${prefix}: 'response' is required when 'respondImmediately' is true`,
-      );
-    }
-
-    if (options.responseTimeout !== undefined) {
-      if (typeof options.responseTimeout === "number") {
-        if (options.responseTimeout < 1 || options.responseTimeout > 60) {
-          errors.push(
-            `${prefix}: 'responseTimeout' must be between 1 and 60 seconds, got ${options.responseTimeout}`,
-          );
-        }
-      }
-    }
-
-    if (options.allowedMethods && Array.isArray(options.allowedMethods)) {
-      const validMethods = ["get", "post", "put", "patch", "delete"];
-      for (const method of options.allowedMethods) {
-        if (!validMethods.includes(method)) {
-          errors.push(
-            `${prefix}: Invalid HTTP method '${method}' in 'allowedMethods'. ` +
-            `Valid methods: ${validMethods.join(", ")}`,
-          );
-        }
-      }
-    }
   }
 }
 

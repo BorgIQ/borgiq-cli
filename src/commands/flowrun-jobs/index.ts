@@ -17,7 +17,7 @@ export const registerFlowrunJobsCommands = (program: Command): void => {
     .option('--flowrun-id <id>', 'Filter by flowrun ID')
     .action(flowrunJobsList);
 
-  withCanvasOption(jobs.command('test-run').description('Test run a single actor'), 'Canvas ID (ULID)')
+  withCanvasOption(jobs.command('test-run').description('Test run a single actor'), 'Canvas ID (ULID); slug is not accepted by this endpoint')
     .requiredOption('--actor-id <id>', 'Actor ID')
     .option('--publish', 'Publish emitted messages to downstream actors')
     .action(flowrunJobsTestRun);

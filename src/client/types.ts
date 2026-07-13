@@ -241,14 +241,22 @@ export interface BIQCanvasLayout {
 export interface BatchActorOperation {
   type: 'add' | 'update' | 'remove';
   actorId: string;
+  timestamp: number;
   editVersion?: number;
   data?: Record<string, unknown>;
 }
 
 /** Patch actors response */
 export interface BatchActorOperationsResponse {
-  appliedOperations: { type: string; actorId: string; status: string }[];
+  processed: string[];
+  appliedOperations: {
+    type: string;
+    actorId: string;
+    newEditVersion: number;
+    actorData?: Record<string, unknown>;
+  }[];
   conflicts: unknown[];
+  warnings?: unknown[];
   updatedAt: string;
 }
 
@@ -511,4 +519,3 @@ export interface TemplateListFilters {
   types?: BIQActorTemplateType[];
   appId?: string;
 }
-

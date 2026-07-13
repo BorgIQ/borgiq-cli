@@ -49,7 +49,7 @@ export const markExampleRequired = (option: Option): Option => {
   return option;
 };
 
-/** Required positional args (`<canvasSlugOrId>`) and required options
+/** Required positional args (`<canvas>`) and required options
  *  (`--actor-id <id>`) as a copy-pasteable suffix. Read lazily at help-render
  *  time so options the caller chains *after* `withListOptions` are included.
  *  Options flagged via {@link markExampleRequired} (e.g. `--canvas`) are treated

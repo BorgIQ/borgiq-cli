@@ -22,8 +22,8 @@ borgiq orgs list
 # List canvases in a workspace
 borgiq canvases list --org my-org --workspace prod
 
-# Trigger a flow manually
-borgiq triggers run --canvas <id> --actor-id <id>
+# Trigger a flow manually (canvas ID / ULID, not slug)
+borgiq triggers run --canvas <canvas> --actor-id <id>
 
 # Check a flow run's status
 borgiq flowruns status <id>
@@ -93,29 +93,40 @@ Values are resolved in this order (highest priority first):
 | Command | Description |
 |---------|-------------|
 | `borgiq canvases list` | List canvases in a workspace |
-| `borgiq canvases get <id>` | Get canvas details (`--include-data` for full flow data) |
+| `borgiq canvases get <canvas>` | Get canvas details by slug or ID (`--include-data` for full flow data) |
 | `borgiq canvases create` | Create an empty canvas |
 | `borgiq canvases create-with-data` | Create a canvas with full flow data |
 | `borgiq canvases update <id>` | Update canvas metadata |
-| `borgiq canvases update-data <id>` | Import canvas data (`--mode merge\|insert\|replace`) |
-| `borgiq canvases delete <id>` | Delete a canvas |
-| `borgiq canvases export <id>` | Export canvas data as JSON |
-| `borgiq canvases validate <id>` | Validate canvas configuration |
-| `borgiq canvases layout <id>` | Auto-layout actors |
+| `borgiq canvases update-data <canvas>` | Import canvas data by slug or ID (`--mode merge\|insert\|replace`) |
+| `borgiq canvases delete <canvas>` | Delete a canvas by slug or ID |
+| `borgiq canvases export <canvas>` | Export canvas data by slug or ID as JSON |
+| `borgiq canvases validate <canvas>` | Validate canvas configuration by slug or ID |
+| `borgiq canvases layout <canvas>` | Auto-layout actors by slug or ID |
 | `borgiq canvases verify-import` | Verify import data before creating |
+
+### Canvas Bundles
+
+| Command | Description |
+|---------|-------------|
+| `borgiq bundle init <dir>` | Create an offline starter bundle folder |
+| `borgiq bundle pull <canvas> [dir]` | Sync a canvas by slug or ID into a bundle folder |
+| `borgiq bundle unpack <file> <dir>` | Expand a canvas export document into a bundle folder |
+| `borgiq bundle validate <dir>` | Validate a bundle with file-scoped findings |
+| `borgiq bundle pack <dir>` | Compile a bundle back to canvas export YAML |
+| `borgiq bundle push <dir>` | Validate and sync a bundle into a canvas |
 
 ### Canvas Actors
 
 | Command | Description |
 |---------|-------------|
-| `borgiq canvas-actors list <canvasSlugOrId>` | List actors in a canvas with filters |
-| `borgiq canvas-actors get <canvasSlugOrId> <actorId>` | Get a single actor by ID |
-| `borgiq canvas-actors flow <canvasSlugOrId> <actorId>` | Get actor and downstream actors |
-| `borgiq canvas-actors verify <canvasSlugOrId>` | Verify actor options against type schema |
-| `borgiq canvas-actors create <canvasSlugOrId> <actorId>` | Create a single actor |
-| `borgiq canvas-actors update <canvasSlugOrId> <actorId>` | Update a single actor (partial) |
-| `borgiq canvas-actors delete <canvasSlugOrId> <actorId>` | Delete a single actor |
-| `borgiq canvas-actors batch <canvasSlugOrId>` | Apply batch actor operations (add, update, remove) |
+| `borgiq canvas-actors list <canvas>` | List actors in a canvas by slug or ID with filters |
+| `borgiq canvas-actors get <canvas> <actorId>` | Get a single actor by ID from a canvas by slug or ID |
+| `borgiq canvas-actors flow <canvas> <actorId>` | Get actor and downstream actors from a canvas by slug or ID |
+| `borgiq canvas-actors verify <canvas>` | Verify actor options for a canvas by slug or ID |
+| `borgiq canvas-actors create <canvas> <actorId>` | Create a single actor in a canvas by slug or ID |
+| `borgiq canvas-actors update <canvas> <actorId>` | Update a single actor in a canvas by slug or ID |
+| `borgiq canvas-actors delete <canvas> <actorId>` | Delete a single actor from a canvas by slug or ID |
+| `borgiq canvas-actors batch <canvas>` | Apply batch actor operations to a canvas by slug or ID |
 
 ### Flow Runs
 
@@ -191,14 +202,14 @@ Commands that accept structured input (e.g., creating actors, batch operations) 
 
 ```bash
 # From a JSON file
-borgiq canvas-actors create <canvasSlugOrId> <actorId> --file actor.json
+borgiq canvas-actors create <canvas> <actorId> --file actor.json
 
 # From a YAML file
-borgiq canvas-actors create <canvasSlugOrId> <actorId> --file actor.yaml
+borgiq canvas-actors create <canvas> <actorId> --file actor.yaml
 
 # From stdin (pipe, parsed as YAML — JSON is valid YAML, so piped JSON works too)
-cat actor.yaml | borgiq canvas-actors create <canvasSlugOrId> <actorId>
-cat actor.json | borgiq canvas-actors create <canvasSlugOrId> <actorId>
+cat actor.yaml | borgiq canvas-actors create <canvas> <actorId>
+cat actor.json | borgiq canvas-actors create <canvas> <actorId>
 ```
 
 File format is detected by extension: `.yaml` and `.yml` files are parsed as YAML, all other extensions are parsed as JSON. Piped stdin is parsed as YAML — since JSON is a subset of YAML, existing JSON pipelines continue to work unchanged.
@@ -288,15 +299,15 @@ borgiq canvases list --all --json | jq '.data[].slug'
 | Command | Description |
 |---------|-------------|
 | `borgiq canvases list` | List canvases in a workspace |
-| `borgiq canvases get <id>` | Get canvas details |
+| `borgiq canvases get <canvas>` | Get canvas details by slug or ID |
 | `borgiq canvases create` | Create an empty canvas |
 | `borgiq canvases create-with-data` | Create a canvas with full flow data from JSON/YAML input |
 | `borgiq canvases update <id>` | Update canvas metadata |
-| `borgiq canvases update-data <id>` | Import canvas data (actors and edges) |
-| `borgiq canvases delete <id>` | Delete a canvas |
-| `borgiq canvases export <id>` | Export canvas data as JSON |
-| `borgiq canvases validate <id>` | Validate canvas configuration before execution |
-| `borgiq canvases layout <id>` | Auto-layout actors using ELK algorithm |
+| `borgiq canvases update-data <canvas>` | Import canvas data by slug or ID (actors and edges) |
+| `borgiq canvases delete <canvas>` | Delete a canvas by slug or ID |
+| `borgiq canvases export <canvas>` | Export canvas data by slug or ID as JSON |
+| `borgiq canvases validate <canvas>` | Validate canvas configuration by slug or ID before execution |
+| `borgiq canvases layout <canvas>` | Auto-layout actors by slug or ID using ELK algorithm |
 | `borgiq canvases verify-import` | Verify import data before applying |
 
 **`borgiq canvases list`**
@@ -329,6 +340,8 @@ borgiq canvases list --all --json | jq '.data[].slug'
 | Option | Description |
 |--------|-------------|
 | `--file <path>` | Path to JSON/YAML file containing full canvas definition (or pipe YAML/JSON via stdin) |
+| `--auto-layout` | Run canvas auto-layout after the canvas is created |
+| `--layout-source-actor-id <id>` | Auto-layout only downstream of specified actors; implies `--auto-layout` |
 
 **`borgiq canvases update`**
 
@@ -347,6 +360,8 @@ borgiq canvases list --all --json | jq '.data[].slug'
 |--------|-------------|
 | `--file <path>` | Path to JSON/YAML file (or pipe YAML/JSON via stdin) |
 | `--mode <mode>` | Update mode: `merge` (default), `insert`, or `replace` |
+| `--auto-layout` | Run canvas auto-layout after a successful import |
+| `--layout-source-actor-id <id>` | Auto-layout only downstream of specified actors; implies `--auto-layout` |
 
 **`borgiq canvases layout`**
 
@@ -362,18 +377,61 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 ---
 
+### Canvas Bundles
+
+Canvas bundles expand the platform's canvas export document into a git-friendly
+folder. `canvas.yaml` holds canvas metadata, graph nodes/edges, dependencies,
+export errors, warnings, sync baselines, and the actor index. Each actor lives in
+`actors/<category>/<type>/<ACTOR_ID>/actor.yaml`; Deno, Deno Test, Python,
+Universal Trigger, and App actors use native files under `code/` for editable source.
+
+Pack/unpack is deterministic and lossless over managed bundle paths. Push/pull
+refresh `canvas.yaml` `sync.actors` with each server actor's edit version and
+canonical SHA-256 content hash. The hash is the common ancestor used to distinguish
+server-only changes from concurrent edits.
+
+```bash
+borgiq bundle init ./my-flow.borgiq-canvas
+borgiq bundle pull my-canvas
+borgiq bundle validate ./my-flow.borgiq-canvas
+borgiq bundle pack ./my-flow.borgiq-canvas -o export.yaml
+borgiq bundle push ./my-flow.borgiq-canvas
+borgiq bundle push ./my-flow.borgiq-canvas --dry-run
+borgiq bundle push ./my-flow.borgiq-canvas --force-local
+borgiq bundle push ./my-flow.borgiq-canvas --raw
+borgiq bundle push ./my-flow.borgiq-canvas --auto-layout
+borgiq bundle push ./my-flow.borgiq-canvas --mode replace
+borgiq bundle push ./my-flow.borgiq-canvas --create
+```
+
+| Command | Description |
+|---------|-------------|
+| `borgiq bundle init <dir>` | Create an offline starter bundle folder. Refuses non-empty directories. |
+| `borgiq bundle unpack <file\|-> <dir>` | Read raw export YAML or the `{ yaml, errors }` JSON envelope and write a bundle folder. Pass `--force` to replace an existing bundle's managed files. |
+| `borgiq bundle pack <dir>` | Validate and emit platform export YAML to stdout or `-o, --output <file>`. |
+| `borgiq bundle validate <dir>` | Report all bundle errors and warnings; `--strict` treats warnings as fatal. |
+| `borgiq bundle pull <canvas> [dir]` | Sync by slug or ID from the API. Existing bundles fast-forward server-only changes, preserve local edits/deletions, and abort on genuine concurrent or unknown-baseline conflicts; `--replace` explicitly accepts the server state with a full managed-path rewrite. |
+| `borgiq bundle push <dir>` | Validate and sync only changed actors by default. A server-side change blocks push until it is pulled, unless `--force-local` explicitly selects local wins. `--strict` also enables strict actor batch validation on the API. Structured output is compact; use `--raw` for generated operation payloads and raw API responses. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. |
+
+`pull --replace` and `unpack` rewrite only managed paths: `canvas.yaml` and `actors/`.
+Files such as `.git/`, `AGENTS.md`, `.gitignore`, and notes are preserved.
+`AGENTS.md` and `.gitignore` are created only when missing.
+Push refuses exports with actor errors, verifies that the batch API confirmed every requested actor operation, and skips local refresh after any incomplete response. Bundles without `sync.actors` fail closed when an existing local actor differs from the server. Run `bundle pull` to establish the visible sync baseline, or choose `--replace`/`--force-local` explicitly.
+
+---
+
 ### Canvas Actors
 
 | Command | Description |
 |---------|-------------|
-| `borgiq canvas-actors list <canvasSlugOrId>` | List actors in a canvas |
-| `borgiq canvas-actors get <canvasSlugOrId> <actorId>` | Get a single actor by ID |
-| `borgiq canvas-actors flow <canvasSlugOrId> <actorId>` | Get actor and all downstream actors |
-| `borgiq canvas-actors verify <canvasSlugOrId>` | Verify actor options against type schema |
-| `borgiq canvas-actors create <canvasSlugOrId> <actorId>` | Create a single actor |
-| `borgiq canvas-actors update <canvasSlugOrId> <actorId>` | Update a single actor (partial update) |
-| `borgiq canvas-actors delete <canvasSlugOrId> <actorId>` | Delete a single actor |
-| `borgiq canvas-actors batch <canvasSlugOrId>` | Apply batch actor operations (add, update, remove) |
+| `borgiq canvas-actors list <canvas>` | List actors in a canvas by slug or ID |
+| `borgiq canvas-actors get <canvas> <actorId>` | Get a single actor by ID from a canvas by slug or ID |
+| `borgiq canvas-actors flow <canvas> <actorId>` | Get actor and all downstream actors from a canvas by slug or ID |
+| `borgiq canvas-actors verify <canvas>` | Verify actor options for a canvas by slug or ID |
+| `borgiq canvas-actors create <canvas> <actorId>` | Create a single actor in a canvas by slug or ID |
+| `borgiq canvas-actors update <canvas> <actorId>` | Update a single actor in a canvas by slug or ID |
+| `borgiq canvas-actors delete <canvas> <actorId>` | Delete a single actor from a canvas by slug or ID |
+| `borgiq canvas-actors batch <canvas>` | Apply batch actor operations to a canvas by slug or ID |
 
 **`borgiq canvas-actors list`**
 
@@ -432,7 +490,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--canvas <slugOrId>` | Yes | Canvas slug or ID to list flow runs for (deprecated alias: `--canvas-id`) |
+| `--canvas <canvas>` | Yes | Canvas slug or ID to list flow runs for (deprecated alias: `--canvas-id`) |
 | `--page <number>` | No | Page number |
 | `--page-size <number>` | No | Items per page |
 
@@ -453,7 +511,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--canvas <slugOrId>` | Yes | Canvas slug or ID (deprecated alias: `--canvas-id`) |
+| `--canvas <canvas>` | Yes | Canvas slug or ID (deprecated alias: `--canvas-id`) |
 | `--actor-id <id>` | Yes | Actor ID |
 | `--flowrun-id <id>` | No | Filter by flow run ID |
 | `--page <number>` | No | Page number |
@@ -463,7 +521,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--canvas <id>` | Yes | Canvas ID / ULID — a slug is not accepted here (deprecated alias: `--canvas-id`) |
+| `--canvas <canvas>` | Yes | Canvas ID / ULID; a slug is not accepted here (deprecated alias: `--canvas-id`) |
 | `--actor-id <id>` | Yes | Actor ID to test |
 | `--publish` | No | Publish emitted messages to downstream actors (default: false) |
 
@@ -508,7 +566,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--canvas <slugOrId>` | Yes | Canvas slug or ID (deprecated alias: `--canvas-id`) |
+| `--canvas <canvas>` | Yes | Canvas slug or ID (deprecated alias: `--canvas-id`) |
 | `--actor-id <id>` | Yes | Actor ID |
 | `--flowrun-id <id>` | No | Filter by flow run ID |
 | `--page <number>` | No | Page number |
@@ -526,7 +584,7 @@ borgiq canvases list --all --json | jq '.data[].slug'
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--canvas <id>` | Yes | Canvas ID / ULID — a slug is not accepted here (deprecated alias: `--canvas-id`) |
+| `--canvas <canvas>` | Yes | Canvas ID / ULID; a slug is not accepted here (deprecated alias: `--canvas-id`) |
 | `--actor-id <id>` | Yes | Trigger actor ID |
 
 ---
@@ -703,6 +761,22 @@ borgiq canvases create-with-data --file canvas-backup.json
 
 # Or import into an existing canvas (merge mode)
 borgiq canvases update-data cnv_xyz789 --file canvas-backup.json --mode merge
+```
+
+### Edit a Canvas as a Bundle
+
+```bash
+# Export and unpack to ./invoice-router.borgiq-canvas
+borgiq bundle pull invoice-router
+
+# Validate local edits
+borgiq bundle validate ./invoice-router.borgiq-canvas --strict
+
+# Pack without applying
+borgiq bundle pack ./invoice-router.borgiq-canvas -o invoice-router.yaml
+
+# Sync local bundle changes back to the canvas and auto-layout it
+borgiq bundle push ./invoice-router.borgiq-canvas --auto-layout
 ```
 
 ### Inspect a Flow Run
