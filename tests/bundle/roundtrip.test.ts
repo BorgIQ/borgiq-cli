@@ -5,7 +5,7 @@ import { actorContentHash } from '../../src/lib/bundle/diff.js';
 import { disassemble } from '../../src/lib/bundle/disassemble.js';
 import { stringifyYamlDoc } from '../../src/lib/bundle/yaml.js';
 import type { CanvasExportDocument } from '../../src/lib/bundle/types.js';
-import { EDGE_ID, TASK_ID, TRIGGER_ID, makeActor, makeDoc, makeWiredDoc } from './fixtures.js';
+import { EDGE_ID, TASK_ID, TRIGGER_ID, makeActor, makeDoc, makeReactAppActor, makeWiredDoc } from './fixtures.js';
 
 const documents: [string, () => CanvasExportDocument][] = [
   ['wired webhook to deno canvas', makeWiredDoc],
@@ -26,6 +26,18 @@ const documents: [string, () => CanvasExportDocument][] = [
     }),
   ])],
   ['unknown future actor field passes through', () => makeDoc([makeActor({ id: TASK_ID, type: 'EchoActor', futureField: { nested: [1, 2] } })])],
+  ['react app project tree', () => makeDoc([makeReactAppActor()])],
+  ['react app with asset overlays', () => makeDoc([makeReactAppActor({
+    configuration: {
+      codeDir: [{ path: 'index.html', content: '<div id="root"></div>\n' }],
+      options: {
+        files: [
+          { path: 'src/assets/z.png', content: '${{ assets["z.png"] }}' },
+          { path: 'src/assets/a.png', content: '${{ assets["a.png"] }}' },
+        ],
+      },
+    },
+  })])],
 ];
 
 describe('round-trip guarantees', () => {

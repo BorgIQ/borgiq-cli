@@ -1,6 +1,8 @@
 import { BUNDLE_PATH_REGISTRY, actorFolderPath, isKnownActorType } from './registry.js';
 import type { BundleActorType, BundleCodeFile } from './registry.js';
 import { actorContentHashes } from './diff.js';
+import { isSafeBundlePath } from './path.js';
+import { REACT_APP_ASSETS_DIR, isReactAppAssetPath } from './reactApp.js';
 import {
   ACTOR_FILE,
   ACTOR_KEY_ORDER,
@@ -19,6 +21,8 @@ import type {
   BundleDependencies,
   BundleFileMap,
   BundleGraphNode,
+  BundleSync,
+  BundleSyncReactAppAsset,
   CanvasExportDocument,
   ExportedActor,
   ExportedEdge,
@@ -30,6 +34,8 @@ export interface DisassembleOptions {
   actorVersions?: Record<string, number>;
   /** Server baseline hashes; pass explicitly when `doc` contains locally-kept actors. */
   actorHashes?: Record<string, string>;
+  /** React App asset baselines to record, keyed by actor id then project path. */
+  reactAppAssets?: Record<string, Record<string, BundleSyncReactAppAsset>>;
 }
 
 export interface DisassembleResult {
@@ -89,7 +95,7 @@ export const disassemble = (doc: CanvasExportDocument, opts: DisassembleOptions 
     const { edges: _edges, position: _position, ...actorWithoutGraph } = actor;
     void _edges;
     void _position;
-    const actorDoc = externalizeActorCode(actorWithoutGraph, type, dir, files);
+    const actorDoc = externalizeActorCode(actorWithoutGraph, actor.id, type, dir, files, warnings);
 
     files[`${dir}/${ACTOR_FILE}`] = stringifyYamlDoc(actorDoc);
     index.push({
@@ -114,7 +120,7 @@ export const disassemble = (doc: CanvasExportDocument, opts: DisassembleOptions 
       dependencies: walkDependencies(doc),
       exportErrors: opts.exportErrors ?? [],
       warnings,
-      sync: syncRoot(opts.actorVersions, opts.actorHashes ?? actorContentHashes(doc)),
+      sync: syncRoot(opts.actorVersions, opts.actorHashes ?? actorContentHashes(doc), opts.reactAppAssets),
       actors: index,
     },
     ROOT_KEY_ORDER,
@@ -127,38 +133,66 @@ export const disassemble = (doc: CanvasExportDocument, opts: DisassembleOptions 
 const syncRoot = (
   actorVersions: Record<string, number> | undefined,
   actorHashes: Record<string, string>,
-): { actors: Record<string, { editVersion: number; contentHash: string }> } | undefined => {
-  if (!actorVersions || Object.keys(actorVersions).length === 0) return undefined;
+  reactAppAssets: Record<string, Record<string, BundleSyncReactAppAsset>> | undefined,
+): BundleSync | undefined => {
   const actors = Object.fromEntries(
-    Object.entries(actorVersions)
+    Object.entries(actorVersions ?? {})
       .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && typeof actorHashes[entry[0]] === 'string')
       .sort(([a], [b]) => compareStrings(a, b))
       .map(([actorId, editVersion]) => [actorId, { editVersion, contentHash: actorHashes[actorId] }]),
   );
-  if (Object.keys(actors).length === 0) return undefined;
-  return { actors };
+
+  const assets = sortedReactAppAssets(reactAppAssets);
+  const sync: BundleSync = {};
+  if (Object.keys(actors).length > 0) sync.actors = actors;
+  if (assets) sync.reactAppAssets = assets;
+  return Object.keys(sync).length > 0 ? sync : undefined;
+};
+
+/** Sorted actor id -> project path so the emitted baseline map is byte-stable. */
+const sortedReactAppAssets = (
+  reactAppAssets: Record<string, Record<string, BundleSyncReactAppAsset>> | undefined,
+): Record<string, Record<string, BundleSyncReactAppAsset>> | undefined => {
+  if (!reactAppAssets) return undefined;
+
+  const out: Record<string, Record<string, BundleSyncReactAppAsset>> = {};
+  for (const actorId of Object.keys(reactAppAssets).sort(compareStrings)) {
+    const paths = reactAppAssets[actorId];
+    if (!paths || Object.keys(paths).length === 0) continue;
+    out[actorId] = Object.fromEntries(
+      Object.keys(paths)
+        .sort(compareStrings)
+        .map((projectPath) => [projectPath, paths[projectPath]]),
+    );
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 };
 
 const externalizeActorCode = (
   actor: Omit<ExportedActor, 'edges' | 'position'>,
+  actorId: string,
   type: BundleActorType,
   dir: string,
   files: BundleFileMap,
+  warnings: string[],
 ): Record<string, unknown> => {
   const spec = BUNDLE_PATH_REGISTRY[type];
   const out: Record<string, unknown> = { ...actor };
   const hadConfiguration = 'configuration' in actor;
   const configuration = isPlainObject(actor.configuration) ? { ...actor.configuration } : {};
-  let hasExternalCode = false;
 
-  for (const codeFile of spec.codeFiles) {
-    if (externalizeCodeFile(configuration, codeFile, `${dir}/${CODE_DIR}/${codeFile.file}`, files)) {
-      hasExternalCode = true;
+  if (spec.projectDir) {
+    externalizeProjectDir(configuration, actorId, dir, files, warnings);
+  } else {
+    let hasExternalCode = false;
+    for (const codeFile of spec.codeFiles) {
+      if (externalizeCodeFile(configuration, codeFile, `${dir}/${CODE_DIR}/${codeFile.file}`, files)) {
+        hasExternalCode = true;
+      }
     }
-  }
-
-  if (hasExternalCode) {
-    configuration.codeDir = CODE_DIR;
+    if (hasExternalCode) {
+      configuration.codeDir = CODE_DIR;
+    }
   }
 
   if (hadConfiguration || Object.keys(configuration).length > 0) {
@@ -168,6 +202,67 @@ const externalizeActorCode = (
   }
 
   return orderKeys(out, ACTOR_KEY_ORDER);
+};
+
+/**
+ * Writes a project-tree `configuration.codeDir` array out as real files under `code/`,
+ * leaving the `code` marker behind. Anything that cannot round-trip through a filesystem
+ * keeps the whole array inline instead: a partial tree would silently lose files on the
+ * next push, whereas an inline array is still valid (just less pleasant to edit).
+ */
+const externalizeProjectDir = (
+  configuration: Record<string, unknown>,
+  actorId: string,
+  dir: string,
+  files: BundleFileMap,
+  warnings: string[],
+): void => {
+  const codeDir = configuration.codeDir;
+  if (!Array.isArray(codeDir)) return;
+
+  const pathsByFold = new Map<string, string>();
+  const blockers: string[] = [];
+
+  for (const entry of codeDir) {
+    if (!isPlainObject(entry) || typeof entry.path !== 'string' || typeof entry.content !== 'string') {
+      blockers.push(`an entry is not a {path, content} pair (${JSON.stringify(entry)})`);
+      continue;
+    }
+    if (!isSafeBundlePath(entry.path)) {
+      blockers.push(`path '${entry.path}' cannot be written to disk safely`);
+      continue;
+    }
+
+    const fold = entry.path.toLowerCase();
+    const clashing = pathsByFold.get(fold);
+    if (clashing !== undefined) {
+      blockers.push(`paths '${clashing}' and '${entry.path}' differ only in letter case, which case-insensitive filesystems cannot represent`);
+      continue;
+    }
+    pathsByFold.set(fold, entry.path);
+  }
+
+  if (blockers.length > 0) {
+    warnings.push(
+      `Actor ${actorId}: configuration.codeDir was left inline in actor.yaml because ${blockers[0]}`
+      + `${blockers.length > 1 ? ` (and ${blockers.length - 1} more problem(s))` : ''}. `
+      + 'Fix the reported paths in the editor to get an editable code/ tree.',
+    );
+    return;
+  }
+
+  for (const entry of codeDir as { path: string; content: string }[]) {
+    files[`${dir}/${CODE_DIR}/${entry.path}`] = entry.content;
+    if (isReactAppAssetPath(entry.path)) {
+      warnings.push(
+        `Actor ${actorId}: project file '${entry.path}' is source code but sits in the ${REACT_APP_ASSETS_DIR}/ directory, `
+        + 'which the CLI syncs with workspace assets. The next push uploads it as an asset (the built app is unchanged); '
+        + `move it out of ${REACT_APP_ASSETS_DIR}/ to keep it as source.`,
+      );
+    }
+  }
+
+  configuration.codeDir = CODE_DIR;
 };
 
 const externalizeCodeFile = (

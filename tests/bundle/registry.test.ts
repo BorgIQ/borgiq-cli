@@ -20,6 +20,14 @@ describe('BUNDLE_PATH_REGISTRY', () => {
     }
   });
 
+  it('marks React App as the only project-tree type', () => {
+    const withProjectDir = Object.entries(BUNDLE_PATH_REGISTRY)
+      .filter(([, spec]) => spec.projectDir)
+      .map(([type]) => type);
+    expect(withProjectDir).toEqual(['ReactAppTriggerActor']);
+    expect(BUNDLE_PATH_REGISTRY.ReactAppTriggerActor.codeFiles).toEqual([]);
+  });
+
   it('declares code entrypoints only for the five code-heavy types', () => {
     const withCode = Object.entries(BUNDLE_PATH_REGISTRY)
       .filter(([, spec]) => spec.codeFiles.length > 0)
@@ -39,6 +47,7 @@ describe('BUNDLE_PATH_REGISTRY', () => {
     expect(actorFolderPath('HttpRequestActor', 'ACTR123')).toBe('actors/tasks/http-request/ACTR123');
     expect(actorFolderPath('WebhookTriggerActor', 'ACTR123')).toBe('actors/triggers/webhook/ACTR123');
     expect(actorFolderPath('DeprecatedAiAgent', 'ACTR123')).toBe('actors/tasks/deprecated-ai-agent/ACTR123');
+    expect(actorFolderPath('ReactAppTriggerActor', 'ACTR123')).toBe('actors/triggers/react-app/ACTR123');
   });
 
   it('recognizes known and unknown types', () => {

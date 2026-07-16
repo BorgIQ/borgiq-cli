@@ -28,6 +28,7 @@ export const BIQ_ACTOR_TYPES = [
   'McpServerActor',
   'MessageProcessorActor',
   'PythonActor',
+  'ReactAppTriggerActor',
   'RouterActor',
   'ScheduledTriggerActor',
   'SendEmailActor',
@@ -51,6 +52,12 @@ export interface BundlePathSpec {
   category: BundleCategory;
   folder: string;
   codeFiles: BundleCodeFile[];
+  /**
+   * Externalizes the whole `configuration.codeDir` array as an arbitrary `code/` tree
+   * instead of the fixed `codeFiles` entrypoints. Canonical-filename and reserved-name
+   * rules do not apply to these types.
+   */
+  projectDir?: boolean;
 }
 
 const modTs = (): BundleCodeFile[] => [{ file: 'mod.ts', source: { kind: 'code' } }];
@@ -70,6 +77,7 @@ export const BUNDLE_PATH_REGISTRY: Readonly<Record<BundleActorType, BundlePathSp
   EmailTriggerActor: { category: 'triggers', folder: 'email', codeFiles: [] },
   InterfaceTriggerActor: { category: 'triggers', folder: 'interface', codeFiles: [] },
   McpServerActor: { category: 'triggers', folder: 'mcp-server', codeFiles: [] },
+  ReactAppTriggerActor: { category: 'triggers', folder: 'react-app', codeFiles: [], projectDir: true },
   ScheduledTriggerActor: { category: 'triggers', folder: 'scheduled', codeFiles: [] },
   UniversalTriggerActor: { category: 'triggers', folder: 'universal', codeFiles: modTs() },
   WebhookTriggerActor: { category: 'triggers', folder: 'webhook', codeFiles: [] },

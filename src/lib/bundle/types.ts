@@ -67,9 +67,19 @@ export interface BundleSyncActor {
   contentHash: string;
 }
 
+/** Last-synced state of one auto-synced React App asset file. */
+export interface BundleSyncReactAppAsset {
+  assetId: string;
+  assetKey: string;
+  /** Digest of the local file at the last sync; the baseline for three-way asset diffs. */
+  sha256: string;
+}
+
 export interface BundleSync {
   /** Canonical baseline used for three-way actor sync. */
   actors?: Record<string, BundleSyncActor>;
+  /** Canonical baseline used for three-way React App asset sync: actor id -> project path. */
+  reactAppAssets?: Record<string, Record<string, BundleSyncReactAppAsset>>;
 }
 
 export interface BundleRootDoc {
