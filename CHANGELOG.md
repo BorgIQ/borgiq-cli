@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.7.0...cli-v0.8.0) (2026-07-16)
+
+
+### Features
+
+* borgiq scaffold — schema-driven actor/canvas/batch scaffolding ([#33](https://github.com/BorgIQ/borgiq-cli/issues/33)) ([72dc2e0](https://github.com/BorgIQ/borgiq-cli/commit/72dc2e0f22cbca22ac315632c9e002697c62c28e))
+* **bundle:** add canvas bundle init/unpack/pack/validate/pull/push commands ([#37](https://github.com/BorgIQ/borgiq-cli/issues/37)) ([27b4f4b](https://github.com/BorgIQ/borgiq-cli/commit/27b4f4b679a4766bf97d7c3758ecdfe7e5edee81))
+
 ## [0.7.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.6.0...cli-v0.7.0) (2026-06-16)
 
 
