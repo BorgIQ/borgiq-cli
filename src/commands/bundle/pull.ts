@@ -10,7 +10,7 @@ import type { GlobalOptions } from '../../lib/context.js';
 import { createClientWithContext } from '../../lib/context.js';
 import { CliUsageError, ExitCode, handleError } from '../../lib/errors.js';
 import { output } from '../../output/index.js';
-import { BUNDLE_COMPANIONS, reportIssues } from './shared.js';
+import { bundleCompanions, reportIssues } from './shared.js';
 
 export const bundlePull = async (
   canvasSlugOrId: string,
@@ -46,7 +46,7 @@ export const bundlePull = async (
         return;
       }
 
-      writeBundleDir(target, files, { force: Boolean(options.force || options.replace), createIfMissing: BUNDLE_COMPANIONS });
+      writeBundleDir(target, files, { force: Boolean(options.force || options.replace), createIfMissing: bundleCompanions(input.document) });
       process.stderr.write(`Pulled '${slug}' (${actorCount(files)} actor(s)) into ${target}${options.replace ? ' (replace)' : ''}\n`);
       return;
     }
@@ -82,7 +82,7 @@ export const bundlePull = async (
       return;
     }
 
-    writeBundleDirIncremental(target, mergedFiles, { force: options.force, createIfMissing: BUNDLE_COMPANIONS });
+    writeBundleDirIncremental(target, mergedFiles, { force: options.force, createIfMissing: bundleCompanions(merged) });
 
     process.stderr.write(`Synced '${slug}' into ${target}: ${writePlan.write.length} file(s) changed, ${writePlan.delete.length} file(s) deleted; kept ${summary.localKept} local actor(s).\n`);
   } catch (error) {
