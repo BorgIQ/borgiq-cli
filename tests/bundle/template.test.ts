@@ -83,7 +83,34 @@ describe('bundle companion files', () => {
     }
   });
 
+  it('AGENTS.md documents the react-app project contract', () => {
+    for (const needle of [
+      'React App actors',
+      'src/assets/',
+      '__borgiq_sdk_placeholder__/',
+      '${{ assets["hero.png"] }}',
+      'node_modules/',
+      'borgiq assets delete',
+      'options.files order is meaningful',
+    ]) {
+      expect(BUNDLE_AGENTS_MD).toContain(needle);
+    }
+  });
+
   it('.gitignore reserves the local dev artifacts dir', () => {
     expect(BUNDLE_GITIGNORE).toContain('.borgiq/');
+  });
+
+  it('.gitignore excludes react-app local tooling output', () => {
+    for (const needle of [
+      'actors/*/react-app/*/code/node_modules/',
+      'actors/*/react-app/*/code/dist/',
+      'actors/*/react-app/*/code/.vite/',
+      'actors/*/react-app/*/code/deno.lock',
+      'actors/*/react-app/*/code/package-lock.json',
+      'actors/*/react-app/*/code/__borgiq_sdk_placeholder__/',
+    ]) {
+      expect(BUNDLE_GITIGNORE).toContain(needle);
+    }
   });
 });
