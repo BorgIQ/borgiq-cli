@@ -238,6 +238,7 @@ const VALID_ACTOR_TYPES = [
   "EmailTriggerActor",
   "InterfaceTriggerActor",
   "AppTriggerActor",
+  "ReactAppTriggerActor",
   "ScheduledTriggerActor",
   "CallableTriggerActor",
   "UniversalTriggerActor",

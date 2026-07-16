@@ -44,7 +44,7 @@ describe('validateBundle', () => {
       root.sync = { actors: { [TASK_ID]: { editVersion: 2, contentHash: 'sha256:not-a-digest' } } };
     });
 
-    expect(messages(validateBundle(missingMap).errors)).toMatch(/sync\.actors.*mapping/);
+    expect(messages(validateBundle(missingMap).errors)).toMatch(/`sync` must contain `actors` and\/or `reactAppAssets`/);
     expect(messages(validateBundle(invalidVersion).errors)).toMatch(/non-negative integer/);
     expect(messages(validateBundle(invalidHash).errors)).toMatch(/sha256-prefixed/);
   });

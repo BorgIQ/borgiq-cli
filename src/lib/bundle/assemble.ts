@@ -7,6 +7,7 @@ import type {
   BundleRootDoc,
   BundleSync,
   BundleSyncActor,
+  BundleSyncReactAppAsset,
   CanvasExportDocument,
   ExportedActor,
   ExportedEdge,
@@ -32,6 +33,8 @@ export interface AssembleResult {
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const compareStrings = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 export const assembleBundle = (files: BundleFileMap): AssembleResult => {
   const findings = validateBundle(files);
@@ -82,6 +85,7 @@ export const assembleBundle = (files: BundleFileMap): AssembleResult => {
 
 const parseSync = (value: unknown): BundleSync => {
   if (!isPlainObject(value)) return {};
+
   const actors: Record<string, BundleSyncActor> = {};
   if (isPlainObject(value.actors)) {
     for (const [actorId, rawState] of Object.entries(value.actors)) {
@@ -89,7 +93,34 @@ const parseSync = (value: unknown): BundleSync => {
       actors[actorId] = { editVersion: rawState.editVersion, contentHash: rawState.contentHash };
     }
   }
-  return Object.keys(actors).length > 0 ? { actors } : {};
+
+  const reactAppAssets = parseReactAppAssets(value.reactAppAssets);
+  const sync: BundleSync = {};
+  if (Object.keys(actors).length > 0) sync.actors = actors;
+  if (reactAppAssets) sync.reactAppAssets = reactAppAssets;
+  return sync;
+};
+
+const parseReactAppAssets = (value: unknown): Record<string, Record<string, BundleSyncReactAppAsset>> | undefined => {
+  if (!isPlainObject(value)) return undefined;
+
+  const out: Record<string, Record<string, BundleSyncReactAppAsset>> = {};
+  for (const [actorId, rawPaths] of Object.entries(value)) {
+    if (!isPlainObject(rawPaths)) continue;
+
+    const paths: Record<string, BundleSyncReactAppAsset> = {};
+    for (const [projectPath, rawState] of Object.entries(rawPaths)) {
+      if (
+        !isPlainObject(rawState)
+        || typeof rawState.assetId !== 'string'
+        || typeof rawState.assetKey !== 'string'
+        || typeof rawState.sha256 !== 'string'
+      ) continue;
+      paths[projectPath] = { assetId: rawState.assetId, assetKey: rawState.assetKey, sha256: rawState.sha256 };
+    }
+    if (Object.keys(paths).length > 0) out[actorId] = paths;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 };
 
 const rehydrateActorCode = (
@@ -102,6 +133,15 @@ const rehydrateActorCode = (
   if (!isPlainObject(actor.configuration)) return actor;
 
   const configuration = { ...actor.configuration };
+  if (BUNDLE_PATH_REGISTRY[type].projectDir) {
+    if (configuration.codeDir === CODE_DIR) {
+      configuration.codeDir = collectProjectDir(actorPath, files);
+    }
+    // An inline codeDir array passes through verbatim; validate rejects having both.
+    actor.configuration = configuration;
+    return actor;
+  }
+
   if (configuration.codeDir === CODE_DIR) {
     delete configuration.codeDir;
     for (const codeFile of BUNDLE_PATH_REGISTRY[type].codeFiles) {
@@ -119,4 +159,16 @@ const rehydrateActorCode = (
 
   actor.configuration = configuration;
   return actor;
+};
+
+/**
+ * Rebuild a project-tree `codeDir` from the files under `code/`, sorted by path so the
+ * array is byte-stable no matter what order the walker produced.
+ */
+const collectProjectDir = (actorPath: string, files: BundleFileMap): { path: string; content: string }[] => {
+  const prefix = `${actorPath}/${CODE_DIR}/`;
+  return Object.keys(files)
+    .filter((path) => path.startsWith(prefix))
+    .sort(compareStrings)
+    .map((path) => ({ path: path.slice(prefix.length), content: files[path] }));
 };
