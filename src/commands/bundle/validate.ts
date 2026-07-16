@@ -1,9 +1,9 @@
 import { validateBundle } from '../../lib/bundle/validate.js';
-import { readBundleDir } from '../../lib/bundleFs.js';
+import { readBundleDirDetailed } from '../../lib/bundleFs.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { ExitCode, handleError } from '../../lib/errors.js';
 import { output } from '../../output/index.js';
-import { reportIssues } from './shared.js';
+import { reportIssues, skippedFileIssues } from './shared.js';
 
 export const bundleValidate = async (
   dir: string,
@@ -12,7 +12,11 @@ export const bundleValidate = async (
 ): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
-    const { errors, warnings } = validateBundle(readBundleDir(dir));
+    const contents = readBundleDirDetailed(dir);
+    const { errors, warnings } = validateBundle(contents.files, {
+      localAssetPaths: contents.assets.map((asset) => asset.bundlePath),
+    });
+    warnings.push(...skippedFileIssues(contents.skipped));
     const valid = errors.length === 0 && (!options.strict || warnings.length === 0);
 
     if (globalOpts.json || !process.stdout.isTTY) {

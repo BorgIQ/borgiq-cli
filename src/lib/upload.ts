@@ -29,3 +29,17 @@ export const uploadToPresignedUrl = async (
     throw new Error(`S3 upload failed: HTTP ${response.status} ${response.statusText}${body ? ` — ${body}` : ''}`);
   }
 };
+
+/**
+ * Download bytes from a presigned URL.
+ *
+ * Deliberately a bare fetch with no Authorization header: the URL carries its own signature,
+ * and sending our API token to the storage host would both leak it and break the signature.
+ */
+export const fetchPresignedUrlBytes = async (url: string): Promise<Uint8Array> => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Download failed: HTTP ${response.status} ${response.statusText}`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+};

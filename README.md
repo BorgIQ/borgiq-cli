@@ -384,6 +384,8 @@ folder. `canvas.yaml` holds canvas metadata, graph nodes/edges, dependencies,
 export errors, warnings, sync baselines, and the actor index. Each actor lives in
 `actors/<category>/<type>/<ACTOR_ID>/actor.yaml`; Deno, Deno Test, Python,
 Universal Trigger, and App actors use native files under `code/` for editable source.
+React App actors expand to a whole Vite project under `code/` — see
+[React App actors](#react-app-actors) below.
 
 Pack/unpack is deterministic and lossless over managed bundle paths. Push/pull
 refresh `canvas.yaml` `sync.actors` with each server actor's edit version and
@@ -417,6 +419,54 @@ borgiq bundle push ./my-flow.borgiq-canvas --create
 Files such as `.git/`, `AGENTS.md`, `.gitignore`, and notes are preserved.
 `AGENTS.md` and `.gitignore` are created only when missing.
 Push refuses exports with actor errors, verifies that the batch API confirmed every requested actor operation, and skips local refresh after any incomplete response. Bundles without `sync.actors` fail closed when an existing local actor differs from the server. Run `bundle pull` to establish the visible sync baseline, or choose `--replace`/`--force-local` explicitly.
+
+#### React App actors
+
+A React App actor's `code/` is a real, runnable Vite project rather than a single
+entrypoint file. Pull it and work in it with your normal tooling:
+
+```bash
+borgiq bundle pull my-canvas
+cd my-canvas.borgiq-canvas/actors/triggers/react-app/<ACTOR_ID>/code
+npm install                     # resolves @borgiq/actors from the CLI-written stub
+npm run dev                     # local Vite dev server
+npx shadcn@latest add button    # any generator; new text files become actor source
+cp ~/hero.png src/assets/       # new asset, uploaded on the next push
+cd -
+borgiq bundle validate . && borgiq bundle push .
+```
+
+Then press **Build** in the web editor to publish and view the app.
+
+**Assets.** `code/src/assets/` is the only auto-synced asset directory. Its files are
+workspace assets, not actor source: `pull` downloads each one, and `push` uploads new
+and changed ones and maintains the matching `options.files` entry
+(`{ path: src/assets/hero.png, content: ${{ assets["hero.png"] }} }`). A new file is
+keyed by its file name, exactly as uploading it in the editor would be; if that key is
+taken by an identical file the CLI adopts it, and if it is taken by different content
+the push stops and asks you to rename. Deleting a file locally drops the entry on the
+next push but **keeps** the workspace asset — remove it with `borgiq assets delete`.
+Asset conflicts behave like actor conflicts: they fail closed, and `--force-local`
+(push) or `--replace` (pull) resolves them. Entries you write yourself with inline
+text, or outside `src/assets/`, are left strictly alone.
+
+Binary files anywhere else under `code/` are ignored with a warning; move them under
+`src/assets/` to sync them.
+
+**Never touched.** `node_modules/`, `dist/`, `.git/`, `.vite/`,
+`__borgiq_sdk_placeholder__/`, lockfiles (`deno.lock`, `package-lock.json`,
+`yarn.lock`, `pnpm-lock.yaml`, `bun.lock*`), `.DS_Store`, and `Thumbs.db` survive every
+pull, push, and `--replace`. `.env` and `.env.*` are ignored with a warning: actor
+source is readable by anyone who can open the canvas, and a Vite build inlines `VITE_*`
+values into the served app — use platform variables or secrets instead.
+
+`bundle init`'s `.gitignore` covers the generated directories, but companion files are
+only written when missing, so a bundle created before this release keeps its old
+`.gitignore` — add the React App entries by hand or delete the file and re-pull.
+
+`unpack` stays offline and does not materialize asset files; run `bundle pull` for those.
+Content is compared byte for byte, so a git `core.autocrlf`/`.gitattributes` setting that
+rewrites line endings will make every file look locally edited.
 
 ---
 

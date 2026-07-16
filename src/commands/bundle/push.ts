@@ -3,13 +3,27 @@ import { diffCanvas, summarizeDiff, toBatchOperations } from '../../lib/bundle/d
 import { disassemble } from '../../lib/bundle/disassemble.js';
 import { parseExportInput } from '../../lib/bundle/envelope.js';
 import { compactBatchResult, compactLayoutResult, compactOperations, withRaw } from '../../lib/bundle/output.js';
-import { readBundleDir, writeBundleDirIncremental } from '../../lib/bundleFs.js';
+import type { CanvasExportDocument } from '../../lib/bundle/types.js';
+import { readBundleDirDetailed, writeBundleDirIncremental } from '../../lib/bundleFs.js';
+import type { BundleDirContents } from '../../lib/bundleFs.js';
+import {
+  applyAssetPush,
+  baselinesFrom,
+  digestsNeeded,
+  hasReactAppActors,
+  listAllAssets,
+  patchOptionsFiles,
+  planReactAppAssetPush,
+  resolveMissingDigests,
+  withDigests,
+} from '../../lib/reactAppAssets.js';
+import type { PushAssetPlan, ReactAppAssetBaselines, SyncedAsset } from '../../lib/reactAppAssets.js';
 import { applyCanvasAutoLayout, canvasSlugOrIdFromCreateResult, shouldAutoLayout } from '../../lib/canvasLayout.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { createClientWithContext } from '../../lib/context.js';
 import { CliUsageError, ExitCode, handleError } from '../../lib/errors.js';
 import { output } from '../../output/index.js';
-import { assembleOrFail, BUNDLE_COMPANIONS } from './shared.js';
+import { assembleOrFail, bundleCompanions, reportIssues, skippedFileIssues } from './shared.js';
 
 const MODES = new Set(['merge', 'insert', 'replace']);
 
@@ -32,6 +46,7 @@ export const bundlePush = async (
   let appliedActorOperationCount = 0;
   let metadataWasUpdated = false;
   let layoutWasApplied = false;
+  let uploadedAssetCount = 0;
 
   try {
     if (options.create && (options.canvas || options.mode || options.forceLocal || options.dryRun || options.refresh === false)) {
@@ -45,12 +60,22 @@ export const bundlePush = async (
       throw new CliUsageError('--mode uses the legacy whole-document import path and cannot be combined with --force-local, --dry-run, or --no-refresh.');
     }
 
-    const local = assembleOrFail(readBundleDir(dir), options.strict ?? false);
+    const contents = readBundleDirDetailed(dir);
+    const local = assembleOrFail(contents.files, options.strict ?? false);
     const { doc } = local;
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
+    reportIssues([], skippedFileIssues(contents.skipped));
+
+    if (options.mode !== undefined && hasReactAppActors(doc)) {
+      process.stderr.write('Warning: --mode uses the legacy whole-document import path, which does not sync react-app assets. Push without --mode to sync them.\n');
+    }
 
     if (options.create) {
+      // Everything is new here, so the asset phase runs first and its options.files patches are
+      // part of the document the canvas is created from.
+      const assets = await runAssetPhase(client, ctx, doc, contents, {}, false);
+      uploadedAssetCount = assets.uploaded;
       const { id: _id, imagePath: _imagePath, ...metadata } = doc.metadata;
       void _id;
       void _imagePath;
@@ -105,6 +130,34 @@ export const bundlePush = async (
     if (local.sync.actors === undefined && hasActors) {
       process.stderr.write('Warning: this bundle has no content-hash sync baseline. Existing actors with differing server content will fail closed. Pull first to establish sync metadata.\n');
     }
+
+    // The asset phase runs before the actor diff: its options.files patches are part of the
+    // document that gets diffed, so a patched actor simply reads as an edit and rides along in
+    // the existing batch. A dry run patches too, so the diff it previews matches a real run.
+    const assetPlan = await planAssets(client, ctx, doc, contents, local.sync.reactAppAssets ?? {}, Boolean(options.forceLocal));
+    if (assetPlan.errors.length > 0) {
+      for (const error of assetPlan.errors) process.stderr.write(`Error: ${error}\n`);
+      process.exitCode = ExitCode.USAGE;
+      output({ mode: 'sync', target, assetErrors: assetPlan.errors, applied: false }, globalOpts);
+      return;
+    }
+    if (assetPlan.conflicts.length > 0) {
+      reportAssetConflicts(assetPlan.conflicts);
+      process.exitCode = ExitCode.CONFLICT;
+      output({ mode: 'sync', target, assetConflicts: assetPlan.conflicts, applied: false }, globalOpts);
+      return;
+    }
+
+    let assetsSynced: SyncedAsset[] = [];
+    if (!options.dryRun) {
+      // Asset notices go to stderr regardless of --json: an adopted key, or an asset left behind
+      // by a removed reference, is something the user needs to see even when stdout is piped.
+      const applied = await applyAssetPush(client, ctx, assetPlan, (message) => process.stderr.write(`${message}\n`));
+      assetsSynced = applied.synced;
+      uploadedAssetCount = applied.uploaded;
+    }
+    patchOptionsFiles(doc, assetPlan);
+
     const diff = diffCanvas(doc, server.document, {
       localActorStates: local.sync.actors,
       serverActorVersions: actorVersions,
@@ -123,8 +176,20 @@ export const bundlePush = async (
     if (options.dryRun) {
       if (!globalOpts.json && process.stderr.isTTY) {
         process.stderr.write(`Dry run: would sync ${dir} -> '${target}': ${operations.length} actor operation(s), metadata ${diff.metadataDelta ? 'updated' : 'unchanged'}.\n`);
+        for (const action of assetPlan.actions) {
+          if (action.kind === 'unchanged') continue;
+          process.stderr.write(`  asset ${action.kind}: ${action.projectPath}\n`);
+        }
       }
-      output(withRaw({ mode: 'sync', target, summary, operations: compactOps, metadataDelta: diff.metadataDelta, entries: diff.entries }, options.raw, { operations }), globalOpts);
+      output(withRaw({
+        mode: 'sync',
+        target,
+        summary,
+        operations: compactOps,
+        metadataDelta: diff.metadataDelta,
+        entries: diff.entries,
+        assets: assetPlan.actions.map((action) => ({ action: action.kind, path: action.projectPath })),
+      }, options.raw, { operations }), globalOpts);
       return;
     }
 
@@ -188,9 +253,12 @@ export const bundlePush = async (
       const refreshedFiles = disassemble(refreshed.document, {
         exportErrors: refreshed.exportErrors,
         actorVersions: refreshCanvasDetail.actorVersions ?? {},
+        reactAppAssets: baselinesFrom(assetsSynced),
       }).files;
-      const writePlan = writeBundleDirIncremental(dir, refreshedFiles, { createIfMissing: BUNDLE_COMPANIONS });
+      const writePlan = writeBundleDirIncremental(dir, refreshedFiles, { createIfMissing: bundleCompanions(refreshed.document) });
       refresh = { writePlan, exportErrors: refreshed.exportErrors.length };
+    } else if (assetsSynced.length > 0) {
+      process.stderr.write('Warning: --no-refresh skipped the local refresh, so no asset sync baselines were recorded. The next push will fail closed on those assets until you pull.\n');
     }
 
     if (!globalOpts.json && process.stderr.isTTY) {
@@ -208,8 +276,9 @@ export const bundlePush = async (
       refresh,
     }, options.raw, { operations, batch: batchResult, metadata: metadataResult, layout }), globalOpts);
   } catch (error) {
-    if (appliedActorOperationCount > 0 || metadataWasUpdated || layoutWasApplied) {
+    if (appliedActorOperationCount > 0 || metadataWasUpdated || layoutWasApplied || uploadedAssetCount > 0) {
       const completed = [
+        uploadedAssetCount > 0 ? `${uploadedAssetCount} asset upload(s)` : undefined,
         appliedActorOperationCount > 0 ? `${appliedActorOperationCount} actor operation(s)` : undefined,
         metadataWasUpdated ? 'canvas metadata' : undefined,
         layoutWasApplied ? 'canvas layout' : undefined,
@@ -217,6 +286,60 @@ export const bundlePush = async (
       process.stderr.write(`Warning: push partially completed before the error (${completed.join(', ')} applied). Run \`borgiq bundle pull\` to resync local version markers before retrying.\n`);
     }
     handleError(error);
+  }
+};
+
+const EMPTY_PUSH_PLAN: PushAssetPlan = { actions: [], conflicts: [], errors: [], warnings: [] };
+
+/** Plans the asset phase, making no network call at all when the canvas has no React App actor. */
+const planAssets = async (
+  client: ReturnType<typeof createClientWithContext>['client'],
+  ctx: ReturnType<typeof createClientWithContext>['ctx'],
+  doc: CanvasExportDocument,
+  contents: BundleDirContents,
+  baselines: ReactAppAssetBaselines,
+  forceLocal: boolean,
+): Promise<PushAssetPlan> => {
+  if (!hasReactAppActors(doc)) return EMPTY_PUSH_PLAN;
+
+  const localAssets = withDigests(contents.assets);
+  const listed = await listAllAssets(client, ctx);
+  const serverAssets = await resolveMissingDigests(
+    client,
+    ctx,
+    listed,
+    digestsNeeded({ doc, localAssets, baselines, serverAssets: listed }),
+    (message) => process.stderr.write(`${message}\n`),
+  );
+
+  const plan = planReactAppAssetPush({ doc, localAssets, baselines, serverAssets, forceLocal });
+  for (const warning of plan.warnings) process.stderr.write(`Warning: ${warning}\n`);
+  return plan;
+};
+
+/** Plan, upload, and patch in one step, for the --create path where everything is new. */
+const runAssetPhase = async (
+  client: ReturnType<typeof createClientWithContext>['client'],
+  ctx: ReturnType<typeof createClientWithContext>['ctx'],
+  doc: CanvasExportDocument,
+  contents: BundleDirContents,
+  baselines: ReactAppAssetBaselines,
+  forceLocal: boolean,
+): Promise<{ uploaded: number }> => {
+  const plan = await planAssets(client, ctx, doc, contents, baselines, forceLocal);
+  if (plan.errors.length > 0) {
+    throw new CliUsageError(plan.errors.join('\n'));
+  }
+  const applied = await applyAssetPush(client, ctx, plan, (message) => process.stderr.write(`${message}\n`));
+  patchOptionsFiles(doc, plan);
+  return { uploaded: applied.uploaded };
+};
+
+const reportAssetConflicts = (conflicts: PushAssetPlan['conflicts']): void => {
+  process.stderr.write(`Push aborted: ${conflicts.length} asset conflict(s) changed both locally and in the workspace. Nothing was uploaded. Re-pull, or re-run with --force-local for local wins.\n`);
+  for (const conflict of conflicts) {
+    if (conflict.kind !== 'conflict') continue;
+    process.stderr.write(`  ${conflict.projectPath} (asset '${conflict.key}'): ${conflict.detail}\n`);
   }
 };
 
