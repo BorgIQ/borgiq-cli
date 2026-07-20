@@ -157,6 +157,11 @@ actors/*/react-app/*/code/dist/
 actors/*/react-app/*/code/.vite/
 actors/*/react-app/*/code/deno.lock
 actors/*/react-app/*/code/package-lock.json
+actors/*/react-app/*/code/npm-shrinkwrap.json
+actors/*/react-app/*/code/yarn.lock
+actors/*/react-app/*/code/pnpm-lock.yaml
+actors/*/react-app/*/code/bun.lockb
+actors/*/react-app/*/code/bun.lock
 
 # CLI-materialized @borgiq/actors stub; the platform supplies the real SDK at build time
 actors/*/react-app/*/code/__borgiq_sdk_placeholder__/
@@ -179,7 +184,8 @@ canvas export format. Format: borgiq.canvas.bundle v1.
   Universal Trigger, Python, and App actors. When present, actor.yaml carries
   configuration.codeDir: code and must not also contain inline code.
 - actors/triggers/react-app/<ACTOR_ID>/code/: a whole Vite project rather than
-  a single entrypoint. See "React App actors" below.
+  a single entrypoint. Push publishes its source; Build in the web editor
+  compiles and serves it. See "React App actors" below.
 
 ## Editing Rules
 
@@ -196,8 +202,6 @@ canvas export format. Format: borgiq.canvas.bundle v1.
 ## React App actors
 
 A React App actor's code/ is a real, runnable Vite project, not a single file.
-Run npm install, npm run dev, and any generator (npx shadcn@latest add button)
-inside it; every text file you add becomes part of the actor's source on push.
 
 \`\`\`
 actors/triggers/react-app/<ACTOR_ID>/
@@ -210,6 +214,50 @@ actors/triggers/react-app/<ACTOR_ID>/
     node_modules/ dist/           # yours; the CLI never reads or deletes these
 \`\`\`
 
+### The local loop, and the Build step
+
+Work in code/ like any Vite project: npm install (it resolves @borgiq/actors
+from the stub the CLI writes), npm run dev, and any generator you like
+(npx shadcn@latest add button). Every text file you add becomes part of the
+actor's source on the next push.
+
+A push uploads source only. The app visitors see does not change until Build is
+pressed in the web editor - there is no CLI build command yet. The platform
+installs the dependencies and builds the project there, and reports failures in
+the editor's build log, so a successful push is not evidence that the app
+compiles. Run npm run build locally before pushing to find that out sooner.
+
+### Third-party dependencies
+
+Add packages the normal way - npm install <pkg> inside code/, or edit
+package.json by hand. What differs from an ordinary Vite app:
+
+- Pin exact versions. The lockfile is never synced, so the build resolves
+  package.json on its own and a range can drift to a version you never ran.
+  The template pins exact versions for this reason.
+- devDependencies are installed too; vite and typescript belong there.
+- A version published in the last few days may be rejected: deno.json sets a
+  minimum dependency age. Prefer a release that has been out a week or more.
+- Packages that need a postinstall step (native builds, downloaded binaries)
+  are not supported - install scripts do not run.
+- The build must produce one JS file and at most one CSS file, or it fails.
+  Do not introduce route-level React.lazy or dynamic-import code splitting,
+  and be wary of libraries that emit a CSS chunk of their own. Keep
+  build.cssCodeSplit: false and
+  build.rollupOptions.output.inlineDynamicImports: true in vite.config.ts.
+- Keep the @borgiq/actors dependency line and resolve.dedupe:
+  ['react', 'react-dom'] - the SDK's hooks and your components must share one
+  React instance.
+- Styling: build-time CSS (plain CSS, CSS Modules, Tailwind, shadcn/ui) is the
+  smooth path. Libraries that inject <style> tags at runtime - the CSS-in-JS
+  family - render unstyled unless the actor's allowInlineStyling option is on.
+- Network: the served app cannot call third-party APIs from the browser. Reach
+  BorgIQ through a declared endpoint (below) and anything else through a
+  canvas actor.
+- node_modules/ is never synced and does not count toward the source budget,
+  but files a generator copies into src/ do: bundle validate warns past 200
+  files or 1 MiB of text.
+
 ### src/assets/ is the only synced asset directory
 
 Files under code/src/assets/ are synced with workspace assets, not with the
@@ -218,14 +266,53 @@ records each as an options.files entry of the form
 
     { path: src/assets/hero.png, content: \${{ assets["hero.png"] }} }
 
+Reference one from source with a normal import, so the bundler rewrites it:
+
+    import hero from './assets/hero.png';   // then <img src={hero} />
+
+Do not hardcode a path like /src/assets/hero.png, and do not use public/: the
+app is served under a per-app base path, so a root-absolute URL resolves
+somewhere else entirely.
+
 A new file is keyed by its file name, exactly as uploading it in the editor
-would be. Deleting a file locally removes the entry on the next push but leaves
-the workspace asset in place (remove it with borgiq assets delete). Entries you
-hand-author with inline text, or outside src/assets/, are left strictly alone.
+would be. Assets are workspace-wide, so two actors referencing hero.png share
+one asset and replacing it changes both on their next Build. If that key is
+already taken by an identical file the CLI adopts it; if it is taken by
+different content the push stops and asks you to rename. Deleting a file
+locally removes the entry on the next push but leaves the workspace asset in
+place (remove it with borgiq assets delete). Entries you hand-author with
+inline text, or outside src/assets/, are left strictly alone.
 
 Binary files anywhere else under code/ are ignored with a warning - move them
 under src/assets/ to sync them. options.files order is meaningful (a later
 overlay wins on a path collision), so it is never reordered.
+
+### Calling BorgIQ from the app
+
+The app reaches a canvas through endpoints declared on the actor. Each entry in
+configuration.options.endpoints names a Webhook Trigger actor, which should use
+the 'apps' authorization level:
+
+    endpoints:
+      - name: submitOrder      # the SDK lookup key
+        actorId: ACTR...       # a WebhookTriggerActor
+
+Add canvasSlug or workspaceSlug to target a trigger elsewhere in the org; omit
+them for this app's own canvas. Then, in a component:
+
+    import { useEndpoint } from '@borgiq/actors';
+    const { data, loading, error, trigger } = useEndpoint('submitOrder');
+
+useEndpoint does not fetch on mount - call trigger(), optionally with method,
+headers, or body overrides. trigger never rejects, so read error instead of
+wrapping it in try/catch; callEndpoint(name, search, init) is the promise form
+and does reject. Use getBasename() as your router's basename, since the app is
+served under a per-app base path.
+
+A raw fetch() to a webhook URL is not authenticated - the app token rides on
+SDK calls only. Endpoint changes take effect on the next Build, and the local
+stub SDK carries no endpoint data, so under npm run dev an endpoint call
+throws; gate it behind mock data if you need the page to render.
 
 ### What the CLI never touches
 
