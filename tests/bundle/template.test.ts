@@ -97,6 +97,34 @@ describe('bundle companion files', () => {
     }
   });
 
+  it('AGENTS.md documents third-party dependencies and the build step', () => {
+    for (const needle of [
+      'Third-party dependencies',
+      'Pin exact versions',
+      'minimum dependency age',
+      'postinstall',
+      'one JS file and at most one CSS file',
+      'allowInlineStyling',
+      'resolve.dedupe',
+      'there is no CLI build command yet',
+    ]) {
+      expect(BUNDLE_AGENTS_MD).toContain(needle);
+    }
+  });
+
+  it('AGENTS.md shows how to reference an asset and call an endpoint', () => {
+    for (const needle of [
+      "import hero from './assets/hero.png'",
+      'do not use public/',
+      "useEndpoint('submitOrder')",
+      'does not fetch on mount',
+      'getBasename()',
+      'is not authenticated',
+    ]) {
+      expect(BUNDLE_AGENTS_MD).toContain(needle);
+    }
+  });
+
   it('.gitignore reserves the local dev artifacts dir', () => {
     expect(BUNDLE_GITIGNORE).toContain('.borgiq/');
   });
@@ -108,6 +136,10 @@ describe('bundle companion files', () => {
       'actors/*/react-app/*/code/.vite/',
       'actors/*/react-app/*/code/deno.lock',
       'actors/*/react-app/*/code/package-lock.json',
+      'actors/*/react-app/*/code/npm-shrinkwrap.json',
+      'actors/*/react-app/*/code/yarn.lock',
+      'actors/*/react-app/*/code/pnpm-lock.yaml',
+      'actors/*/react-app/*/code/bun.lockb',
       'actors/*/react-app/*/code/__borgiq_sdk_placeholder__/',
     ]) {
       expect(BUNDLE_GITIGNORE).toContain(needle);

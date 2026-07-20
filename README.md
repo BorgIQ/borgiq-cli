@@ -436,7 +436,19 @@ cd -
 borgiq bundle validate . && borgiq bundle push .
 ```
 
-Then press **Build** in the web editor to publish and view the app.
+Then press **Build** in the web editor to publish and view the app. A push uploads
+source only; the served app does not change until it is built, and build failures are
+reported in the editor rather than by the CLI.
+
+**Dependencies.** Add packages the normal way, with two caveats. Pin exact versions: the
+lockfile is never synced, so the platform resolves `package.json` on its own. And the
+build must produce a single JS file and at most one CSS file — avoid route-level
+`React.lazy` splitting and keep `build.cssCodeSplit: false` and
+`build.rollupOptions.output.inlineDynamicImports: true` in `vite.config.ts`. Packages
+needing a postinstall step are not supported, and a version published in the last few
+days may be rejected by the minimum dependency age in `deno.json`. Build-time CSS
+(Tailwind, CSS Modules, shadcn/ui) works as-is; CSS-in-JS libraries need the actor's
+`allowInlineStyling` option. The generated `AGENTS.md` carries the full contract.
 
 **Assets.** `code/src/assets/` is the only auto-synced asset directory. Its files are
 workspace assets, not actor source: `pull` downloads each one, and `push` uploads new
@@ -449,6 +461,11 @@ next push but **keeps** the workspace asset — remove it with `borgiq assets de
 Asset conflicts behave like actor conflicts: they fail closed, and `--force-local`
 (push) or `--replace` (pull) resolves them. Entries you write yourself with inline
 text, or outside `src/assets/`, are left strictly alone.
+
+Reference an asset from source with a normal import — `import hero from
+'./assets/hero.png'` — so the bundler rewrites it; a hardcoded `/src/assets/…` path or a
+`public/` file breaks, because the app is served under a per-app base path. Assets are
+workspace-wide, so two actors referencing `hero.png` share one asset.
 
 Binary files anywhere else under `code/` are ignored with a warning; move them under
 `src/assets/` to sync them.
