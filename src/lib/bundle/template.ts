@@ -245,6 +245,11 @@ package.json by hand. What differs from an ordinary Vite app:
   and be wary of libraries that emit a CSS chunk of their own. Keep
   build.cssCodeSplit: false and
   build.rollupOptions.output.inlineDynamicImports: true in vite.config.ts.
+- Icon packages (@tabler/icons-react, lucide-react) ship one .mjs file per
+  icon, so a barrel import pulls in thousands of modules. Rollup reads up to
+  1000 in parallel by default, which can exhaust the build sandbox's
+  file-descriptor limit and fail with "EMFILE: too many open files". Keep
+  build.rollupOptions.maxParallelFileOps: 20 in vite.config.ts.
 - Keep the @borgiq/actors dependency line and resolve.dedupe:
   ['react', 'react-dom'] - the SDK's hooks and your components must share one
   React instance.
