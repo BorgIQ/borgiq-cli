@@ -106,7 +106,7 @@ describe('bundle companion files', () => {
       'one JS file and at most one CSS file',
       'allowInlineStyling',
       'resolve.dedupe',
-      'there is no CLI build command yet',
+      'borgiq bundle build',
     ]) {
       expect(BUNDLE_AGENTS_MD).toContain(needle);
     }
