@@ -184,8 +184,8 @@ canvas export format. Format: borgiq.canvas.bundle v1.
   Universal Trigger, Python, and App actors. When present, actor.yaml carries
   configuration.codeDir: code and must not also contain inline code.
 - actors/triggers/react-app/<ACTOR_ID>/code/: a whole Vite project rather than
-  a single entrypoint. Push publishes its source; Build in the web editor
-  compiles and serves it. See "React App actors" below.
+  a single entrypoint. Push publishes its source; borgiq bundle build (or Build
+  in the web editor) compiles and serves it. See "React App actors" below.
 
 ## Editing Rules
 
@@ -359,5 +359,14 @@ borgiq bundle validate .
 borgiq bundle pack . -o export.yaml
 borgiq bundle push .
 borgiq bundle pull <canvas> .
+borgiq bundle build .            # React App actors: push, then compile and serve
 \`\`\`
+
+For React App actors, borgiq bundle build pushes the bundle and then compiles
+and serves the app (what visitors see does not change until it is built). It
+builds every React App actor on the canvas by default; pass --actor <id>
+(repeatable) to build a subset, and --force-local to let the pre-build push
+resolve conflicts in favour of the local version. A non-zero exit means a build
+failed; the compiler error and structured details are reported. React App
+actors are the only actor type that needs a build step.
 `;
