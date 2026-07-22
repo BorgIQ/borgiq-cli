@@ -13,11 +13,27 @@ type CommandCtx = { parent: { parent: { opts: () => GlobalOptions } } };
 
 interface BuildOptions {
   canvas?: string;
-  actor?: string;
+  /** Variadic: build only these react-app actors. Omitted → build every react-app actor in the bundle. */
+  actor?: string[];
   timeout?: string;
   /** Commander sets this to false when --no-push is passed; true otherwise. */
   push?: boolean;
+  /** Forwarded to the auto-push: resolve sync conflicts by applying the local actor version. */
+  forceLocal?: boolean;
   strict?: boolean;
+}
+
+/** One actor's build result, as reported on stdout (under `builds`) and used to derive the exit code. */
+interface BuildOutcome {
+  actorId: string;
+  status: 'success' | 'error';
+  flowrunId: string;
+  buildId?: string;
+  builtAt?: string;
+  fileCount?: number;
+  totalSizeInBytes?: number;
+  error?: string;
+  details?: string[];
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,11 +44,12 @@ const DEFAULT_TIMEOUT_SEC = 420;
 const POLL_WAIT_SEC = 25;
 
 /**
- * `borgiq bundle build <dir>` — build a bundle's ReactAppTriggerActor without the web editor.
+ * `borgiq bundle build <dir>` — build a bundle's ReactAppTriggerActor(s) without the web editor.
  *
- * It auto-pushes the local bundle first (the CLI analogue of the editor's save-then-build), then
- * reuses the platform's existing build endpoints — `POST …/apps/:actorId/build` to start and the
- * `GET …/build?flowrunId=…&waitSeconds=…` long-poll to await the result — so no new API is needed.
+ * A canvas can host several react-app actors, so by default this builds every one in the bundle
+ * (pass `--actor` to build a subset). It auto-pushes the local bundle first (the CLI analogue of the
+ * editor's save-then-build), then reuses the platform's existing build endpoints — `POST …/apps/:actorId/build`
+ * to start and the `GET …/build?flowrunId=…&waitSeconds=…` long-poll to await each result — so no new API is needed.
  */
 export const bundleBuild = async (dir: string, options: BuildOptions, command: CommandCtx): Promise<void> => {
   try {
@@ -40,72 +57,118 @@ export const bundleBuild = async (dir: string, options: BuildOptions, command: C
     const { client, ctx } = createClientWithContext(globalOpts);
     const verbose = !globalOpts.json && process.stderr.isTTY;
 
-    // Resolve the react-app actor + canvas from the local bundle before mutating anything.
+    // Resolve the react-app actor(s) + canvas from the local bundle before mutating anything.
     const contents = readBundleDirDetailed(dir);
     const local = assembleOrFail(contents.files, options.strict ?? false);
     const { doc } = local;
 
-    const actorId = resolveActorId(doc, options.actor);
+    const actorIds = resolveActorIds(doc, options.actor);
     const canvas = options.canvas ?? (typeof doc.metadata.slug === 'string' ? doc.metadata.slug : '');
     if (!canvas) {
       throw new CliUsageError('No canvas target - pass --canvas <canvas> or set canvas.slug in the bundle.');
     }
     const timeoutSec = parseTimeout(options.timeout);
 
-    // 1. Auto-push (unless --no-push) so the build reads the config we just synced.
+    if (options.push === false && options.forceLocal) {
+      process.stderr.write('Note: --force-local has no effect with --no-push (nothing is pushed).\n');
+    }
+
+    // 1. Auto-push (unless --no-push) so the build reads the config we just synced. One push covers
+    //    every actor in the bundle, so it runs once regardless of how many actors we then build.
     if (options.push !== false) {
-      const pushed = await autoPush(dir, { canvas: options.canvas, strict: options.strict }, command);
+      const pushed = await autoPush(dir, { canvas: options.canvas, forceLocal: options.forceLocal, strict: options.strict }, command);
       if (!pushed) {
         process.stderr.write('Aborting build: the push did not complete cleanly (see the errors above).\n');
         return; // the push already set process.exitCode and reported the failure
       }
     }
 
-    // 2. Start the build.
-    if (verbose) process.stderr.write(`Building react app '${actorId}' on canvas '${canvas}'...\n`);
-    const start = await client.startReactAppBuild(ctx.org, ctx.workspace, canvas, actorId);
-    const flowrunId = start.flowrun.id;
-    const flowrunJobId = start.flowrunJob.id;
-    if (verbose) process.stderr.write(`Build started (flowrun ${flowrunId}).\n`);
-
-    // 3. Long-poll to a terminal result.
-    const result = await pollBuild(client, ctx, verbose, canvas, actorId, flowrunId, timeoutSec);
-    if (!result) {
-      throw new CliUsageError(`Build timed out after ${timeoutSec}s. Check the build log in the web editor and try again.`);
+    // 2. Build each actor in turn, reporting per-actor progress (sequential keeps the streamed
+    //    progress readable and avoids firing several concurrent builds at the same workspace).
+    if (verbose && actorIds.length > 1) {
+      process.stderr.write(`Building ${actorIds.length} react app(s) on canvas '${canvas}'...\n`);
     }
-
-    // 4. Report.
-    if (result.status === 'success') {
-      if (verbose) {
-        process.stderr.write(`✔ Built — ${result.fileCount} file(s), ${formatBytes(result.totalSizeInBytes)} (buildId ${result.buildId}).\n`);
+    const builds: BuildOutcome[] = [];
+    for (const actorId of actorIds) {
+      try {
+        builds.push(await buildOne(client, ctx, verbose, canvas, actorId, timeoutSec));
+      } catch (err) {
+        // Auth failures are fatal for the whole command; anything else fails just this actor.
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`✖ Build for '${actorId}' failed to start: ${message}\n`);
+        builds.push({ actorId, status: 'error', flowrunId: '', error: message, details: [] });
       }
-      output({ status: 'success', actorId, canvas, flowrunId, buildId: result.buildId, builtAt: result.builtAt, fileCount: result.fileCount, totalSizeInBytes: result.totalSizeInBytes }, globalOpts);
-      return;
     }
 
-    // status === 'error': the endpoint gives the compiler-output tail; the job-result summaries carry
-    // the structured error + validation details (same source as the editor's build-failure panel).
-    process.stderr.write('✖ Build failed.\n');
-    if (result.error) process.stderr.write(`${result.error}\n`);
-    const details = await fetchBuildErrorDetails(client, ctx, flowrunJobId);
-    if (verbose) for (const detail of details) process.stderr.write(`  ${detail}\n`);
-    process.exitCode = ExitCode.GENERAL;
-    output({ status: 'error', actorId, canvas, flowrunId, error: result.error, details }, globalOpts);
+    // 3. Report. The command fails if any single actor's build failed.
+    const anyFailed = builds.some((build) => build.status === 'error');
+    if (anyFailed) process.exitCode = ExitCode.GENERAL;
+    output({ status: anyFailed ? 'error' : 'success', canvas, builds }, globalOpts);
   } catch (error) {
     handleError(error);
   }
 };
 
-/** Picks the actor to build: --actor wins; otherwise the sole ReactAppTriggerActor in the bundle. */
-const resolveActorId = (doc: ReturnType<typeof assembleOrFail>['doc'], actorFlag: string | undefined): string => {
-  if (actorFlag) return actorFlag;
-  const reactAppActors = Object.values(doc.data.actors).filter((actor) => isReactAppActor(actor));
-  if (reactAppActors.length === 1) return reactAppActors[0].id;
-  if (reactAppActors.length === 0) {
-    throw new CliUsageError('No ReactAppTriggerActor found in this bundle. Add one, or pass --actor <actorId>.');
+/** Start, poll, and report a single actor's build. Throws only on fatal (auth) errors from `startReactAppBuild`. */
+const buildOne = async (
+  client: ReturnType<typeof createClientWithContext>['client'],
+  ctx: ReturnType<typeof createClientWithContext>['ctx'],
+  verbose: boolean,
+  canvas: string,
+  actorId: string,
+  timeoutSec: number,
+): Promise<BuildOutcome> => {
+  if (verbose) process.stderr.write(`Building react app '${actorId}' on canvas '${canvas}'...\n`);
+  const start = await client.startReactAppBuild(ctx.org, ctx.workspace, canvas, actorId);
+  const flowrunId = start.flowrun.id;
+  const flowrunJobId = start.flowrunJob.id;
+  if (verbose) process.stderr.write(`Build started (flowrun ${flowrunId}).\n`);
+
+  const result = await pollBuild(client, ctx, verbose, canvas, actorId, flowrunId, timeoutSec);
+  if (!result) {
+    process.stderr.write(`✖ Build for '${actorId}' timed out after ${timeoutSec}s. Check the build log in the web editor and try again.\n`);
+    return { actorId, status: 'error', flowrunId, error: `Build timed out after ${timeoutSec}s.`, details: [] };
   }
-  const candidates = reactAppActors.map((actor) => `${actor.id}${actor.name ? ` (${actor.name})` : ''}`).join(', ');
-  throw new CliUsageError(`This bundle has ${reactAppActors.length} react-app actors - pass --actor <actorId> to pick one: ${candidates}.`);
+
+  if (result.status === 'success') {
+    if (verbose) {
+      process.stderr.write(`✔ Built '${actorId}' — ${result.fileCount} file(s), ${formatBytes(result.totalSizeInBytes)} (buildId ${result.buildId}).\n`);
+    }
+    return { actorId, status: 'success', flowrunId, buildId: result.buildId, builtAt: result.builtAt, fileCount: result.fileCount, totalSizeInBytes: result.totalSizeInBytes };
+  }
+
+  // status === 'error': the endpoint gives the compiler-output tail; the job-result summaries carry
+  // the structured error + validation details (same source as the editor's build-failure panel).
+  process.stderr.write(`✖ Build for '${actorId}' failed.\n`);
+  if (result.error) process.stderr.write(`${result.error}\n`);
+  const details = await fetchBuildErrorDetails(client, ctx, flowrunJobId);
+  if (verbose) for (const detail of details) process.stderr.write(`  ${detail}\n`);
+  return { actorId, status: 'error', flowrunId, error: result.error, details };
+};
+
+/**
+ * Picks the actors to build: `--actor` selects a subset (validated against the bundle's react-app
+ * actors); otherwise every ReactAppTriggerActor in the bundle is built.
+ */
+const resolveActorIds = (doc: ReturnType<typeof assembleOrFail>['doc'], actorFlags: string[] | undefined): string[] => {
+  const reactAppActors = Object.values(doc.data.actors).filter((actor) => isReactAppActor(actor));
+  if (reactAppActors.length === 0) {
+    throw new CliUsageError('No ReactAppTriggerActor found in this bundle. Add one to the canvas first.');
+  }
+  const available = new Map(reactAppActors.map((actor) => [actor.id, actor]));
+
+  if (actorFlags && actorFlags.length > 0) {
+    const requested = [...new Set(actorFlags)];
+    const unknown = requested.filter((id) => !available.has(id));
+    if (unknown.length > 0) {
+      const candidates = reactAppActors.map((actor) => `${actor.id}${actor.name ? ` (${actor.name})` : ''}`).join(', ');
+      throw new CliUsageError(`Unknown --actor ${unknown.join(', ')} - this bundle's react-app actors are: ${candidates}.`);
+    }
+    return requested;
+  }
+
+  return reactAppActors.map((actor) => actor.id);
 };
 
 const parseTimeout = (raw: string | undefined): number => {
@@ -122,7 +185,11 @@ const parseTimeout = (raw: string | undefined): number => {
  * (push still writes its human progress + any errors to stderr). Returns false when push reported a
  * non-fatal failure (it sets a non-zero process.exitCode); a thrown push error exits via handleError.
  */
-const autoPush = async (dir: string, pushOptions: { canvas?: string; strict?: boolean }, command: CommandCtx): Promise<boolean> => {
+const autoPush = async (
+  dir: string,
+  pushOptions: { canvas?: string; forceLocal?: boolean; strict?: boolean },
+  command: CommandCtx,
+): Promise<boolean> => {
   const restore = silenceStdout();
   try {
     await bundlePush(dir, pushOptions, command);

@@ -223,10 +223,12 @@ actor's source on the next push.
 
 A push uploads source only - the app visitors see does not change until the
 project is built. Build it with borgiq bundle build (it pushes first, then
-builds and waits for the result) or by pressing Build in the web editor. The
-platform installs the dependencies and builds the project there, and reports
-failures in the build log, so a successful push is not evidence that the app
-compiles. Run npm run build locally before building to find that out sooner.
+builds and waits for the result) or by pressing Build in the web editor. When a
+canvas has several react-app actors, borgiq bundle build builds them all; pass
+--actor <id> (repeatable) to build a subset. The platform installs the
+dependencies and builds the project there, and reports failures in the build
+log, so a successful push is not evidence that the app compiles. Run npm run
+build locally before building to find that out sooner.
 
 ### Third-party dependencies
 

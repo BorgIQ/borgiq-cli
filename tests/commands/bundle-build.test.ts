@@ -31,7 +31,14 @@ import { ExitCode } from '../../src/lib/errors.js';
 import { REACT_APP_ID, makeReactAppActor, makeDoc } from '../bundle/fixtures.js';
 
 const CANVAS_SLUG = 'test-canvas';
+const SECOND_APP_ID = 'ACTR01reactapp200000000000000';
 const command = { parent: { parent: { opts: () => ({ json: true }) } } };
+
+/** Rewrites the bundle on disk to hold the given react-app actors (default: the single fixture actor). */
+const writeBundleWith = (...actors: ReturnType<typeof makeReactAppActor>[]) => {
+  fs.rmSync(bundleDir, { recursive: true, force: true });
+  writeBundleDir(bundleDir, disassemble(makeDoc(actors.length ? actors : [makeReactAppActor()])).files);
+};
 
 const startResponse = (over: Record<string, unknown> = {}) => ({
   flowrun: { id: 'FLOW01build0000000000000000000', createdAt: '2026-07-21T00:00:00.000Z' },
@@ -84,7 +91,11 @@ describe('bundle build', () => {
     expect(client.startReactAppBuild).toHaveBeenCalledWith('test-org', 'test-workspace', CANVAS_SLUG, REACT_APP_ID);
     expect(client.getReactAppBuildResult).toHaveBeenCalledTimes(2);
     expect(mocks.output).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'success', actorId: REACT_APP_ID, canvas: CANVAS_SLUG, fileCount: 3, totalSizeInBytes: 12345 }),
+      expect.objectContaining({
+        status: 'success',
+        canvas: CANVAS_SLUG,
+        builds: [expect.objectContaining({ actorId: REACT_APP_ID, status: 'success', fileCount: 3, totalSizeInBytes: 12345 })],
+      }),
       expect.anything(),
     );
     expect(process.exitCode).toBeUndefined();
@@ -103,8 +114,13 @@ describe('bundle build', () => {
     expect(mocks.output).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'error',
-        error: 'TS2322: Type error in src/App.tsx',
-        details: [JSON.stringify({ code: 'TS2322', message: 'not assignable' })],
+        canvas: CANVAS_SLUG,
+        builds: [expect.objectContaining({
+          actorId: REACT_APP_ID,
+          status: 'error',
+          error: 'TS2322: Type error in src/App.tsx',
+          details: [JSON.stringify({ code: 'TS2322', message: 'not assignable' })],
+        })],
       }),
       expect.anything(),
     );
@@ -118,8 +134,18 @@ describe('bundle build', () => {
     await bundleBuild(bundleDir, {}, command);
 
     expect(mocks.bundlePush).toHaveBeenCalledTimes(1);
-    expect(mocks.bundlePush).toHaveBeenCalledWith(bundleDir, { canvas: undefined, strict: undefined }, command);
+    expect(mocks.bundlePush).toHaveBeenCalledWith(bundleDir, { canvas: undefined, forceLocal: undefined, strict: undefined }, command);
     expect(client.startReactAppBuild).toHaveBeenCalledTimes(1);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('forwards --force-local to the auto-push', async () => {
+    client.startReactAppBuild.mockResolvedValue(startResponse());
+    client.getReactAppBuildResult.mockResolvedValue({ status: 'success', buildId: 'FLOW01build0000000000000000000', builtAt: '2026-07-21T00:01:00.000Z', fileCount: 1, totalSizeInBytes: 42 });
+
+    await bundleBuild(bundleDir, { forceLocal: true }, command);
+
+    expect(mocks.bundlePush).toHaveBeenCalledWith(bundleDir, { canvas: undefined, forceLocal: true, strict: undefined }, command);
     expect(process.exitCode).toBeUndefined();
   });
 
@@ -131,5 +157,80 @@ describe('bundle build', () => {
     expect(mocks.bundlePush).toHaveBeenCalledTimes(1);
     expect(client.startReactAppBuild).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(ExitCode.CONFLICT);
+  });
+
+  it('builds every react-app actor on the canvas by default (one push, per-actor builds)', async () => {
+    writeBundleWith(makeReactAppActor(), makeReactAppActor({ id: SECOND_APP_ID, name: 'Second App', msgVar: 'secondapp' }));
+    client.startReactAppBuild
+      .mockResolvedValueOnce(startResponse())
+      .mockResolvedValueOnce(startResponse({ actorId: SECOND_APP_ID }));
+    client.getReactAppBuildResult.mockResolvedValue({ status: 'success', buildId: 'FLOW01build0000000000000000000', builtAt: '2026-07-21T00:01:00.000Z', fileCount: 1, totalSizeInBytes: 42 });
+
+    await bundleBuild(bundleDir, {}, command);
+
+    expect(mocks.bundlePush).toHaveBeenCalledTimes(1); // one push covers the whole bundle
+    expect(client.startReactAppBuild).toHaveBeenCalledTimes(2);
+    expect(client.startReactAppBuild).toHaveBeenCalledWith('test-org', 'test-workspace', CANVAS_SLUG, REACT_APP_ID);
+    expect(client.startReactAppBuild).toHaveBeenCalledWith('test-org', 'test-workspace', CANVAS_SLUG, SECOND_APP_ID);
+    expect(mocks.output).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'success',
+        builds: [
+          expect.objectContaining({ actorId: REACT_APP_ID, status: 'success' }),
+          expect.objectContaining({ actorId: SECOND_APP_ID, status: 'success' }),
+        ],
+      }),
+      expect.anything(),
+    );
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('builds only the actors named by --actor', async () => {
+    writeBundleWith(makeReactAppActor(), makeReactAppActor({ id: SECOND_APP_ID, name: 'Second App', msgVar: 'secondapp' }));
+    client.startReactAppBuild.mockResolvedValue(startResponse({ actorId: SECOND_APP_ID }));
+    client.getReactAppBuildResult.mockResolvedValue({ status: 'success', buildId: 'FLOW01build0000000000000000000', builtAt: '2026-07-21T00:01:00.000Z', fileCount: 1, totalSizeInBytes: 42 });
+
+    await bundleBuild(bundleDir, { push: false, actor: [SECOND_APP_ID] }, command);
+
+    expect(client.startReactAppBuild).toHaveBeenCalledTimes(1);
+    expect(client.startReactAppBuild).toHaveBeenCalledWith('test-org', 'test-workspace', CANVAS_SLUG, SECOND_APP_ID);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('fails the command if any single actor build fails', async () => {
+    writeBundleWith(makeReactAppActor(), makeReactAppActor({ id: SECOND_APP_ID, name: 'Second App', msgVar: 'secondapp' }));
+    client.startReactAppBuild
+      .mockResolvedValueOnce(startResponse())
+      .mockResolvedValueOnce(startResponse({ actorId: SECOND_APP_ID }));
+    client.getReactAppBuildResult
+      .mockResolvedValueOnce({ status: 'success', buildId: 'FLOW01build0000000000000000000', builtAt: '2026-07-21T00:01:00.000Z', fileCount: 1, totalSizeInBytes: 42 })
+      .mockResolvedValueOnce({ status: 'error', error: 'boom' });
+    client.getJobResultSummaries.mockResolvedValue([]);
+
+    await bundleBuild(bundleDir, { push: false }, command);
+
+    expect(client.startReactAppBuild).toHaveBeenCalledTimes(2);
+    expect(mocks.output).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'error',
+        builds: [
+          expect.objectContaining({ actorId: REACT_APP_ID, status: 'success' }),
+          expect.objectContaining({ actorId: SECOND_APP_ID, status: 'error', error: 'boom' }),
+        ],
+      }),
+      expect.anything(),
+    );
+    expect(process.exitCode).toBe(ExitCode.GENERAL);
+  });
+
+  it('errors (usage) when --actor names an actor that is not in the bundle', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit'); }) as never);
+    try {
+      await expect(bundleBuild(bundleDir, { push: false, actor: ['ACTR01nope0000000000000000000'] }, command)).rejects.toThrow('process.exit');
+      expect(exit).toHaveBeenCalledWith(ExitCode.USAGE);
+      expect(client.startReactAppBuild).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+    }
   });
 });

@@ -78,16 +78,19 @@ Examples:
 
   bundle
     .command('build <dir>')
-    .description("Push a bundle and build its ReactAppTriggerActor, reporting build status and errors")
+    .description("Push a bundle and build its ReactAppTriggerActor(s), reporting build status and errors")
     .option('--canvas <canvas>', "Target canvas slug or ID (default: the bundle's canvas.slug)")
-    .option('--actor <actorId>', 'React-app actor ID to build (default: the only react-app actor in the bundle)')
-    .option('--timeout <seconds>', 'Overall build timeout in seconds', '420')
+    .option('--actor <actorId...>', 'React-app actor ID(s) to build (default: every react-app actor in the bundle)')
+    .option('--timeout <seconds>', 'Per-actor build timeout in seconds', '420')
     .option('--no-push', 'Build the canvas as it is on the server, without pushing the local bundle first')
+    .option('--force-local', 'On the auto-push, resolve sync conflicts by applying the local actor version')
     .option('--strict', 'Treat bundle validation warnings as errors')
     .addHelpText('after', `
 Examples:
   $ borgiq bundle build ./my-app.borgiq-canvas
   $ borgiq bundle build ./my-app.borgiq-canvas --actor ACTR01abc...
+  $ borgiq bundle build ./my-app.borgiq-canvas --actor ACTR01abc... ACTR01def...
+  $ borgiq bundle build ./my-app.borgiq-canvas --force-local
   $ borgiq bundle build ./my-app.borgiq-canvas --no-push`)
     .action(bundleBuild);
 };
