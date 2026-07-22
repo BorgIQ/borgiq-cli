@@ -41,6 +41,8 @@ import type {
   BIQActorTemplateDetail,
   BIQTemplateApp,
   TemplateListFilters,
+  ReactAppBuildStartResponse,
+  ReactAppBuildResultPayload,
 } from './types.js';
 
 export class BorgIQClient {
@@ -85,6 +87,42 @@ export class BorgIQClient {
     }
 
     return response.json() as Promise<T>;
+  }
+
+  /**
+   * Like request(), but surfaces the HTTP status alongside the parsed body so callers can
+   * distinguish a 200 (terminal) from a 202 (still working) on long-poll endpoints — request()
+   * treats both as success and hides which one it was. A 202 body is not parsed (it may be empty).
+   */
+  private async requestWithStatus<T>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {
+    const url = `${this.baseUrl}${path}`;
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${this.token}`,
+      'Accept': 'application/json',
+    };
+
+    let requestBody: string | undefined;
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      requestBody = JSON.stringify(body);
+    }
+
+    const response = await fetch(url, { method, headers, body: requestBody });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => null) as { message?: string; details?: { path: (string | number)[]; message: string }[] } | null;
+      throw new ApiError(
+        response.status,
+        errorBody?.message || response.statusText,
+        errorBody?.details || [],
+      );
+    }
+
+    if (response.status === 202 || response.status === 204) {
+      return { status: response.status, data: undefined as T };
+    }
+
+    return { status: response.status, data: await response.json() as T };
   }
 
   /** GET that returns a plain string body instead of JSON. Used for /publicKey. */
@@ -209,6 +247,31 @@ export class BorgIQClient {
 
   async triggerManual(org: string, workspace: string, body: ManualTriggerRequest): Promise<unknown> {
     return this.request('POST', `${this.wkspPath(org, workspace)}/triggers/manual`, body);
+  }
+
+  // ── React App build ───────────────────────────────────
+
+  /** Starts a ReactAppTriggerActor build (fire-and-forget flowrun). Body is empty — the config comes
+   *  from the actor's stored configuration server-side; poll getReactAppBuildResult with the flowrun id. */
+  async startReactAppBuild(org: string, workspace: string, canvasSlugOrId: string, actorId: string): Promise<ReactAppBuildStartResponse> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/apps/${actorId}/build`, {});
+  }
+
+  /** Long-polls the build result. 202 → still building (returns `{ pending: true }`); 200 → terminal. */
+  async getReactAppBuildResult(
+    org: string,
+    workspace: string,
+    canvasSlugOrId: string,
+    actorId: string,
+    opts: { flowrunId: string; waitSeconds: number },
+  ): Promise<{ pending: true } | ReactAppBuildResultPayload> {
+    const qs = new URLSearchParams({ flowrunId: opts.flowrunId, waitSeconds: String(opts.waitSeconds) });
+    const { status, data } = await this.requestWithStatus<ReactAppBuildResultPayload>(
+      'GET',
+      `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/apps/${actorId}/build?${qs.toString()}`,
+    );
+    if (status === 202) return { pending: true };
+    return data;
   }
 
   // ── Connections ───────────────────────────────────────

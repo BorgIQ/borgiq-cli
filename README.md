@@ -433,12 +433,17 @@ npm run dev                     # local Vite dev server
 npx shadcn@latest add button    # any generator; new text files become actor source
 cp ~/hero.png src/assets/       # new asset, uploaded on the next push
 cd -
-borgiq bundle validate . && borgiq bundle push .
+borgiq bundle validate . && borgiq bundle build .
 ```
 
-Then press **Build** in the web editor to publish and view the app. A push uploads
-source only; the served app does not change until it is built, and build failures are
-reported in the editor rather than by the CLI.
+`borgiq bundle build <dir>` publishes the app: it pushes the bundle first (unless
+`--no-push`; pass `--force-local` to have that push resolve conflicts in favour of the
+local version), starts the build, waits for it, and prints the result — file count and
+total size on success, or the compiler error plus structured build-error details on
+failure (exiting non-zero). When the canvas has more than one react-app actor it builds
+every one of them (each with its own `--timeout`); pass `--actor <id>` — repeatable — to
+build only some. A push on its own uploads source only; the served app does not change
+until it is built. You can also press **Build** in the web editor instead.
 
 **Dependencies.** Add packages the normal way, with two caveats. Pin exact versions: the
 lockfile is never synced, so the platform resolves `package.json` on its own. And the

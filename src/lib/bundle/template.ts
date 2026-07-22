@@ -221,11 +221,14 @@ from the stub the CLI writes), npm run dev, and any generator you like
 (npx shadcn@latest add button). Every text file you add becomes part of the
 actor's source on the next push.
 
-A push uploads source only. The app visitors see does not change until Build is
-pressed in the web editor - there is no CLI build command yet. The platform
-installs the dependencies and builds the project there, and reports failures in
-the editor's build log, so a successful push is not evidence that the app
-compiles. Run npm run build locally before pushing to find that out sooner.
+A push uploads source only - the app visitors see does not change until the
+project is built. Build it with borgiq bundle build (it pushes first, then
+builds and waits for the result) or by pressing Build in the web editor. When a
+canvas has several react-app actors, borgiq bundle build builds them all; pass
+--actor <id> (repeatable) to build a subset. The platform installs the
+dependencies and builds the project there, and reports failures in the build
+log, so a successful push is not evidence that the app compiles. Run npm run
+build locally before building to find that out sooner.
 
 ### Third-party dependencies
 

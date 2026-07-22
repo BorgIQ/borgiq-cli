@@ -281,6 +281,24 @@ export interface BIQFlowrunJobResultSummary {
   [key: string]: unknown;
 }
 
+/**
+ * Response from `POST .../canvases/:canvas/apps/:actorId/build` — the build flowrun is created and
+ * runs fire-and-forget; poll the build result with the flowrun id. `flowrunJob.id` keys the build log.
+ */
+export interface ReactAppBuildStartResponse {
+  flowrun: { id: string; createdAt: string };
+  flowrunJob: { id: string };
+  actorId: string;
+}
+
+/**
+ * Terminal payload from the long-poll `GET .../apps/:actorId/build?flowrunId=…&waitSeconds=…` (HTTP
+ * 200). HTTP 202 means the wait window elapsed while still building — keep polling.
+ */
+export type ReactAppBuildResultPayload =
+  | { status: 'success'; buildId: string; builtAt: string; fileCount: number; totalSizeInBytes: number }
+  | { status: 'error'; error: string };
+
 /** Flowrun message */
 export interface BIQFlowrunMessage {
   id: string;
