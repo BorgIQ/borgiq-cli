@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.8.0...cli-v0.9.0) (2026-07-22)
+
+
+### Features
+
+* **bundle:** add build command for react-app actors ([#49](https://github.com/BorgIQ/borgiq-cli/issues/49)) ([1c01a88](https://github.com/BorgIQ/borgiq-cli/commit/1c01a888616b50c8236ab49a04428bc41b6c8b2a))
+* **bundle:** document react-app dependencies and assets in AGENTS.md ([#47](https://github.com/BorgIQ/borgiq-cli/issues/47)) ([ca53e50](https://github.com/BorgIQ/borgiq-cli/commit/ca53e50b864ee930cca980de9cb36ac11c90a63c))
+* **bundle:** react-app asset sync on pull and push ([#44](https://github.com/BorgIQ/borgiq-cli/issues/44)) ([04b07a4](https://github.com/BorgIQ/borgiq-cli/commit/04b07a456f000e40beae533a144af1ed6315217f))
+* **bundle:** react-app project walker, ignore rules, and SDK placeholder ([#43](https://github.com/BorgIQ/borgiq-cli/issues/43)) ([582cebc](https://github.com/BorgIQ/borgiq-cli/commit/582cebc6e9978a12470b00df6e033e8386bfd705))
+* **bundle:** react-app project-dir compiler support ([#42](https://github.com/BorgIQ/borgiq-cli/issues/42)) ([7c2807d](https://github.com/BorgIQ/borgiq-cli/commit/7c2807d164ee90e5e24b2ad5e679f6769aec233c))
+
+
+### Bug Fixes
+
+* **lib:** document maxParallelFileOps in React app bundle guidance ([#48](https://github.com/BorgIQ/borgiq-cli/issues/48)) ([54a405b](https://github.com/BorgIQ/borgiq-cli/commit/54a405b3f3f99be673ea64bfb48b81b65b265e3d))
+
 ## [0.8.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.7.0...cli-v0.8.0) (2026-07-16)
 
 
