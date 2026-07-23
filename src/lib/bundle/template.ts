@@ -298,12 +298,13 @@ overlay wins on a path collision), so it is never reordered.
 ### Calling BorgIQ from the app
 
 The app reaches a canvas through endpoints declared on the actor. Each entry in
-configuration.options.endpoints names a Webhook Trigger actor, which should use
-the 'apps' authorization level:
+configuration.options.endpoints names a webhook-capable trigger - a Webhook
+Trigger, or a Universal Trigger with its webhook source enabled - which should
+use the 'apps' authorization level:
 
     endpoints:
       - name: submitOrder      # the SDK lookup key
-        actorId: ACTR...       # a WebhookTriggerActor
+        actorId: ACTR...       # a Webhook Trigger, or a webhook-enabled Universal Trigger
 
 Add canvasSlug or workspaceSlug to target a trigger elsewhere in the org; omit
 them for this app's own canvas. Then, in a component:
