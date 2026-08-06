@@ -120,6 +120,8 @@ describe('bundle companion files', () => {
       'does not fetch on mount',
       'getBasename()',
       'is not authenticated',
+      'useGetSession()',
+      'SessionUnavailableError',
     ]) {
       expect(BUNDLE_AGENTS_MD).toContain(needle);
     }
