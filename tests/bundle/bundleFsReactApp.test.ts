@@ -247,5 +247,7 @@ describe('SDK placeholder', () => {
     }
     expect(REACT_APP_SDK_FILES['index.js']).toContain('export function useEndpoint');
     expect(REACT_APP_SDK_FILES['index.d.ts']).toContain('export declare function useEndpoint');
+    expect(REACT_APP_SDK_FILES['index.js']).toContain('export function useGetSession');
+    expect(REACT_APP_SDK_FILES['index.d.ts']).toContain('useGetSession');
   });
 });

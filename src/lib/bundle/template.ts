@@ -323,6 +323,18 @@ SDK calls only. Endpoint changes take effect on the next Build, and the local
 stub SDK carries no endpoint data, so under npm run dev an endpoint call
 throws; gate it behind mock data if you need the page to render.
 
+useGetSession() reports who is viewing the app:
+
+    import { useGetSession } from '@borgiq/actors';
+    const { data: session, loading, error } = useGetSession();
+
+session is the signed-in viewer - { id, email, name }, where name can be empty
+- or null until it resolves. The hook is passive: it resolves on mount, so
+there is no trigger(). getSession() is the promise form. Outside the BorgIQ
+iframe there is no viewer to report, so under npm run dev it settles right away
+with a SessionUnavailableError rather than hanging - gate any identity UI on
+session being present, and it will simply render nothing locally.
+
 ### What the CLI never touches
 
 node_modules/, dist/, .git/, .vite/, __borgiq_sdk_placeholder__/, lockfiles

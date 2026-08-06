@@ -19,7 +19,7 @@ export const SDK_PLACEHOLDER_DIR = '__borgiq_sdk_placeholder__';
 
 const PACKAGE_JSON = `{
   "name": "@borgiq/actors",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "type": "module",
   "main": "./index.js",
   "types": "./index.d.ts",
@@ -35,9 +35,12 @@ const INDEX_JS = `// @borgiq/actors — the browser-side SDK for React App actor
 // provides) so \`deno install\`, \`tsc\`, and Vite all consume it with no lifecycle scripts and no
 // transpilation. The platform links it into user projects as a \`file:\` dependency.
 //
-// Public surface — a fetch-protocol surface, browser-fetch semantics against named endpoints:
+// Public surface — a fetch-protocol surface, browser-fetch semantics against named endpoints, plus
+// the viewer's session:
 //   useEndpoint(name, search?, init?)  — React hook: { data, loading, error, trigger }; does NOT auto-fetch
 //   callEndpoint(name, search?, init?) — non-hook: Promise resolving to the parsed response body
+//   useGetSession()                    — React hook: { data, loading, error }; auto-resolves the viewer on mount
+//   getSession()                       — non-hook: Promise resolving to the viewer { id, email, name }
 //   getBasename()                      — router basename for the token path (from document.baseURI)
 //
 // Endpoints + token-bridge constants are BAKED into \`./generated.js\` when the platform builds the app.
@@ -82,6 +85,14 @@ export class TokenTimeoutError extends Error {
   constructor() {
     super('Timed out waiting for the app webhook token. Is the app running inside its BorgIQ iframe?');
     this.name = 'TokenTimeoutError';
+  }
+}
+
+/** Raised when no viewer session can exist here: not embedded, local dev, or the token carries no identity. */
+export class SessionUnavailableError extends Error {
+  constructor(detail) {
+    super(\`No BorgIQ viewer session is available: \${detail || 'the app is not running inside its BorgIQ iframe'}.\`);
+    this.name = 'SessionUnavailableError';
   }
 }
 
@@ -213,6 +224,47 @@ async function requestEndpoint(name, search, init) {
   return body;
 }
 
+// ── Viewer session ───────────────────────────────────────────────────────────────────────────────
+// The identity is already inside the token the bridge holds: BorgIQ issues the app token for the
+// signed-in viewer, with their id, name and email as claims, and only the origin-checked trusted
+// parent ever delivers it. So the session is decoded client-side here — no extra request. The result
+// is memoized for the page load; token re-posts (the parent's pre-expiry refresh) are deliberately
+// ignored because the claims are stable per viewer per page load.
+
+/** Decode a JWT's payload segment (base64url). Returns null on ANY malformed input — never throws. */
+function decodeTokenPayload(token) {
+  try {
+    const segment = String(token).split('.')[1];
+    if (!segment) return null;
+    let base64 = segment.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4 !== 0) base64 += '=';
+    // UTF-8-safe: plain atob() + JSON.parse mangles non-ASCII names.
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+}
+
+/** Module-level memo of the resolved session; cleared on rejection so a failure stays retryable. */
+let sessionPromise = null;
+
+async function resolveSession() {
+  // Short-circuit BEFORE touching the bridge, so the impossible cases fail immediately instead of
+  // hanging for TOKEN_WAIT_MS: no browser, the checked-in stub \`generated.js\` (i.e. \`npm run dev\`),
+  // or a top-level page with no parent to ask.
+  if (typeof window === 'undefined') throw new SessionUnavailableError('there is no browser window');
+  if (!trustedParentOrigin) throw new SessionUnavailableError('this app was not built by BorgIQ (running locally?)');
+  if (window.parent === window) throw new SessionUnavailableError('the app is not embedded in BorgIQ');
+
+  const token = await getBridge().getToken(); // may throw TokenTimeoutError
+  const claims = decodeTokenPayload(token);
+  // An absent user id is a real error, not a silent null: it distinguishes misconfiguration from
+  // "still loading".
+  if (!claims || !claims.userId) throw new SessionUnavailableError('the app token carries no viewer identity');
+  return { id: claims.userId, email: claims.userEmail ?? '', name: claims.userName ?? '' };
+}
+
 // ── Public surface ───────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -295,6 +347,62 @@ export function useEndpoint(name, search, init) {
 }
 
 /**
+ * The signed-in viewer of this app — \`{ id, email, name }\` (\`name\` may be \`''\`). Non-hook parity with
+ * \`callEndpoint\`; usable anywhere. Rejects with \`SessionUnavailableError\` when no session can exist
+ * here (not embedded, local \`npm run dev\`, or a token without identity claims), or \`TokenTimeoutError\`
+ * if the token bridge never produced a token.
+ *
+ * Memoized for the page load, so repeated calls are free; a rejection clears the memo, so a transient
+ * startup \`TokenTimeoutError\` is retryable on a later call.
+ */
+export function getSession() {
+  if (!sessionPromise) {
+    sessionPromise = resolveSession().catch((err) => {
+      sessionPromise = null;
+      throw err;
+    });
+  }
+  return sessionPromise;
+}
+
+/**
+ * React hook — the signed-in viewer, resolved automatically on mount. Unlike \`useEndpoint\` this is
+ * passive data, so there is no \`trigger()\`: \`data\` is \`null\` until it resolves (and on error).
+ *
+ *   const { data: session, loading, error } = useGetSession();
+ *   if (session) return <p>Hello, {session.name || session.email}</p>;
+ */
+export function useGetSession() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await getSession();
+        if (!cancelled) {
+          setData(session);
+          setError(null);
+        }
+      } catch (err) {
+        const normalized = err instanceof Error ? err : new Error(String(err));
+        if (!cancelled) {
+          setData(null);
+          setError(normalized);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  return { data, loading, error };
+}
+
+/**
  * Router basename for the token path (e.g. \`/v1/app/<token>/\`), read via \`document.baseURI\` from the
  * \`<base>\` tag the platform injects when it serves the app. Feed this to a router's \`basename\`
  * (React Router) so client-side routes resolve under the token root instead of the origin.
@@ -310,7 +418,7 @@ export function getBasename() {
   return '/';
 }
 
-export const version = '2.0.0';
+export const version = '2.1.0';
 `;
 
 const INDEX_D_TS = `// Hand-maintained type declarations for @borgiq/actors (no build step). Fetch-protocol surface.
@@ -372,6 +480,28 @@ export declare class TokenTimeoutError extends Error {
   constructor();
 }
 
+/** Raised when no viewer session can exist here (not embedded / dev mode / token has no identity). */
+export declare class SessionUnavailableError extends Error {
+  readonly name: 'SessionUnavailableError';
+  constructor(detail?: string);
+}
+
+/** The authenticated viewer of the rendered app. \`name\` may be \`''\`. */
+export interface SessionUser {
+  id: string;
+  email: string;
+  name: string;
+}
+
+/** State returned by {@link useGetSession}. Passive data — there is no \`trigger()\`. */
+export interface UseGetSessionResult {
+  /** the viewer, or \`null\` until resolved (and on error) */
+  data: SessionUser | null;
+  loading: boolean;
+  /** \`SessionUnavailableError\` | \`TokenTimeoutError\` | \`Error\` */
+  error: Error | null;
+}
+
 /**
  * React hook — browser-fetch semantics against a named endpoint. Does not auto-fetch; call \`trigger()\`.
  * @param name   the declared endpoint name (the baked lookup key)
@@ -382,6 +512,12 @@ export declare function useEndpoint<T = unknown>(name: string, search?: Endpoint
 
 /** Non-hook form of {@link useEndpoint}; resolves with the parsed response body. */
 export declare function callEndpoint<T = unknown>(name: string, search?: EndpointSearch, init?: EndpointRequestInit): Promise<T>;
+
+/** React hook — resolves the signed-in viewer automatically on mount (passive data; no \`trigger()\`). */
+export declare function useGetSession(): UseGetSessionResult;
+
+/** Non-hook parity with {@link callEndpoint}; rejects with \`SessionUnavailableError\` | \`TokenTimeoutError\`. */
+export declare function getSession(): Promise<SessionUser>;
 
 /** Router basename for the token path (from \`document.baseURI\`, i.e. the injected \`<base>\` tag). */
 export declare function getBasename(): string;
