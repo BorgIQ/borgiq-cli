@@ -189,9 +189,23 @@ export interface ActorConfig {
         code?: string; // Only for detection of incorrect placement
       };
       outputs?: unknown;
+      // Static trigger config — siblings of `options`, never interpolated, read at admission.
+      schedule?: {
+        cron?: string;
+        timezone?: string;
+        enabled?: boolean;
+        preventOverlappingFlowruns?: boolean;
+      };
+      webhook?: {
+        triggerKey?: string;
+        authorizationLevel?: string;
+        allowedMethods?: string[];
+        responseTimeout?: number;
+        enabled?: boolean;
+      };
       connection?: {
         key?: string;
-        type?: string;
+        type?: string | string[];
       };
       error?: {
         if?: string;
@@ -841,9 +855,12 @@ function validateHttpRequestActor(
     errors.push(`${prefix}: 'auth' is set but 'connection' is missing`);
   }
 
+  // A connection without a `key` is a legitimate unbound state: actor templates carry only
+  // `connection.type` so the key can be chosen when the actor is added to a canvas, and the
+  // API only checks the key when one is present. Warn rather than reject.
   if (config.connection && !config.connection.key) {
-    errors.push(
-      `${prefix}: 'connection' is set but 'connection.key' is missing`,
+    warnings.push(
+      `${prefix}: 'connection' has no 'key' - expected for actor templates, but a deployed actor needs one to authenticate`,
     );
   }
 }
@@ -1584,34 +1601,33 @@ function validateScheduledTriggerActor(
 ): void {
   const prefix = `Actor '${actorId}'`;
 
-  if (!config?.options) {
-    errors.push(`${prefix}: Missing 'configuration.options'`);
+  // Schedule config is static and admission-consumed, so it is a sibling of `options`
+  // (`configuration.schedule`), not part of the interpolated `options` blob.
+  const schedule = config.schedule;
+
+  if (!schedule) {
+    errors.push(`${prefix}: Missing required 'configuration.schedule' (cron expression)`);
     return;
   }
 
-  const options = config.options as {
-    schedule?: string;
-    timezone?: string;
-  };
-
-  if (!options.schedule) {
-    errors.push(`${prefix}: Missing required 'configuration.options.schedule' (cron expression)`);
-  } else if (typeof options.schedule !== "string") {
-    errors.push(`${prefix}: 'configuration.options.schedule' must be a string`);
-  } else if (!isValidCronExpression(options.schedule)) {
+  if (!schedule.cron) {
+    errors.push(`${prefix}: Missing required 'configuration.schedule.cron' (cron expression)`);
+  } else if (typeof schedule.cron !== "string") {
+    errors.push(`${prefix}: 'configuration.schedule.cron' must be a string`);
+  } else if (!isValidCronExpression(schedule.cron)) {
     errors.push(
-      `${prefix}: Invalid cron expression '${options.schedule}'. Expected format: 'minute hour day-of-month month day-of-week' (e.g., '* * * * *' or '0 9 * * MON-FRI')`,
+      `${prefix}: Invalid cron expression '${schedule.cron}'. Expected format: 'minute hour day-of-month month day-of-week' (e.g., '* * * * *' or '0 9 * * MON-FRI')`,
     );
   }
 
-  if (options.timezone !== undefined) {
-    if (typeof options.timezone !== "string") {
-      errors.push(`${prefix}: 'configuration.options.timezone' must be a string`);
-    } else if (options.timezone.trim() === "") {
-      errors.push(`${prefix}: 'configuration.options.timezone' cannot be empty`);
-    } else if (!COMMON_TIMEZONES.includes(options.timezone)) {
+  if (schedule.timezone !== undefined) {
+    if (typeof schedule.timezone !== "string") {
+      errors.push(`${prefix}: 'configuration.schedule.timezone' must be a string`);
+    } else if (schedule.timezone.trim() === "") {
+      errors.push(`${prefix}: 'configuration.schedule.timezone' cannot be empty`);
+    } else if (!COMMON_TIMEZONES.includes(schedule.timezone)) {
       warnings.push(
-        `${prefix}: 'timezone' '${options.timezone}' is not a commonly used timezone. Ensure it's a valid IANA timezone identifier.`,
+        `${prefix}: 'timezone' '${schedule.timezone}' is not a commonly used timezone. Ensure it's a valid IANA timezone identifier.`,
       );
     }
   }
