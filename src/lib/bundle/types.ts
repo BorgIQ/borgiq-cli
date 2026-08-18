@@ -140,7 +140,7 @@ export const CONFIGURATION_KEY_ORDER = [
   'connection',
   'webhook',
   'schedule',
-  'orchestrator',
+  'lifecycle',
   'aiAgentToolActorIds',
   'credentials',
   'codeDir',
