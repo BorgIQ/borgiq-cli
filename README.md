@@ -456,8 +456,8 @@ meets a code shape it cannot represent. A bundle pulled before this release has
 `bundle validate` says so too. A canvas whose code actors the platform has not converted
 yet pulls into the same layout, with the actor's source written to its entrypoint file, so
 the first push afterwards converts it — expect one pending update per such actor even
-before you edit anything. Local tooling output under `code/` (`node_modules/`, `dist/`, `.venv/`,
-`__pycache__/`, lockfiles) is never read, written, or deleted by the CLI.
+before you edit anything. Local tooling output under `code/` (`node_modules/`, `dist/`,
+`.venv/`, `__pycache__/`, lockfiles) is never read, written, or deleted by the CLI.
 
 #### React App actors
 
