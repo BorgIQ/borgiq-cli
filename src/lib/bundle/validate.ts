@@ -423,7 +423,9 @@ const validateProjectPaths = (
   if (spec.entrypoint === undefined) return;
   // An actor with no project source at all is the API's business, not the bundle format's.
   if (project.length === 0 && configuration.codeDir === undefined) return;
-  if (byFold.has(spec.entrypoint.toLowerCase())) return;
+  // Matched exactly, the way the runtime imports it and the API validates it: on a
+  // case-sensitive filesystem 'Main.ts' is simply a different file.
+  if (project.some((file) => file.path === spec.entrypoint)) return;
 
   const staleEntrypoint = project.find((file) => /^mod\.(ts|py)$/.test(file.path));
   errors.push({

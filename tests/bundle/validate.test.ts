@@ -133,6 +133,14 @@ describe('validateBundle', () => {
     expect(messages(validateBundle(python).errors)).toMatch(/PythonActor needs an entrypoint file at code\/main\.py/);
   });
 
+  it('holds the entrypoint to its exact name, as the API does', () => {
+    const files = validFiles();
+    files[`${TASK_DIR}/code/Main.ts`] = files[`${TASK_DIR}/code/main.ts`];
+    delete files[`${TASK_DIR}/code/main.ts`];
+
+    expect(messages(validateBundle(files).errors)).toMatch(/needs an entrypoint file at code\/main\.ts/);
+  });
+
   it('tells a bundle still on the old entrypoint name how to migrate', () => {
     const files = validFiles();
     files[`${TASK_DIR}/code/mod.ts`] = files[`${TASK_DIR}/code/main.ts`];
