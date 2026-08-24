@@ -414,7 +414,8 @@ const validateProjectPaths = (
     if (reserved !== null) {
       errors.push({
         path: `${codePrefix}${file.path}`,
-        message: `'${file.path}' is reserved by the BorgIQ runtime ('${reserved}') and may not appear in a bundle.`,
+        message: `'${file.path}' is reserved by the BorgIQ runtime${reserved === file.path ? '' : ` ('${reserved}')`}`
+          + ' and may not appear in a bundle.',
       });
     }
   }
