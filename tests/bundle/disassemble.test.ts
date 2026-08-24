@@ -5,7 +5,21 @@ import { disassemble } from '../../src/lib/bundle/disassemble.js';
 import { parseExportInput } from '../../src/lib/bundle/envelope.js';
 import { parseYamlDoc } from '../../src/lib/bundle/yaml.js';
 import type { BundleRootDoc } from '../../src/lib/bundle/types.js';
-import { EDGE_ID, TASK_ID, TRIGGER_ID, makeActor, makeDoc, makeWiredDoc } from './fixtures.js';
+import {
+  DENO_DIR,
+  DENO_PROJECT,
+  EDGE_ID,
+  LEGACY_DENO_CODE,
+  PYTHON_DIR,
+  PYTHON_PROJECT,
+  TASK_ID,
+  TRIGGER_ID,
+  makeActor,
+  makeDoc,
+  makeLegacyDenoActor,
+  makePythonActor,
+  makeWiredDoc,
+} from './fixtures.js';
 
 const root = (files: Record<string, string>): BundleRootDoc => parseYamlDoc(files['canvas.yaml']) as BundleRootDoc;
 
@@ -13,8 +27,9 @@ describe('disassemble', () => {
   it('produces canvas.yaml plus one folder per actor at the registry path', () => {
     const { files } = disassemble(makeWiredDoc());
     expect(Object.keys(files).sort()).toEqual([
-      `actors/tasks/deno/${TASK_ID}/actor.yaml`,
-      `actors/tasks/deno/${TASK_ID}/code/mod.ts`,
+      `${DENO_DIR}/actor.yaml`,
+      `${DENO_DIR}/code/lib/greeting.ts`,
+      `${DENO_DIR}/code/main.ts`,
       `actors/triggers/webhook/${TRIGGER_ID}/actor.yaml`,
       'canvas.yaml',
     ]);
@@ -34,16 +49,54 @@ describe('disassemble', () => {
     expect(actorDoc.position).toBeUndefined();
   });
 
-  it('externalizes code-heavy actors', () => {
+  it('externalizes a code actor project tree file by file', () => {
     const deno = disassemble(makeWiredDoc()).files;
-    expect(deno[`actors/tasks/deno/${TASK_ID}/code/mod.ts`]).toContain('export default');
-    const denoActor = parseYamlDoc(deno[`actors/tasks/deno/${TASK_ID}/actor.yaml`]) as { configuration: Record<string, unknown> };
+    expect(deno[`${DENO_DIR}/code/main.ts`]).toBe(DENO_PROJECT[1].content);
+    expect(deno[`${DENO_DIR}/code/lib/greeting.ts`]).toBe(DENO_PROJECT[0].content);
+    const denoActor = parseYamlDoc(deno[`${DENO_DIR}/actor.yaml`]) as { configuration: Record<string, unknown> };
     expect(denoActor.configuration.codeDir).toBe('code');
     expect(denoActor.configuration.code).toBeUndefined();
 
-    const pyDoc = makeDoc([makeActor({ id: TASK_ID, type: 'PythonActor', configuration: { code: 'x = 1\n', options: {} } })]);
-    const py = disassemble(pyDoc).files;
-    expect(py[`actors/tasks/python/${TASK_ID}/code/mod.py`]).toBe('x = 1\n');
+    const py = disassemble(makeDoc([makePythonActor()])).files;
+    expect(py[`${PYTHON_DIR}/code/main.py`]).toBe(PYTHON_PROJECT[1].content);
+    expect(py[`${PYTHON_DIR}/code/lib/greeting.py`]).toBe(PYTHON_PROJECT[0].content);
+  });
+
+  it('materializes a legacy code string as the entrypoint file and drops the string', () => {
+    const { files, warnings } = disassemble(makeDoc([makeLegacyDenoActor()]));
+
+    expect(files[`${DENO_DIR}/code/main.ts`]).toBe(LEGACY_DENO_CODE);
+    const actorDoc = parseYamlDoc(files[`${DENO_DIR}/actor.yaml`]) as { configuration: Record<string, unknown> };
+    expect(actorDoc.configuration.codeDir).toBe('code');
+    expect(actorDoc.configuration.code).toBeUndefined();
+    expect(warnings).toEqual([]);
+  });
+
+  it('leaves a project tree inline when a path cannot be written, keeping every file', () => {
+    const { files, warnings } = disassemble(makeDoc([makeLegacyDenoActor({
+      configuration: {
+        codeDir: [{ path: 'main.ts', content: 'a' }, { path: '../escape.ts', content: 'b' }],
+        options: {},
+      },
+    })]));
+
+    expect(Object.keys(files).some((path) => path.includes('/code/'))).toBe(false);
+    const actorDoc = parseYamlDoc(files[`${DENO_DIR}/actor.yaml`]) as { configuration: Record<string, unknown> };
+    expect(actorDoc.configuration.codeDir).toEqual([
+      { path: 'main.ts', content: 'a' },
+      { path: '../escape.ts', content: 'b' },
+    ]);
+    expect(warnings[0]).toMatch(/cannot be written to disk safely/);
+  });
+
+  it('refuses a multi-file shape it cannot represent, pointing at the upgrade', () => {
+    const doc = makeDoc([makeActor({
+      id: TASK_ID,
+      type: 'AppTriggerActor',
+      configuration: { codeDir: [{ path: 'index.html', content: '<h1>hi</h1>' }], options: {} },
+    })]);
+
+    expect(() => disassemble(doc)).toThrow(/multi-file actor code.*upgrade @borgiq\/cli/);
   });
 
   it('splits app inline strings but leaves BIQFile references inline', () => {
@@ -70,7 +123,7 @@ describe('disassemble', () => {
     const doc = makeDoc([makeActor({ id: TASK_ID, type: 'DenoActor', configuration: { options: {} } })]);
     const { files } = disassemble(doc);
     expect(Object.keys(files).some((path) => path.includes('/code/'))).toBe(false);
-    const actorDoc = parseYamlDoc(files[`actors/tasks/deno/${TASK_ID}/actor.yaml`]) as { configuration: Record<string, unknown> };
+    const actorDoc = parseYamlDoc(files[`${DENO_DIR}/actor.yaml`]) as { configuration: Record<string, unknown> };
     expect(actorDoc.configuration.codeDir).toBeUndefined();
   });
 
@@ -104,7 +157,7 @@ describe('disassemble', () => {
     const errors = [{ actorId: TASK_ID, field: 'options', error: 'bad yaml' }];
     const doc = root(disassemble(makeWiredDoc(), { exportErrors: errors }).files);
     expect(doc.actors.map((actor) => actor.path)).toEqual([
-      `actors/tasks/deno/${TASK_ID}`,
+      DENO_DIR,
       `actors/triggers/webhook/${TRIGGER_ID}`,
     ]);
     expect(doc.exportErrors).toEqual(errors);

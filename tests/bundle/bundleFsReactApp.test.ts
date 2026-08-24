@@ -139,14 +139,21 @@ describe('readBundleDirDetailed: react-app channel classification', () => {
       .toEqual([`${PROJECT}/src/broken.tsx`, `${PROJECT}/src/nul.tsx`]);
   });
 
-  it('classifies only react-app project paths, leaving other actors untouched', () => {
-    writeBundleDir(dir, { ...MANAGED, 'actors/tasks/deno/ACTR2/code/mod.ts': 'export default 1\n' });
-    writeLocal('actors/tasks/deno/ACTR2/code/node_modules/x/index.js', 'x\n');
+  it('keeps the asset channel react-app-only, even for an identically named directory', () => {
+    const denoProject = 'actors/tasks/deno/ACTR2/code';
+    writeBundleDir(dir, { ...MANAGED, [`${denoProject}/main.ts`]: 'export default 1\n' });
+    writeLocal(`${denoProject}/src/assets/hero.png`, PNG);
+    writeLocal(`${PROJECT}/src/assets/hero.png`, PNG);
 
-    const { files } = readBundleDirDetailed(dir);
+    const { files, assets, skipped } = readBundleDirDetailed(dir);
 
-    expect(files['actors/tasks/deno/ACTR2/code/mod.ts']).toBe('export default 1\n');
-    expect(files['actors/tasks/deno/ACTR2/code/node_modules/x/index.js']).toBe('x\n');
+    expect(assets.map((asset) => asset.bundlePath)).toEqual([`${PROJECT}/src/assets/hero.png`]);
+    expect(files[`${denoProject}/main.ts`]).toBe('export default 1\n');
+    // Under a code actor, that PNG is just a binary file the CLI cannot carry.
+    expect(skipped).toContainEqual(expect.objectContaining({
+      bundlePath: `${denoProject}/src/assets/hero.png`,
+      reason: 'binary',
+    }));
   });
 
   it('readBundleDir stays a thin wrapper over the same classification', () => {

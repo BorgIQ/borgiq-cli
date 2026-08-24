@@ -5,12 +5,35 @@ import { actorContentHash } from '../../src/lib/bundle/diff.js';
 import { disassemble } from '../../src/lib/bundle/disassemble.js';
 import { stringifyYamlDoc } from '../../src/lib/bundle/yaml.js';
 import type { CanvasExportDocument } from '../../src/lib/bundle/types.js';
-import { EDGE_ID, TASK_ID, TRIGGER_ID, makeActor, makeDoc, makeReactAppActor, makeWiredDoc } from './fixtures.js';
+import {
+  DENO_DIR,
+  DENO_PROJECT,
+  EDGE_ID,
+  LEGACY_DENO_CODE,
+  TASK_ID,
+  TRIGGER_ID,
+  makeActor,
+  makeDenoActor,
+  makeDoc,
+  makeLegacyWiredDoc,
+  makePythonActor,
+  makeReactAppActor,
+  makeWiredDoc,
+} from './fixtures.js';
 
 const documents: [string, () => CanvasExportDocument][] = [
   ['wired webhook to deno canvas', makeWiredDoc],
   ['http task', () => makeDoc([makeActor({ id: TASK_ID, type: 'HttpRequestActor', configuration: { options: { method: 'GET', url: 'https://x' } } })])],
-  ['python actor', () => makeDoc([makeActor({ id: TASK_ID, type: 'PythonActor', configuration: { code: 'x = 1\n', options: {} } })])],
+  ['python actor project tree', () => makeDoc([makePythonActor()])],
+  ['deno actor with nested helper folders', () => makeDoc([makeDenoActor({
+    configuration: {
+      codeDir: [
+        { path: 'lib/deep/util.ts', content: 'export const x = 1;\n' },
+        { path: 'main.ts', content: "import { x } from './lib/deep/util.ts';\nexport default async () => ({ results: { x } });\n" },
+      ],
+      options: {},
+    },
+  })])],
   ['app actor with inline assets', () => makeDoc([makeActor({ id: TASK_ID, type: 'AppTriggerActor', configuration: { options: { html: '<h1>a</h1>', css: 'h1{}', script: 'let a;', allowInlineScripts: true } } })])],
   ['app actor with BIQFile refs', () => makeDoc([makeActor({ id: TASK_ID, type: 'AppTriggerActor', configuration: { options: { html: { type: 'BIQFile', fileId: 'F1' }, css: { type: 'BIQFile', fileId: 'F2' } } } })])],
   ['schemas and credentials', () => makeDoc([
@@ -87,8 +110,24 @@ describe('round-trip guarantees', () => {
 
   it('throws BundleValidationError carrying all findings on an invalid bundle', () => {
     const { files } = disassemble(makeWiredDoc());
-    delete files[`actors/tasks/deno/${TASK_ID}/code/mod.ts`];
+    delete files[`${DENO_DIR}/code/main.ts`];
     expect(() => assembleBundle(files)).toThrow(BundleValidationError);
+  });
+
+  it('migrates a legacy code string on the way through: pull writes files, pack sends codeDir', () => {
+    const { files } = disassemble(makeLegacyWiredDoc());
+    expect(files[`${DENO_DIR}/code/main.ts`]).toBe(LEGACY_DENO_CODE);
+
+    const configuration = assembleBundle(files).doc.data.actors[TASK_ID].configuration!;
+    expect(configuration.codeDir).toEqual([{ path: 'main.ts', content: LEGACY_DENO_CODE }]);
+    expect(configuration.code).toBeUndefined();
+  });
+
+  it('rebuilds a code actor project sorted by path, whatever order the file map has', () => {
+    const { files } = disassemble(makeWiredDoc());
+    const shuffled = Object.fromEntries(Object.entries(files).reverse());
+
+    expect(assembleBundle(shuffled).doc.data.actors[TASK_ID].configuration!.codeDir).toEqual(DENO_PROJECT);
   });
 
   it('surfaces validation warnings as assembly warnings', () => {

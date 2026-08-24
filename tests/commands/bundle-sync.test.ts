@@ -26,7 +26,15 @@ import type { CanvasExportDocument } from '../../src/lib/bundle/types.js';
 import { stringifyYamlDoc } from '../../src/lib/bundle/yaml.js';
 import { readBundleDir, writeBundleDir } from '../../src/lib/bundleFs.js';
 import { ExitCode } from '../../src/lib/errors.js';
-import { makeActor, makeDoc } from '../bundle/fixtures.js';
+import {
+  DENO_PROJECT,
+  LEGACY_DENO_CODE,
+  TASK_ID,
+  makeActor,
+  makeDenoActor,
+  makeDoc,
+  makeLegacyDenoActor,
+} from '../bundle/fixtures.js';
 
 const ACTOR_ID = 'ACTR01sync0000000000000000000';
 const command = { parent: { parent: { opts: () => ({ json: true }) } } };
@@ -393,5 +401,89 @@ describe('bundle pull sync orchestration', () => {
 
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('export reported 1 actor error'));
     expect(fs.existsSync(bundleDir)).toBe(false);
+  });
+});
+
+describe('multi-file code actor sync', () => {
+  const DENO_CODE_DIR = `actors/tasks/deno/${TASK_ID}/code`;
+
+  const pushed = (): Record<string, unknown> => {
+    const [, , , body] = client.batchActorOperations.mock.calls[0] as [string, string, string, { operations: { data: Record<string, unknown> }[] }];
+    return body.operations[0].data.configuration as Record<string, unknown>;
+  };
+
+  it('pulls a legacy code string into the entrypoint file, and the next push sends codeDir', async () => {
+    const server = makeDoc([makeLegacyDenoActor()]);
+    client.exportCanvas.mockResolvedValue(envelope(server));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [TASK_ID]: 1 } });
+
+    await bundlePull('test-canvas', bundleDir, {}, command);
+
+    expect(fs.readFileSync(path.join(bundleDir, DENO_CODE_DIR, 'main.ts'), 'utf-8')).toBe(LEGACY_DENO_CODE);
+
+    // The pulled bundle is already the migrated shape, so pushing it migrates the actor.
+    client.batchActorOperations.mockResolvedValue(successfulBatch(TASK_ID));
+    client.exportCanvas.mockResolvedValue(envelope(makeDoc([makeLegacyDenoActor({ name: 'Server copy' })])));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [TASK_ID]: 1 } });
+
+    await bundlePush(bundleDir, { forceLocal: true }, command);
+
+    expect(pushed().codeDir).toEqual([{ path: 'main.ts', content: LEGACY_DENO_CODE }]);
+    expect(pushed().code).toBeUndefined();
+  });
+
+  it('pushes the whole tree when one helper file changes locally', async () => {
+    const server = makeDoc([makeDenoActor()]);
+    writeLocal(server, { [TASK_ID]: 1 }, server);
+    fs.writeFileSync(path.join(bundleDir, DENO_CODE_DIR, 'lib/greeting.ts'), 'export const greeting = () => "edited";\n');
+    client.exportCanvas.mockResolvedValue(envelope(server));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [TASK_ID]: 1 } });
+    client.batchActorOperations.mockResolvedValue(successfulBatch(TASK_ID));
+
+    await bundlePush(bundleDir, {}, command);
+
+    expect(pushed().codeDir).toEqual([
+      { path: 'lib/greeting.ts', content: 'export const greeting = () => "edited";\n' },
+      { path: 'main.ts', content: DENO_PROJECT[1].content },
+    ]);
+  });
+
+  it('sees no local edit when the server returns the same tree in a different order', async () => {
+    const server = makeDoc([makeDenoActor()]);
+    writeLocal(server, { [TASK_ID]: 1 }, server);
+    const unordered = makeDoc([makeDenoActor({
+      configuration: {
+        codeDir: [...DENO_PROJECT].reverse().map((file) => ({ ...file })),
+        inputs: {},
+        options: { allowNet: true, allowFs: true },
+      },
+    })]);
+    client.exportCanvas.mockResolvedValue(envelope(unordered));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [TASK_ID]: 1 } });
+
+    await bundlePush(bundleDir, { dryRun: true }, command);
+
+    const summary = mocks.output.mock.calls[0][0] as { summary: { updated: number; unchanged: number } };
+    expect(summary.summary).toMatchObject({ updated: 0, unchanged: 1 });
+  });
+
+  it('refuses to pull a shape it cannot represent, pointing at the upgrade', async () => {
+    const future = makeDoc([makeActor({
+      id: TASK_ID,
+      type: 'AppTriggerActor',
+      configuration: { codeDir: [{ path: 'index.html', content: '<h1>hi</h1>' }], options: {} },
+    })]);
+    client.exportCanvas.mockResolvedValue(envelope(future));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [TASK_ID]: 1 } });
+    const exit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${String(code)}`);
+    }) as never);
+
+    // A fatal bundle error exits the process rather than writing a half-built bundle.
+    await expect(bundlePull('test-canvas', bundleDir, {}, command)).rejects.toThrow(`exit:${ExitCode.GENERAL}`);
+
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('upgrade @borgiq/cli'));
+    expect(fs.existsSync(bundleDir)).toBe(false);
+    exit.mockRestore();
   });
 });
