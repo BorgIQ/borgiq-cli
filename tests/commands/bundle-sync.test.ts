@@ -421,13 +421,13 @@ describe('multi-file code actor sync', () => {
 
     expect(fs.readFileSync(path.join(bundleDir, DENO_CODE_DIR, 'main.ts'), 'utf-8')).toBe(LEGACY_DENO_CODE);
 
-    // The pulled bundle is already the migrated shape, so pushing it migrates the actor.
+    // The pulled bundle is already the migrated shape, so the next push - with no local
+    // edit at all - is what converts the actor on the server. It is not a conflict.
     client.batchActorOperations.mockResolvedValue(successfulBatch(TASK_ID));
-    client.exportCanvas.mockResolvedValue(envelope(makeDoc([makeLegacyDenoActor({ name: 'Server copy' })])));
-    client.getCanvas.mockResolvedValue({ actorVersions: { [TASK_ID]: 1 } });
 
-    await bundlePush(bundleDir, { forceLocal: true }, command);
+    await bundlePush(bundleDir, {}, command);
 
+    expect(process.exitCode).toBeUndefined();
     expect(pushed().codeDir).toEqual([{ path: 'main.ts', content: LEGACY_DENO_CODE }]);
     expect(pushed().code).toBeUndefined();
   });
