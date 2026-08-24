@@ -4,31 +4,18 @@ import {
   MAX_OPTIONS_FILES,
   assetExpression,
   assetKeyForFileName,
-  isIgnoredProjectDir,
-  isIgnoredProjectPath,
   isReactAppAssetPath,
   managedAssetEntries,
   optionsFileEntries,
   parseAssetExpression,
   reactAppCodePrefix,
-  splitReactAppCodePath,
   unmanagedAssetDirEntries,
 } from '../../src/lib/bundle/reactApp.js';
 import { REACT_APP_ID } from './fixtures.js';
 
 describe('react-app path helpers', () => {
-  it('maps actor ids to their project prefix and back', () => {
+  it('maps an actor id to its project prefix', () => {
     expect(reactAppCodePrefix(REACT_APP_ID)).toBe(`actors/triggers/react-app/${REACT_APP_ID}/code/`);
-    expect(splitReactAppCodePath(`actors/triggers/react-app/${REACT_APP_ID}/code/src/App.tsx`))
-      .toEqual({ actorId: REACT_APP_ID, projectPath: 'src/App.tsx' });
-  });
-
-  it('ignores paths outside a react-app project tree', () => {
-    // Another project type's tree is somebody else's; the asset channel is react-app-only.
-    expect(splitReactAppCodePath(`actors/tasks/deno/${REACT_APP_ID}/code/main.ts`)).toBeUndefined();
-    expect(splitReactAppCodePath(`actors/triggers/react-app/${REACT_APP_ID}/actor.yaml`)).toBeUndefined();
-    expect(splitReactAppCodePath(`actors/triggers/react-app/${REACT_APP_ID}/code/`)).toBeUndefined();
-    expect(splitReactAppCodePath('canvas.yaml')).toBeUndefined();
   });
 
   it('recognizes the asset directory only for files inside it', () => {
@@ -38,41 +25,6 @@ describe('react-app path helpers', () => {
     expect(isReactAppAssetPath('src/assets/')).toBe(false);
     expect(isReactAppAssetPath('public/vite.svg')).toBe(false);
     expect(isReactAppAssetPath('src/App.tsx')).toBe(false);
-  });
-});
-
-describe('isIgnoredProjectPath', () => {
-  it('ignores tooling directories at any depth', () => {
-    expect(isIgnoredProjectPath('node_modules/react/index.js').ignored).toBe(true);
-    expect(isIgnoredProjectPath('packages/ui/node_modules/react/index.js').ignored).toBe(true);
-    expect(isIgnoredProjectPath('dist/assets/index.js').ignored).toBe(true);
-    expect(isIgnoredProjectPath('.vite/deps/react.js').ignored).toBe(true);
-    expect(isIgnoredProjectPath('__borgiq_sdk_placeholder__/index.js').ignored).toBe(true);
-  });
-
-  it('ignores lockfiles and editor droppings', () => {
-    for (const name of ['deno.lock', 'package-lock.json', 'pnpm-lock.yaml', 'bun.lockb', '.DS_Store']) {
-      expect(isIgnoredProjectPath(name).ignored).toBe(true);
-    }
-    expect(isIgnoredProjectPath('src/.DS_Store').ignored).toBe(true);
-  });
-
-  it('ignores env files with a warning that points elsewhere', () => {
-    const verdict = isIgnoredProjectPath('.env.production');
-    expect(verdict.ignored).toBe(true);
-    expect(verdict.warn).toMatch(/VITE_\*/);
-    expect(isIgnoredProjectPath('.env').warn).toBeDefined();
-  });
-
-  it('keeps real source files', () => {
-    for (const path of ['src/App.tsx', 'package.json', 'index.html', 'src/assets/hero.png', 'public/vite.svg']) {
-      expect(isIgnoredProjectPath(path)).toEqual({ ignored: false });
-    }
-  });
-
-  it('exposes the directory names a walker must not descend into', () => {
-    expect(isIgnoredProjectDir('node_modules')).toBe(true);
-    expect(isIgnoredProjectDir('src')).toBe(false);
   });
 });
 

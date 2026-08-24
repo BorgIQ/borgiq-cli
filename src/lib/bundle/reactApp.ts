@@ -8,8 +8,7 @@
  */
 
 import { REACT_APP_TYPE } from './registry.js';
-import { isIgnoredProjectDirFor, isIgnoredProjectPathFor, projectCodePrefix, splitProjectCodePath } from './projectDir.js';
-import type { IgnoreVerdict, ProjectPathParts } from './projectDir.js';
+import { projectCodePrefix } from './projectDir.js';
 
 export { REACT_APP_TYPE };
 
@@ -25,23 +24,9 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 /** Bundle-relative prefix every project file of `actorId` lives under (trailing slash included). */
 export const reactAppCodePrefix = (actorId: string): string => projectCodePrefix(REACT_APP_TYPE, actorId);
 
-/** Inverse of `reactAppCodePrefix`: recognizes paths inside a React App project tree only. */
-export const splitReactAppCodePath = (bundlePath: string): Omit<ProjectPathParts, 'actorType'> | undefined => {
-  const parts = splitProjectCodePath(bundlePath);
-  if (!parts || parts.actorType !== REACT_APP_TYPE) return undefined;
-  return { actorId: parts.actorId, projectPath: parts.projectPath };
-};
-
 /** True for project paths under `src/assets/` - the auto-synced asset channel. */
 export const isReactAppAssetPath = (projectPath: string): boolean =>
   projectPath.startsWith(`${REACT_APP_ASSETS_DIR}/`) && projectPath.length > REACT_APP_ASSETS_DIR.length + 1;
-
-/** React App's ignore rules; the generic form takes the actor type. */
-export const isIgnoredProjectPath = (projectPath: string): IgnoreVerdict =>
-  isIgnoredProjectPathFor(projectPath, REACT_APP_TYPE);
-
-/** True when the directory itself should never be descended into by a project walker. */
-export const isIgnoredProjectDir = (dirName: string): boolean => isIgnoredProjectDirFor(dirName, REACT_APP_TYPE);
 
 const BRACKET_EXPRESSION = /^\$\{\{\s*assets\[\s*(["'])([\s\S]*?)\1\s*\]\s*\}\}$/;
 const DOT_EXPRESSION = /^\$\{\{\s*assets\.([A-Za-z_$][A-Za-z0-9_$]*)\s*\}\}$/;
