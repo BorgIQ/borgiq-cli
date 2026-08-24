@@ -44,7 +44,7 @@ interface ActorIndexEntry {
   path: string;
 }
 
-/** One file of a React App project, from either the `code/` tree or an inline `codeDir`. */
+/** One file of an actor's project, from either the `code/` tree or an inline `codeDir`. */
 interface ProjectFile {
   path: string;
   content: string;
@@ -403,7 +403,9 @@ const validateProjectPaths = (
     if (clashing !== undefined) {
       errors.push({
         path: `${codePrefix}${file.path}`,
-        message: `'${clashing}' and '${file.path}' differ only in letter case, which case-insensitive filesystems cannot represent.`,
+        message: clashing === file.path
+          ? `'${file.path}' appears twice - each project path may only be listed once.`
+          : `'${clashing}' and '${file.path}' differ only in letter case, which case-insensitive filesystems cannot represent.`,
       });
       continue;
     }

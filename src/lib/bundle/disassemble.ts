@@ -2,6 +2,7 @@ import { BUNDLE_PATH_REGISTRY, REACT_APP_TYPE, actorFolderPath, isKnownActorType
 import type { BundleActorType, BundleCodeFile } from './registry.js';
 import { actorContentHashes } from './diff.js';
 import { isSafeBundlePath } from './path.js';
+import { isIgnoredProjectPathFor } from './projectDir.js';
 import { REACT_APP_ASSETS_DIR, isReactAppAssetPath } from './reactApp.js';
 import {
   ACTOR_FILE,
@@ -226,18 +227,38 @@ const assertRepresentable = (
  * document the platform has not migrated yet - its single `configuration.code` string read as
  * the entrypoint file. Consuming the legacy string here is what makes the next push migrate
  * the actor, since assembly only ever writes `codeDir` back.
+ *
+ * The string is consumed on every path, never left beside the file list: a bundle carrying both
+ * has two sources of truth, which `validate` rejects - so leaving it would mean pulling a
+ * directory that cannot be validated, packed, or pushed.
  */
 const projectFileEntries = (
   configuration: Record<string, unknown>,
+  actorId: string,
   entrypoint: string | undefined,
+  warnings: string[],
 ): unknown[] | undefined => {
-  if (Array.isArray(configuration.codeDir)) return configuration.codeDir;
-  if (entrypoint === undefined) return undefined;
-  if (typeof configuration.code !== 'string' || configuration.code.length === 0) return undefined;
+  const legacyCode = typeof configuration.code === 'string' ? configuration.code : undefined;
 
-  const entries = [{ path: entrypoint, content: configuration.code }];
+  if (Array.isArray(configuration.codeDir)) {
+    if (legacyCode !== undefined) {
+      delete configuration.code;
+      if (legacyCode.length > 0) {
+        warnings.push(
+          `Actor ${actorId}: configuration.code was dropped because the actor also carries a file list, `
+          + 'which is the source of truth. The next push removes the leftover string from the actor.',
+        );
+      }
+    }
+    return configuration.codeDir;
+  }
+
+  if (entrypoint === undefined || legacyCode === undefined) return undefined;
+
+  // An empty string is not code: consume it so it cannot reappear as a second source, but
+  // write no entrypoint file for it - the actor simply has no code yet.
   delete configuration.code;
-  return entries;
+  return legacyCode.length > 0 ? [{ path: entrypoint, content: legacyCode }] : undefined;
 };
 
 /**
@@ -254,7 +275,7 @@ const externalizeProjectDir = (
   files: BundleFileMap,
   warnings: string[],
 ): void => {
-  const codeDir = projectFileEntries(configuration, BUNDLE_PATH_REGISTRY[type].entrypoint);
+  const codeDir = projectFileEntries(configuration, actorId, BUNDLE_PATH_REGISTRY[type].entrypoint, warnings);
   if (!codeDir) return;
 
   const pathsByFold = new Map<string, string>();
@@ -273,7 +294,9 @@ const externalizeProjectDir = (
     const fold = entry.path.toLowerCase();
     const clashing = pathsByFold.get(fold);
     if (clashing !== undefined) {
-      blockers.push(`paths '${clashing}' and '${entry.path}' differ only in letter case, which case-insensitive filesystems cannot represent`);
+      blockers.push(clashing === entry.path
+        ? `path '${entry.path}' appears twice`
+        : `paths '${clashing}' and '${entry.path}' differ only in letter case, which case-insensitive filesystems cannot represent`);
       continue;
     }
     pathsByFold.set(fold, entry.path);
@@ -290,6 +313,16 @@ const externalizeProjectDir = (
   }
 
   for (const entry of codeDir as { path: string; content: string }[]) {
+    // Writing a file the reader ignores would lose it on the next push without a word, since
+    // the bundle is rebuilt from what the reader collects.
+    if (isIgnoredProjectPathFor(entry.path, type).ignored) {
+      warnings.push(
+        `Actor ${actorId}: project file '${entry.path}' is a name the CLI never syncs, so it was not written to ${CODE_DIR}/. `
+        + 'A push from this bundle removes it from the actor; rename it in the editor to keep it.',
+      );
+      continue;
+    }
+
     files[`${dir}/${CODE_DIR}/${entry.path}`] = entry.content;
     if (type === REACT_APP_TYPE && isReactAppAssetPath(entry.path)) {
       warnings.push(

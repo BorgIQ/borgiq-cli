@@ -633,7 +633,6 @@ export async function validateYaml(
           validateCallFlowActor(actorId, config, actor.schemas, toolActorIds.has(actorId), errors, warnings);
         }
 
-
         validateActorCodeDir(actorId, actor.type, config, errors);
       }
 

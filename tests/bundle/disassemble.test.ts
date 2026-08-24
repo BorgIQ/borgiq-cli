@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { actorContentHash } from '../../src/lib/bundle/diff.js';
 import { disassemble } from '../../src/lib/bundle/disassemble.js';
+import { validateBundle } from '../../src/lib/bundle/validate.js';
 import { parseExportInput } from '../../src/lib/bundle/envelope.js';
 import { parseYamlDoc } from '../../src/lib/bundle/yaml.js';
 import type { BundleRootDoc } from '../../src/lib/bundle/types.js';
@@ -22,6 +23,9 @@ import {
 } from './fixtures.js';
 
 const root = (files: Record<string, string>): BundleRootDoc => parseYamlDoc(files['canvas.yaml']) as BundleRootDoc;
+
+const configurationOf = (files: Record<string, string>): Record<string, unknown> =>
+  (parseYamlDoc(files[`${DENO_DIR}/actor.yaml`]) as { configuration: Record<string, unknown> }).configuration;
 
 describe('disassemble', () => {
   it('produces canvas.yaml plus one folder per actor at the registry path', () => {
@@ -70,6 +74,49 @@ describe('disassemble', () => {
     expect(actorDoc.configuration.codeDir).toBe('code');
     expect(actorDoc.configuration.code).toBeUndefined();
     expect(warnings).toEqual([]);
+  });
+
+  it('consumes the legacy code string on every path, so a bundle never carries two sources', () => {
+    // A document mid-migration can hold both; the file list is the source of truth.
+    const both = disassemble(makeDoc([makeLegacyDenoActor({
+      configuration: {
+        code: LEGACY_DENO_CODE,
+        codeDir: [{ path: 'main.ts', content: 'export default 2;\n' }],
+        options: {},
+      },
+    })]));
+
+    expect(both.files[`${DENO_DIR}/code/main.ts`]).toBe('export default 2;\n');
+    expect(configurationOf(both.files).code).toBeUndefined();
+    expect(both.warnings[0]).toMatch(/configuration\.code was dropped/);
+    expect(validateBundle(both.files).errors).toEqual([]);
+
+    // An empty string is not code: it becomes no file rather than an unfollowable error.
+    const empty = disassemble(makeDoc([makeLegacyDenoActor({ configuration: { code: '', options: {} } })]));
+
+    expect(Object.keys(empty.files).some((path) => path.includes('/code/'))).toBe(false);
+    expect(configurationOf(empty.files).code).toBeUndefined();
+    expect(configurationOf(empty.files).codeDir).toBeUndefined();
+    expect(validateBundle(empty.files).errors).toEqual([]);
+  });
+
+  it('does not write a project file it would never read back', () => {
+    const { files, warnings } = disassemble(makeDoc([makeLegacyDenoActor({
+      configuration: {
+        codeDir: [
+          { path: 'main.ts', content: 'export default 1;\n' },
+          { path: '.env', content: 'TOKEN=secret\n' },
+        ],
+        options: {},
+      },
+    })]));
+
+    // Writing it would drop it silently on the next push, since the bundle is rebuilt
+    // from what the reader collects - and the reader never collects this name.
+    expect(files[`${DENO_DIR}/code/.env`]).toBeUndefined();
+    expect(files[`${DENO_DIR}/code/main.ts`]).toBe('export default 1;\n');
+    expect(warnings[0]).toMatch(/'\.env' is a name the CLI never syncs.*removes it from the actor/s);
+    expect(validateBundle(files).errors).toEqual([]);
   });
 
   it('leaves a project tree inline when a path cannot be written, keeping every file', () => {

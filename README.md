@@ -831,8 +831,6 @@ workflow JSON/YAML for the `borgiq-actor-builder` skill.
 - `borgiq validate <file.yaml> --skip-typecheck` — accepted for compatibility; actor code is no longer typechecked locally.
 - `borgiq validate <file.yaml> --post-process [--in-place]` — clean up redundant fields.
 
-Code typechecking (DenoActor/PythonActor) runs only when `deno` / `python3` are installed; otherwise it is skipped with a warning.
-
 ---
 
 ## Examples
