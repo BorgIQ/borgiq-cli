@@ -90,7 +90,12 @@ export interface BundlePathSpec {
 
 export const REACT_APP_TYPE = 'ReactAppTriggerActor';
 
-/** Reserved by the BorgIQ runtime for Deno, Deno Test, and Universal Trigger actors. */
+/**
+ * Reserved by the BorgIQ runtime for Deno, Deno Test, and Universal Trigger actors.
+ *
+ * These mirror what the BorgIQ API rejects on save, so a bundle fails locally rather than at
+ * push time. The API is the authority: keep these lists in step when it names a new one.
+ */
 export const DENO_RESERVED_PATHS: ReservedPathSet = {
   exact: [
     'server.ts',
