@@ -84,13 +84,23 @@ export interface ScaffoldActorOptions {
  * Build a valid CanvasActor from a platform actor schema. Defaults
  * (`options`, ports, LTM/STM, code support) come straight from the schema —
  * no hardcoded per-type tables — so every actor type scaffolds correctly.
+ *
+ * Multi-file code actors get a one-entry `configuration.codeDir` whose path is the
+ * entrypoint the schema names; a server that reports neither `multiFile` nor an
+ * `entrypoint` still gets the single `configuration.code` string it expects.
  */
 export const buildCanvasActor = (schema: BIQActorSchema, opts: ScaffoldActorOptions): ScaffoldedActor => {
   const configuration: Record<string, unknown> = {
     options: yamlStringify(schema.defaultOptions ?? {}),
   };
   if (schema.code.supported && schema.code.language) {
-    configuration.code = CODE_STUBS[schema.code.language];
+    const stub = CODE_STUBS[schema.code.language];
+    const entrypoint = schema.code.entrypoint;
+    if (schema.code.multiFile && entrypoint) {
+      configuration.codeDir = [{ path: entrypoint, content: stub }];
+    } else {
+      configuration.code = stub;
+    }
   }
 
   const actor: ScaffoldedActor = {

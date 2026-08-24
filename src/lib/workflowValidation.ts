@@ -7,33 +7,18 @@
  *   validate-and-post-process.ts post-process [options] <file.yaml> - Clean up unnecessary fields
  *
  * Validate options:
- *   --skip-typecheck  Skip TypeScript/Python validation for DenoActor/PythonActor code
+ *   --skip-typecheck  Accepted for compatibility; code is no longer typechecked locally
  *
  * Post-process options:
  *   -i, --in-place    Modify the file in place
  *
  * Examples:
  *   npx tsx scripts/validate-and-post-process.ts validate workflow.yaml
- *   npx tsx scripts/validate-and-post-process.ts validate --skip-typecheck workflow.yaml
  *   npx tsx scripts/validate-and-post-process.ts post-process -i workflow.yaml
  *   cat workflow.yaml | npx tsx scripts/validate-and-post-process.ts validate
  */
 
 import { parse, stringify } from "yaml";
-import * as fs from "fs/promises";
-import * as os from "os";
-import * as path from "path";
-import { spawn, spawnSync } from "child_process";
-
-/**
- * Returns true if `bin` is runnable on this machine. Used to make the
- * Deno/Python code typecheck best-effort: if the runtime is not installed we
- * skip (warn) instead of reporting a spurious validation failure.
- */
-function commandExists(bin: string): boolean {
-  const res = spawnSync(bin, ["--version"], { stdio: "ignore" });
-  return !res.error;
-}
 
 // ============================================================
 // Shared Interfaces
@@ -200,6 +185,8 @@ export interface ActorConfig {
         includeResult?: boolean;
       };
       code?: string;
+      /** Multi-file actor source: one entry per file, entrypoint included. */
+      codeDir?: Array<{ path?: string; content?: string }>;
     };
     schemas?: {
       inputs?: Record<string, unknown>;
@@ -493,144 +480,15 @@ function validateMsgVarReferences(
 }
 
 /**
- * Validates TypeScript/JavaScript code using deno check (called via Node.js child_process)
+ * `skipTypecheck` is accepted for backwards compatibility and does nothing: actor code is no
+ * longer typechecked locally. Local checks are pre-filters, never authority - the BorgIQ API
+ * validates a canvas on push.
  */
-async function validateDenoCode(
-  code: string,
-  actorId: string,
-): Promise<{ errors: string[]; warnings: string[] }> {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  const prefix = `Actor '${actorId}'`;
-
-  if (!commandExists("deno")) {
-    warnings.push(`${prefix}: 'deno' not found on PATH — skipping TypeScript validation.`);
-    return { errors, warnings };
-  }
-
-  // Strip out @borgiq/* imports and replace with local type definitions
-  const processedCode = code
-    .replace(/import\s+.*\s+from\s+["']@borgiq\/[^"']+["'];?\s*/g, "")
-    .replace(/import\s+type\s+.*\s+from\s+["']@borgiq\/[^"']+["'];?\s*/g, "");
-
-  // Create a wrapper that provides the BorgIQ type definitions
-  const wrappedCode = `
-// BorgIQ type definitions for validation
-interface RuntimeContext {
-  org: { id: string; name: string };
-  workspace: { id: string; slug: string; name: string; denoActorTimeoutInSeconds: number };
-  flow: { id: string; slug: string; name: string };
-  flowrun: { id: string; createdAt: string };
-  actor: { id: string; type: string; name: string; msgVar: string };
-  trigger: { id: string; type: string; name: string };
-  sourceActor?: { id: string; type: string; name: string; msgVar: string };
-  sourceType: 'actor' | 'trigger';
-  sourceMsgId?: string;
-}
-
-interface Actor {
-  setSignal: (signal: any) => any;
-  stm: { [key: string]: any };
-  ltm: { [key: string]: any };
-  ctx: RuntimeContext;
-  connection: { auth: { values: { token?: string } } } & { [key: string]: any };
-  credentials: { [key: string]: any };
-}
-
-class RetryableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'RetryableError';
-  }
-}
-
-// User code starts here
-${processedCode}
-`;
-
-  // Create temp file for validation
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "validate-"));
-  const tempFile = path.join(tempDir, `validate_${actorId}.ts`);
-
-  try {
-    await fs.writeFile(tempFile, wrappedCode);
-
-    // Run deno check
-    const result = await new Promise<{ exitCode: number; stdout: string; stderr: string }>((resolve) => {
-      const proc = spawn("deno", ["check", "--quiet", tempFile], {
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-
-      let stdout = "";
-      let stderr = "";
-
-      proc.stdout.on("data", (data: Buffer) => {
-        stdout += data.toString();
-      });
-
-      proc.stderr.on("data", (data: Buffer) => {
-        stderr += data.toString();
-      });
-
-      proc.on("error", (err: Error) => {
-        resolve({ exitCode: 1, stdout: "", stderr: err.message });
-      });
-
-      proc.on("close", (exitCode: number | null) => {
-        resolve({ exitCode: exitCode ?? 1, stdout, stderr });
-      });
-    });
-
-    if (result.exitCode !== 0) {
-      const output = result.stderr || result.stdout;
-
-      const cleanedErrors = output
-        .split("\n")
-        .filter((line) => line.trim())
-        .map((line) => {
-          let cleaned = line.replace(
-            new RegExp(tempFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
-            "<code>",
-          );
-          cleaned = cleaned.replace(
-            /<code>:(\d+):(\d+)/g,
-            (_match, lineNum, colNum) => {
-              const adjustedLine = Math.max(1, parseInt(lineNum) - 32);
-              return `<code>:${adjustedLine}:${colNum}`;
-            },
-          );
-          return cleaned;
-        })
-        .join("\n");
-
-      errors.push(`${prefix}: TypeScript validation failed:\n${cleanedErrors}`);
-    }
-  } catch (e) {
-    const err = e as Error & { code?: string };
-    if (err.code === "ENOENT") {
-      warnings.push(
-        `${prefix}: Could not run 'deno check' - Deno binary not found. Skipping TypeScript validation.`,
-      );
-    } else {
-      warnings.push(
-        `${prefix}: TypeScript validation error: ${err.message}`,
-      );
-    }
-  } finally {
-    try {
-      await fs.rm(tempDir, { recursive: true });
-    } catch {
-      // Ignore cleanup errors
-    }
-  }
-
-  return { errors, warnings };
-}
-
 export async function validateYaml(
   content: string,
   skipTypecheck = false,
 ): Promise<ValidationResult> {
+  void skipTypecheck;
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -739,21 +597,11 @@ export async function validateYaml(
         if (actor.type === "HttpRequestActor") {
           validateHttpRequestActor(actorId, config, errors, warnings);
         } else if (actor.type === "DenoActor") {
-          const result = await validateDenoActor(
-            actorId,
-            config,
-            skipTypecheck,
-            allMsgVars,
-          );
+          const result = validateDenoActor(actorId, config, allMsgVars);
           errors.push(...result.errors);
           warnings.push(...result.warnings);
         } else if (actor.type === "PythonActor") {
-          const result = await validatePythonActor(
-            actorId,
-            config,
-            skipTypecheck,
-            allMsgVars,
-          );
+          const result = validatePythonActor(actorId, config, allMsgVars);
           errors.push(...result.errors);
           warnings.push(...result.warnings);
         } else if (actor.type === "InterfaceTriggerActor") {
@@ -784,6 +632,9 @@ export async function validateYaml(
         } else if (actor.type === "CallFlowActor") {
           validateCallFlowActor(actorId, config, actor.schemas, toolActorIds.has(actorId), errors, warnings);
         }
+
+
+        validateActorCodeDir(actorId, actor.type, config, errors);
       }
 
       // Validate source ports for router actors
@@ -814,6 +665,68 @@ export async function validateYaml(
 type ActorConfiguration = NonNullable<
   NonNullable<ActorConfig["actors"]>[string]["configuration"]
 >;
+
+/** Entrypoint filename each multi-file code actor must provide. */
+const CODE_ACTOR_ENTRYPOINTS: Record<string, string> = {
+  DenoActor: "main.ts",
+  DenoTestActor: "main.ts",
+  UniversalTriggerActor: "main.ts",
+  PythonActor: "main.py",
+};
+
+/**
+ * An actor's source text: every `configuration.codeDir` file, or the single string a document
+ * written before multi-file support carries. Used for text-level hints only.
+ */
+function actorSourceText(config: ActorConfiguration): string {
+  const codeDir = config?.codeDir;
+  if (Array.isArray(codeDir)) {
+    return codeDir
+      .map((file) => (typeof file?.content === "string" ? file.content : ""))
+      .join("\n");
+  }
+  return typeof config?.code === "string" ? config.code : "";
+}
+
+/**
+ * Structural check only: a code actor's `configuration.codeDir` is a list of {path, content}
+ * files containing the entrypoint its runtime imports. Everything else about the code - whether
+ * it compiles, what it may import - is the BorgIQ API's call, not this file's.
+ */
+function validateActorCodeDir(
+  actorId: string,
+  type: string | undefined,
+  config: ActorConfiguration,
+  errors: string[],
+): void {
+  const entrypoint = type ? CODE_ACTOR_ENTRYPOINTS[type] : undefined;
+  if (!entrypoint) return;
+
+  const codeDir = config?.codeDir;
+  // A document that still carries the single `configuration.code` string is left to the API.
+  if (codeDir === undefined) return;
+
+  const prefix = `Actor '${actorId}'`;
+  if (!Array.isArray(codeDir)) {
+    errors.push(`${prefix}: 'configuration.codeDir' must be a list of {path, content} files`);
+    return;
+  }
+
+  let malformed = false;
+  codeDir.forEach((file, index) => {
+    if (typeof file?.path !== "string" || typeof file?.content !== "string") {
+      errors.push(`${prefix}: 'configuration.codeDir[${index}]' must have a string 'path' and 'content'`);
+      malformed = true;
+    }
+  });
+  if (malformed) return;
+
+  if (!codeDir.some((file) => file.path === entrypoint)) {
+    errors.push(
+      `${prefix}: 'configuration.codeDir' must contain an entrypoint file named '${entrypoint}'`,
+    );
+  }
+}
 
 function validateHttpRequestActor(
   actorId: string,
@@ -947,100 +860,13 @@ function validateSourcePorts(
 }
 
 /**
- * Validates Python code using Python's syntax checker
- */
-async function validatePythonCode(
-  code: string,
-  actorId: string,
-): Promise<{ errors: string[]; warnings: string[] }> {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  const prefix = `Actor '${actorId}'`;
-
-  if (!commandExists("python3")) {
-    warnings.push(`${prefix}: 'python3' not found on PATH — skipping Python validation.`);
-    return { errors, warnings };
-  }
-
-  // Create temp file for validation
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "validate-py-"));
-  const tempFile = path.join(tempDir, `validate_${actorId}.py`);
-
-  try {
-    await fs.writeFile(tempFile, code);
-
-    const result = await new Promise<{ exitCode: number; stdout: string; stderr: string }>((resolve) => {
-      const proc = spawn("python3", ["-m", "py_compile", tempFile], {
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-
-      let stdout = "";
-      let stderr = "";
-
-      proc.stdout.on("data", (data: Buffer) => {
-        stdout += data.toString();
-      });
-
-      proc.stderr.on("data", (data: Buffer) => {
-        stderr += data.toString();
-      });
-
-      proc.on("error", (err: Error) => {
-        resolve({ exitCode: 1, stdout: "", stderr: err.message });
-      });
-
-      proc.on("close", (exitCode: number | null) => {
-        resolve({ exitCode: exitCode ?? 1, stdout, stderr });
-      });
-    });
-
-    if (result.exitCode !== 0) {
-      const output = result.stderr || result.stdout;
-
-      const cleanedErrors = output
-        .split("\n")
-        .filter((line) => line.trim())
-        .map((line) => {
-          return line.replace(
-            new RegExp(tempFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
-            "<code>",
-          );
-        })
-        .join("\n");
-
-      errors.push(`${prefix}: Python syntax validation failed:\n${cleanedErrors}`);
-    }
-  } catch (e) {
-    const err = e as Error & { code?: string };
-    if (err.code === "ENOENT") {
-      warnings.push(
-        `${prefix}: Could not run 'python3' - Python binary not found. Skipping Python validation.`,
-      );
-    } else {
-      warnings.push(
-        `${prefix}: Python validation error: ${err.message}`,
-      );
-    }
-  } finally {
-    try {
-      await fs.rm(tempDir, { recursive: true });
-    } catch {
-      // Ignore cleanup errors
-    }
-  }
-
-  return { errors, warnings };
-}
-
-/**
  * Validates a PythonActor configuration
  */
-async function validatePythonActor(
+function validatePythonActor(
   actorId: string,
   config: ActorConfiguration,
-  skipTypecheck = false,
   allMsgVars?: Set<string>,
-): Promise<{ errors: string[]; warnings: string[] }> {
+): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
   const prefix = `Actor '${actorId}'`;
@@ -1053,14 +879,7 @@ async function validatePythonActor(
     return { errors, warnings };
   }
 
-  const code = config?.code;
-
-  if (!code) {
-    errors.push(
-      `${prefix}: Missing 'configuration.code'. Code must be at the same level as 'options', not inside it.`,
-    );
-    return { errors, warnings };
-  }
+  const code = actorSourceText(config);
 
   // Basic structure checks for Python
   if (!code.includes("def receive")) {
@@ -1162,22 +981,14 @@ async function validatePythonActor(
     validateMsgVarReferences(actorId, code, allMsgVars, errors, warnings);
   }
 
-  // Validate Python syntax using Python compiler (unless skipped)
-  if (!skipTypecheck) {
-    const codeValidation = await validatePythonCode(code, actorId);
-    errors.push(...codeValidation.errors);
-    warnings.push(...codeValidation.warnings);
-  }
-
   return { errors, warnings };
 }
 
-async function validateDenoActor(
+function validateDenoActor(
   actorId: string,
   config: ActorConfiguration,
-  skipTypecheck = false,
   allMsgVars?: Set<string>,
-): Promise<{ errors: string[]; warnings: string[] }> {
+): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
   const prefix = `Actor '${actorId}'`;
@@ -1190,14 +1001,7 @@ async function validateDenoActor(
     return { errors, warnings };
   }
 
-  const code = config?.code;
-
-  if (!code) {
-    errors.push(
-      `${prefix}: Missing 'configuration.code'. Code must be at the same level as 'options', not inside it.`,
-    );
-    return { errors, warnings };
-  }
+  const code = actorSourceText(config);
 
   // Basic structure checks
   if (!code.includes("export default")) {
@@ -1238,13 +1042,6 @@ async function validateDenoActor(
   // Validate message variable references in code
   if (allMsgVars) {
     validateMsgVarReferences(actorId, code, allMsgVars, errors, warnings);
-  }
-
-  // Validate TypeScript/JavaScript syntax using Deno (unless skipped)
-  if (!skipTypecheck) {
-    const codeValidation = await validateDenoCode(code, actorId);
-    errors.push(...codeValidation.errors);
-    warnings.push(...codeValidation.warnings);
   }
 
   return { errors, warnings };

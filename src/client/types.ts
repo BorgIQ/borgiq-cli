@@ -205,7 +205,14 @@ export interface BIQActorSchema {
     fixedPorts: Array<{ id: string; name?: string }>;
     canAddPorts: boolean;
   };
-  code: { supported: boolean; language: 'typescript' | 'python' | null };
+  code: {
+    supported: boolean;
+    language: 'typescript' | 'python' | null;
+    /** Filename the runtime imports, e.g. `main.ts`. Absent on servers predating multi-file code. */
+    entrypoint?: string | null;
+    /** True when the actor's code is a project tree rather than one file. */
+    multiFile?: boolean;
+  };
   canReceiveMessage: boolean;
   canEmitMessage: boolean;
   supportsConnection: boolean;
