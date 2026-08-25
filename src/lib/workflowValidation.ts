@@ -226,6 +226,7 @@ const VALID_ACTOR_TYPES = [
   "SendEmailActor",
   "DataStoreActor",
   "CollectionActor",
+  "StreamActor",
   // Trigger Actors
   "ButtonTriggerActor",
   "WebhookTriggerActor",
