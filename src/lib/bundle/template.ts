@@ -1,5 +1,6 @@
 import { Id, convertActorNameToMsgVar, monotonicUlid } from '../ids.js';
 import { disassemble } from './disassemble.js';
+import { DENO_ACTOR_ENTRYPOINT } from './registry.js';
 import type { BundleFileMap, CanvasExportDocument, ExportedActor } from './types.js';
 
 export interface StarterOptions {
@@ -117,14 +118,14 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
     type: 'DenoActor',
     name: 'Process event',
     msgVar: convertActorNameToMsgVar('Process event'),
-    description: 'Starter Deno task - edit code/main.ts.',
+    description: `Starter Deno task - edit code/${DENO_ACTOR_ENTRYPOINT}.`,
     isActive: true,
     sourcePorts: [{ id: 'SPRTdefault' }],
     continueOnError: false,
     enableLTM: true,
     enableSTM: true,
     configuration: {
-      codeDir: [{ path: 'main.ts', content: DENO_STARTER_CODE }],
+      codeDir: [{ path: DENO_ACTOR_ENTRYPOINT, content: DENO_STARTER_CODE }],
       inputs: {},
       options: { allowNet: true, allowFs: true },
     },

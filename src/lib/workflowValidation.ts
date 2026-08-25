@@ -20,6 +20,13 @@
 
 import { parse, stringify } from "yaml";
 
+import {
+  DENO_ACTOR_ENTRYPOINT,
+  DENO_TEST_ACTOR_ENTRYPOINT,
+  PYTHON_ACTOR_ENTRYPOINT,
+  UNIVERSAL_TRIGGER_ACTOR_ENTRYPOINT,
+} from "./bundle/registry.js";
+
 // ============================================================
 // Shared Interfaces
 // ============================================================
@@ -665,12 +672,15 @@ type ActorConfiguration = NonNullable<
   NonNullable<ActorConfig["actors"]>[string]["configuration"]
 >;
 
-/** Entrypoint filename each multi-file code actor must provide. */
+/**
+ * Entrypoint filename each multi-file code actor must provide, read from the one place this CLI
+ * defines them (`lib/bundle/registry.ts`) so bundle validation and YAML validation cannot drift.
+ */
 const CODE_ACTOR_ENTRYPOINTS: Record<string, string> = {
-  DenoActor: "main.ts",
-  DenoTestActor: "main.ts",
-  UniversalTriggerActor: "main.ts",
-  PythonActor: "main.py",
+  DenoActor: DENO_ACTOR_ENTRYPOINT,
+  DenoTestActor: DENO_TEST_ACTOR_ENTRYPOINT,
+  UniversalTriggerActor: UNIVERSAL_TRIGGER_ACTOR_ENTRYPOINT,
+  PythonActor: PYTHON_ACTOR_ENTRYPOINT,
 };
 
 /**

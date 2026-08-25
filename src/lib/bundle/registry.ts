@@ -91,6 +91,21 @@ export interface BundlePathSpec {
 export const REACT_APP_TYPE = 'ReactAppTriggerActor';
 
 /**
+ * The entrypoint filename each code actor type's runtime executes — the one file a `code/` tree
+ * must contain, holding the exported handler (`main.ts`) or the `receive` definition (`main.py`).
+ *
+ * The single source of truth for these names inside this CLI: the bundle registry below and
+ * `lib/workflowValidation.ts` both read them from here. The BorgIQ API is still the authority —
+ * it reports the live value as `code.entrypoint` on the actor-schema endpoint, which `lib/scaffold.ts`
+ * uses directly. These constants are the offline answer for bundle validation, which has no server
+ * to ask; keep them in step when the API names a different one.
+ */
+export const DENO_ACTOR_ENTRYPOINT = 'main.ts';
+export const DENO_TEST_ACTOR_ENTRYPOINT = 'main.ts';
+export const UNIVERSAL_TRIGGER_ACTOR_ENTRYPOINT = 'main.ts';
+export const PYTHON_ACTOR_ENTRYPOINT = 'main.py';
+
+/**
  * Reserved by the BorgIQ runtime for Deno, Deno Test, and Universal Trigger actors.
  *
  * These mirror what the BorgIQ API rejects on save, so a bundle fails locally rather than at
@@ -144,11 +159,14 @@ const REACT_APP_IGNORE: BundleProjectIgnore = {
   files: IGNORED_PROJECT_FILES,
 };
 
-/** The three Deno-family code actors share one entrypoint name and one reserved set. */
-const denoProject = (): Pick<BundlePathSpec, 'codeFiles' | 'projectDir' | 'entrypoint' | 'reservedPaths' | 'ignore'> => ({
+/**
+ * The three Deno-family code actors share one reserved set, and one entrypoint name today — the
+ * parameter keeps each type reading its own constant, so they can diverge without reshaping this.
+ */
+const denoProject = (entrypoint: string): Pick<BundlePathSpec, 'codeFiles' | 'projectDir' | 'entrypoint' | 'reservedPaths' | 'ignore'> => ({
   codeFiles: [],
   projectDir: true,
-  entrypoint: 'main.ts',
+  entrypoint,
   reservedPaths: DENO_RESERVED_PATHS,
   ignore: DENO_IGNORE,
 });
@@ -170,7 +188,7 @@ export const BUNDLE_PATH_REGISTRY: Readonly<Record<BundleActorType, BundlePathSp
   McpServerActor: { category: 'triggers', folder: 'mcp-server', codeFiles: [] },
   ReactAppTriggerActor: { category: 'triggers', folder: 'react-app', codeFiles: [], projectDir: true, ignore: REACT_APP_IGNORE },
   ScheduledTriggerActor: { category: 'triggers', folder: 'scheduled', codeFiles: [] },
-  UniversalTriggerActor: { category: 'triggers', folder: 'universal', ...denoProject() },
+  UniversalTriggerActor: { category: 'triggers', folder: 'universal', ...denoProject(UNIVERSAL_TRIGGER_ACTOR_ENTRYPOINT) },
   WebhookTriggerActor: { category: 'triggers', folder: 'webhook', codeFiles: [] },
 
   AgentHarnessActor: { category: 'tasks', folder: 'agent-harness', codeFiles: [] },
@@ -181,8 +199,8 @@ export const BUNDLE_PATH_REGISTRY: Readonly<Record<BundleActorType, BundlePathSp
   CallableResponseActor: { category: 'tasks', folder: 'callable-response', codeFiles: [] },
   CollectionActor: { category: 'tasks', folder: 'collection', codeFiles: [] },
   DataStoreActor: { category: 'tasks', folder: 'data-store', codeFiles: [] },
-  DenoActor: { category: 'tasks', folder: 'deno', ...denoProject() },
-  DenoTestActor: { category: 'tasks', folder: 'deno-test', ...denoProject() },
+  DenoActor: { category: 'tasks', folder: 'deno', ...denoProject(DENO_ACTOR_ENTRYPOINT) },
+  DenoTestActor: { category: 'tasks', folder: 'deno-test', ...denoProject(DENO_TEST_ACTOR_ENTRYPOINT) },
   DeprecatedAiAgent: { category: 'tasks', folder: 'deprecated-ai-agent', codeFiles: [] },
   HttpRequestActor: { category: 'tasks', folder: 'http-request', codeFiles: [] },
   InterfaceActor: { category: 'tasks', folder: 'interface', codeFiles: [] },
@@ -193,7 +211,7 @@ export const BUNDLE_PATH_REGISTRY: Readonly<Record<BundleActorType, BundlePathSp
     folder: 'python',
     codeFiles: [],
     projectDir: true,
-    entrypoint: 'main.py',
+    entrypoint: PYTHON_ACTOR_ENTRYPOINT,
     reservedPaths: PYTHON_RESERVED_PATHS,
     ignore: PYTHON_IGNORE,
   },
