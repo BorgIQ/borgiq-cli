@@ -4,7 +4,8 @@ import path from 'node:path';
 import { ROOT_FILE } from './bundle/types.js';
 import type { BundleFileMap } from './bundle/types.js';
 import { isSafeBundlePath } from './bundle/path.js';
-import { isIgnoredProjectDir, isIgnoredProjectPath, isReactAppAssetPath, splitReactAppCodePath } from './bundle/reactApp.js';
+import { binaryFileWarning, isIgnoredProjectDirFor, isIgnoredProjectPathFor, splitProjectCodePath } from './bundle/projectDir.js';
+import { REACT_APP_TYPE, isReactAppAssetPath } from './bundle/reactApp.js';
 import { CliUsageError } from './errors.js';
 
 const MANAGED_DIR = 'actors';
@@ -45,12 +46,14 @@ export interface BundleDirContents {
 }
 
 /**
- * Read a bundle directory, classifying every file inside a React App project into exactly one
- * channel: project source (text), workspace asset (bytes, never read here), or skipped.
+ * Read a bundle directory, classifying every file inside an actor's project tree into exactly
+ * one channel: project source (text), workspace asset (React App only - bytes, never read here),
+ * or skipped.
  *
- * A React App project is a live working directory - it holds node_modules, build output, and asset
- * binaries the CLI must never read into the text map nor delete. Every reader and writer below
- * shares this one classifier so those files stay invisible to the compiler and safe on disk.
+ * A project tree is a live working directory - it holds node_modules or a virtualenv, build
+ * output, and asset binaries the CLI must never read into the text map nor delete. Every reader
+ * and writer below shares this one classifier so those files stay invisible to the compiler and
+ * safe on disk.
  */
 export const readBundleDirDetailed = (dir: string): BundleDirContents => {
   const rootPath = path.join(dir, ROOT_FILE);
@@ -154,8 +157,8 @@ const readFilesRecursive = (baseDir: string, currentDir: string, contents: Bundl
     if (entry.isDirectory()) {
       // Never descend into an ignored project directory: node_modules alone can hold tens of
       // thousands of files, and nothing inside any of them is ours to read.
-      const inProject = splitReactAppCodePath(rel);
-      if (inProject && isIgnoredProjectDir(entry.name)) continue;
+      const inProject = splitProjectCodePath(rel);
+      if (inProject && isIgnoredProjectDirFor(entry.name, inProject.actorType)) continue;
       readFilesRecursive(baseDir, abs, contents);
       continue;
     }
@@ -166,20 +169,20 @@ const readFilesRecursive = (baseDir: string, currentDir: string, contents: Bundl
 };
 
 const collectFile = (abs: string, rel: string, contents: BundleDirContents): void => {
-  const inProject = splitReactAppCodePath(rel);
+  const inProject = splitProjectCodePath(rel);
   if (!inProject) {
     contents.files[rel] = fs.readFileSync(abs, 'utf-8');
     return;
   }
 
-  const { actorId, projectPath } = inProject;
-  const ignored = isIgnoredProjectPath(projectPath);
+  const { actorType, actorId, projectPath } = inProject;
+  const ignored = isIgnoredProjectPathFor(projectPath, actorType);
   if (ignored.ignored) {
     contents.skipped.push({ bundlePath: rel, reason: ignored.warn ? 'env-warning' : 'ignored', message: ignored.warn });
     return;
   }
 
-  if (isReactAppAssetPath(projectPath)) {
+  if (actorType === REACT_APP_TYPE && isReactAppAssetPath(projectPath)) {
     contents.assets.push({
       actorId,
       projectPath,
@@ -192,11 +195,7 @@ const collectFile = (abs: string, rel: string, contents: BundleDirContents): voi
 
   const text = decodeUtf8(fs.readFileSync(abs));
   if (text === undefined) {
-    contents.skipped.push({
-      bundlePath: rel,
-      reason: 'binary',
-      message: `'${rel}' is not UTF-8 text and is ignored - move it under the project's src/assets/ directory to sync it as an asset.`,
-    });
+    contents.skipped.push({ bundlePath: rel, reason: 'binary', message: binaryFileWarning(rel, actorType) });
     return;
   }
   contents.files[rel] = text;

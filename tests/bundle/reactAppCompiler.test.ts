@@ -4,7 +4,7 @@ import { assembleBundle } from '../../src/lib/bundle/assemble.js';
 import { actorContentHash } from '../../src/lib/bundle/diff.js';
 import { disassemble } from '../../src/lib/bundle/disassemble.js';
 import { parseExportInput } from '../../src/lib/bundle/envelope.js';
-import { normalizeReactAppExport } from '../../src/lib/bundle/reactApp.js';
+import { normalizeProjectDirExport } from '../../src/lib/bundle/projectDir.js';
 import type { BundleFileMap, ExportedActor } from '../../src/lib/bundle/types.js';
 import { stringifyYamlDoc } from '../../src/lib/bundle/yaml.js';
 import { REACT_APP_DIR, REACT_APP_ID, REACT_APP_PROJECT, makeDoc, makeReactAppActor } from './fixtures.js';
@@ -73,9 +73,13 @@ describe('disassemble: react-app project tree', () => {
     expect(warnings[0]).toMatch(/next push uploads it as an asset/);
   });
 
-  it('does not treat a non-project actor type as a project tree', () => {
-    const { files } = disassemble(makeDoc([makeReactAppActor({ type: 'DenoActor', id: REACT_APP_ID, configuration: { code: 'x' } })]));
-    expect(files[`actors/tasks/deno/${REACT_APP_ID}/code/mod.ts`]).toBe('x');
+  it('does not treat a fixed-code actor type as a project tree', () => {
+    const { files } = disassemble(makeDoc([makeReactAppActor({
+      type: 'AppTriggerActor',
+      id: REACT_APP_ID,
+      configuration: { options: { html: '<h1>hi</h1>' } },
+    })]));
+    expect(files[`actors/triggers/app/${REACT_APP_ID}/code/index.html`]).toBe('<h1>hi</h1>');
   });
 });
 
@@ -131,7 +135,7 @@ describe('react-app hash stability', () => {
 
     expect(hashOf(unordered.data.actors[REACT_APP_ID])).not.toBe(hashOf(canonical.data.actors[REACT_APP_ID]));
 
-    normalizeReactAppExport(unordered);
+    normalizeProjectDirExport(unordered);
     const { files } = disassemble(unordered);
 
     expect(hashOf(unordered.data.actors[REACT_APP_ID])).toBe(hashOf(canonical.data.actors[REACT_APP_ID]));

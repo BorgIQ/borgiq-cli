@@ -1,7 +1,8 @@
-import { BUNDLE_PATH_REGISTRY, actorFolderPath, isKnownActorType } from './registry.js';
+import { BUNDLE_PATH_REGISTRY, REACT_APP_TYPE, actorFolderPath, isKnownActorType } from './registry.js';
 import type { BundleActorType, BundleCodeFile } from './registry.js';
 import { actorContentHashes } from './diff.js';
 import { isSafeBundlePath } from './path.js';
+import { isIgnoredProjectPathFor } from './projectDir.js';
 import { REACT_APP_ASSETS_DIR, isReactAppAssetPath } from './reactApp.js';
 import {
   ACTOR_FILE,
@@ -182,8 +183,9 @@ const externalizeActorCode = (
   const configuration = isPlainObject(actor.configuration) ? { ...actor.configuration } : {};
 
   if (spec.projectDir) {
-    externalizeProjectDir(configuration, actorId, dir, files, warnings);
+    externalizeProjectDir(configuration, actorId, type, dir, files, warnings);
   } else {
+    assertRepresentable(configuration, actorId, type);
     let hasExternalCode = false;
     for (const codeFile of spec.codeFiles) {
       if (externalizeCodeFile(configuration, codeFile, `${dir}/${CODE_DIR}/${codeFile.file}`, files)) {
@@ -205,6 +207,61 @@ const externalizeActorCode = (
 };
 
 /**
+ * A document from a newer BorgIQ version can carry multi-file code for an actor type this
+ * CLI still treats as single-file. Refuse it loudly: writing the fixed entrypoint file would
+ * silently drop every other file on the next push.
+ */
+const assertRepresentable = (
+  configuration: Record<string, unknown>,
+  actorId: string,
+  type: BundleActorType,
+): void => {
+  if (!Array.isArray(configuration.codeDir)) return;
+  throw new BundleError(
+    `Actor ${actorId} (${type}) uses multi-file actor code, which this CLI version cannot represent - upgrade @borgiq/cli.`,
+  );
+};
+
+/**
+ * The project files of a project-dir actor: its `configuration.codeDir` array, or - for a
+ * document the platform has not migrated yet - its single `configuration.code` string read as
+ * the entrypoint file. Consuming the legacy string here is what makes the next push migrate
+ * the actor, since assembly only ever writes `codeDir` back.
+ *
+ * The string is consumed on every path, never left beside the file list: a bundle carrying both
+ * has two sources of truth, which `validate` rejects - so leaving it would mean pulling a
+ * directory that cannot be validated, packed, or pushed.
+ */
+const projectFileEntries = (
+  configuration: Record<string, unknown>,
+  actorId: string,
+  entrypoint: string | undefined,
+  warnings: string[],
+): unknown[] | undefined => {
+  const legacyCode = typeof configuration.code === 'string' ? configuration.code : undefined;
+
+  if (Array.isArray(configuration.codeDir)) {
+    if (legacyCode !== undefined) {
+      delete configuration.code;
+      if (legacyCode.length > 0) {
+        warnings.push(
+          `Actor ${actorId}: configuration.code was dropped because the actor also carries a file list, `
+          + 'which is the source of truth. The next push removes the leftover string from the actor.',
+        );
+      }
+    }
+    return configuration.codeDir;
+  }
+
+  if (entrypoint === undefined || legacyCode === undefined) return undefined;
+
+  // An empty string is not code: consume it so it cannot reappear as a second source, but
+  // write no entrypoint file for it - the actor simply has no code yet.
+  delete configuration.code;
+  return legacyCode.length > 0 ? [{ path: entrypoint, content: legacyCode }] : undefined;
+};
+
+/**
  * Writes a project-tree `configuration.codeDir` array out as real files under `code/`,
  * leaving the `code` marker behind. Anything that cannot round-trip through a filesystem
  * keeps the whole array inline instead: a partial tree would silently lose files on the
@@ -213,12 +270,13 @@ const externalizeActorCode = (
 const externalizeProjectDir = (
   configuration: Record<string, unknown>,
   actorId: string,
+  type: BundleActorType,
   dir: string,
   files: BundleFileMap,
   warnings: string[],
 ): void => {
-  const codeDir = configuration.codeDir;
-  if (!Array.isArray(codeDir)) return;
+  const codeDir = projectFileEntries(configuration, actorId, BUNDLE_PATH_REGISTRY[type].entrypoint, warnings);
+  if (!codeDir) return;
 
   const pathsByFold = new Map<string, string>();
   const blockers: string[] = [];
@@ -236,7 +294,9 @@ const externalizeProjectDir = (
     const fold = entry.path.toLowerCase();
     const clashing = pathsByFold.get(fold);
     if (clashing !== undefined) {
-      blockers.push(`paths '${clashing}' and '${entry.path}' differ only in letter case, which case-insensitive filesystems cannot represent`);
+      blockers.push(clashing === entry.path
+        ? `path '${entry.path}' appears twice`
+        : `paths '${clashing}' and '${entry.path}' differ only in letter case, which case-insensitive filesystems cannot represent`);
       continue;
     }
     pathsByFold.set(fold, entry.path);
@@ -248,12 +308,23 @@ const externalizeProjectDir = (
       + `${blockers.length > 1 ? ` (and ${blockers.length - 1} more problem(s))` : ''}. `
       + 'Fix the reported paths in the editor to get an editable code/ tree.',
     );
+    configuration.codeDir = codeDir;
     return;
   }
 
   for (const entry of codeDir as { path: string; content: string }[]) {
+    // Writing a file the reader ignores would lose it on the next push without a word, since
+    // the bundle is rebuilt from what the reader collects.
+    if (isIgnoredProjectPathFor(entry.path, type).ignored) {
+      warnings.push(
+        `Actor ${actorId}: project file '${entry.path}' is a name the CLI never syncs, so it was not written to ${CODE_DIR}/. `
+        + 'A push from this bundle removes it from the actor; rename it in the editor to keep it.',
+      );
+      continue;
+    }
+
     files[`${dir}/${CODE_DIR}/${entry.path}`] = entry.content;
-    if (isReactAppAssetPath(entry.path)) {
+    if (type === REACT_APP_TYPE && isReactAppAssetPath(entry.path)) {
       warnings.push(
         `Actor ${actorId}: project file '${entry.path}' is source code but sits in the ${REACT_APP_ASSETS_DIR}/ directory, `
         + 'which the CLI syncs with workspace assets. The next push uploads it as an asset (the built app is unchanged); '

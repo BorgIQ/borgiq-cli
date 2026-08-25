@@ -40,6 +40,80 @@ export const TASK_ID = 'ACTR01task000000000000000000000';
 export const EDGE_ID = 'EDGE01edge000000000000000000000';
 export const REACT_APP_ID = 'ACTR01reactapp000000000000000';
 export const REACT_APP_DIR = `actors/triggers/react-app/${REACT_APP_ID}`;
+export const DENO_DIR = `actors/tasks/deno/${TASK_ID}`;
+export const PYTHON_DIR = `actors/tasks/python/${TASK_ID}`;
+
+/**
+ * A Deno actor project: the required entrypoint plus one helper it imports. Kept sorted by
+ * path, the canonical order a normalized export and a bundle rebuilt from disk both produce.
+ */
+export const DENO_PROJECT: { path: string; content: string }[] = [
+  { path: 'lib/greeting.ts', content: 'export const greeting = (name: string): string => `hello ${name}`;\n' },
+  {
+    path: 'main.ts',
+    content: [
+      "import { greeting } from './lib/greeting.ts';",
+      '',
+      'export default async function receive(req) {',
+      "  return { results: { message: greeting('world') }, memory: req.memory };",
+      '}',
+      '',
+    ].join('\n'),
+  },
+];
+
+/** A Python actor project: entrypoint plus a helper module it imports. */
+export const PYTHON_PROJECT: { path: string; content: string }[] = [
+  { path: 'lib/greeting.py', content: 'def greeting(name):\n    return f"hello {name}"\n' },
+  {
+    path: 'main.py',
+    content: 'from lib.greeting import greeting\n\n\ndef receive(inputs=None, actor=None):\n    return {"message": greeting("world")}\n',
+  },
+];
+
+/** The single-string shape code actors carried before multi-file support. */
+export const LEGACY_DENO_CODE = 'export default async function receive(req) {\n  return { results: {}, memory: req.memory };\n}\n';
+
+export const makeDenoActor = (over: Partial<ExportedActor> = {}): ExportedActor =>
+  makeActor({
+    id: TASK_ID,
+    type: 'DenoActor',
+    name: 'Process',
+    position: { x: 320, y: 0 },
+    configuration: {
+      codeDir: DENO_PROJECT.map((file) => ({ ...file })),
+      inputs: {},
+      options: { allowNet: true, allowFs: true },
+    },
+    ...over,
+  });
+
+export const makePythonActor = (over: Partial<ExportedActor> = {}): ExportedActor =>
+  makeActor({
+    id: TASK_ID,
+    type: 'PythonActor',
+    name: 'Process',
+    configuration: {
+      codeDir: PYTHON_PROJECT.map((file) => ({ ...file })),
+      options: { dependencies: [] },
+    },
+    ...over,
+  });
+
+/** An un-migrated server document: one `configuration.code` string, no codeDir. */
+export const makeLegacyDenoActor = (over: Partial<ExportedActor> = {}): ExportedActor =>
+  makeActor({
+    id: TASK_ID,
+    type: 'DenoActor',
+    name: 'Process',
+    position: { x: 320, y: 0 },
+    configuration: {
+      code: LEGACY_DENO_CODE,
+      inputs: {},
+      options: { allowNet: true, allowFs: true },
+    },
+    ...over,
+  });
 
 /**
  * A minimal project tree that passes every template heuristic the checker warns on.
@@ -103,15 +177,27 @@ export const makeWiredDoc = (): CanvasExportDocument =>
         },
       },
     }),
+    makeDenoActor(),
+  ]);
+
+/** The same canvas as `makeWiredDoc`, with its Deno task still on the legacy `code` string. */
+export const makeLegacyWiredDoc = (): CanvasExportDocument =>
+  makeDoc([
     makeActor({
-      id: TASK_ID,
-      type: 'DenoActor',
-      name: 'Process',
-      position: { x: 320, y: 0 },
-      configuration: {
-        code: 'export default async function receive(req) {\n  return { results: {}, memory: req.memory };\n}\n',
-        inputs: {},
-        options: { allowNet: true, allowFs: true },
+      id: TRIGGER_ID,
+      type: 'WebhookTriggerActor',
+      name: 'Incoming hook',
+      webhookTriggerKey: '01hxxxxxxxxxxxxxxxxxxxxxxxxx',
+      edges: {
+        [EDGE_ID]: {
+          id: EDGE_ID,
+          sourceActorId: TRIGGER_ID,
+          sourcePortId: 'SPRTdefault',
+          targetActorId: TASK_ID,
+          targetPortId: 'TPRTdefault',
+          type: 'borgiqEdge',
+        },
       },
     }),
+    makeLegacyDenoActor(),
   ]);

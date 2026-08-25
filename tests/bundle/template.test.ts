@@ -19,7 +19,7 @@ describe('buildStarterBundle', () => {
     const paths = Object.keys(files).sort();
     expect(paths.some((path) => path.startsWith('actors/triggers/webhook/'))).toBe(true);
     expect(paths.some((path) => path.startsWith('actors/tasks/http-request/'))).toBe(true);
-    expect(paths.some((path) => /^actors\/tasks\/deno\/ACTR[a-z0-9]+\/code\/mod\.ts$/.test(path))).toBe(true);
+    expect(paths.some((path) => /^actors\/tasks\/deno\/ACTR[a-z0-9]+\/code\/main\.ts$/.test(path))).toBe(true);
 
     const { doc } = assembleBundle(files);
     const actors = Object.values(doc.data.actors);
@@ -63,10 +63,14 @@ describe('buildStarterBundle', () => {
         message: 'Hello, world!',
       },
     });
-    expect(task.configuration?.code).toContain('@borgiq/actors');
-    expect(task.configuration?.code).toContain('denoVersion: Deno.version');
-    expect(task.configuration?.code).toContain('denoBuild: Deno.build');
-    expect(task.configuration?.code).toContain('ctx: req.ctx');
+    expect(task.configuration?.code).toBeUndefined();
+    const codeDir = task.configuration?.codeDir as { path: string; content: string }[];
+    expect(codeDir.map((file) => file.path)).toEqual(['main.ts']);
+    expect(codeDir[0].content).toContain('@borgiq/actors');
+    expect(codeDir[0].content).toContain('denoVersion: Deno.version');
+    expect(codeDir[0].content).toContain('denoBuild: Deno.build');
+    expect(codeDir[0].content).toContain('ctx: req.ctx');
+    expect(task.description).toContain('code/main.ts');
   });
 
   it('mints fresh ids per invocation', () => {
@@ -77,6 +81,25 @@ describe('buildStarterBundle', () => {
 });
 
 describe('bundle companion files', () => {
+  it('AGENTS.md documents the multi-file code-actor contract', () => {
+    for (const needle of [
+      '## Code actors',
+      'code/main.ts',
+      'code/main.py',
+      'required entrypoint',
+      'relative imports',
+      'reserved by the BorgIQ runtime',
+      'configuration.options.dependencies',
+      'at most 200 files',
+      'Rename it to main.ts',
+    ]) {
+      expect(BUNDLE_AGENTS_MD).toContain(needle);
+    }
+    // The single-entrypoint rule is gone.
+    expect(BUNDLE_AGENTS_MD).not.toContain('helper files are not');
+    expect(BUNDLE_AGENTS_MD).not.toContain('only the canonical entrypoint file is allowed');
+  });
+
   it('AGENTS.md documents the contract and commands', () => {
     for (const needle of ['canvas.yaml', 'actor.yaml', 'codeDir', 'graph.nodes', 'bundle validate', 'bundle pack', 'bundle push', 'borgiq.canvas.bundle']) {
       expect(BUNDLE_AGENTS_MD).toContain(needle);
@@ -131,17 +154,21 @@ describe('bundle companion files', () => {
     expect(BUNDLE_GITIGNORE).toContain('.borgiq/');
   });
 
-  it('.gitignore excludes react-app local tooling output', () => {
+  it('.gitignore excludes local tooling output under every actor project tree', () => {
     for (const needle of [
-      'actors/*/react-app/*/code/node_modules/',
-      'actors/*/react-app/*/code/dist/',
-      'actors/*/react-app/*/code/.vite/',
-      'actors/*/react-app/*/code/deno.lock',
-      'actors/*/react-app/*/code/package-lock.json',
-      'actors/*/react-app/*/code/npm-shrinkwrap.json',
-      'actors/*/react-app/*/code/yarn.lock',
-      'actors/*/react-app/*/code/pnpm-lock.yaml',
-      'actors/*/react-app/*/code/bun.lockb',
+      'actors/**/code/**/node_modules/',
+      'actors/**/code/**/dist/',
+      'actors/**/code/**/.vite/',
+      'actors/**/code/**/.venv/',
+      'actors/**/code/**/__pycache__/',
+      'actors/**/code/**/deno.lock',
+      'actors/**/code/**/uv.lock',
+      'actors/**/code/**/package-lock.json',
+      'actors/**/code/**/npm-shrinkwrap.json',
+      'actors/**/code/**/yarn.lock',
+      'actors/**/code/**/pnpm-lock.yaml',
+      'actors/**/code/**/bun.lockb',
+      // The SDK stub is materialized for react-app projects only.
       'actors/*/react-app/*/code/__borgiq_sdk_placeholder__/',
     ]) {
       expect(BUNDLE_GITIGNORE).toContain(needle);

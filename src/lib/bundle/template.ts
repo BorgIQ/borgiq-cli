@@ -1,5 +1,6 @@
 import { Id, convertActorNameToMsgVar, monotonicUlid } from '../ids.js';
 import { disassemble } from './disassemble.js';
+import { DENO_ACTOR_ENTRYPOINT } from './registry.js';
 import type { BundleFileMap, CanvasExportDocument, ExportedActor } from './types.js';
 
 export interface StarterOptions {
@@ -117,14 +118,14 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
     type: 'DenoActor',
     name: 'Process event',
     msgVar: convertActorNameToMsgVar('Process event'),
-    description: 'Starter Deno task - edit code/mod.ts.',
+    description: `Starter Deno task - edit code/${DENO_ACTOR_ENTRYPOINT}.`,
     isActive: true,
     sourcePorts: [{ id: 'SPRTdefault' }],
     continueOnError: false,
     enableLTM: true,
     enableSTM: true,
     configuration: {
-      code: DENO_STARTER_CODE,
+      codeDir: [{ path: DENO_ACTOR_ENTRYPOINT, content: DENO_STARTER_CODE }],
       inputs: {},
       options: { allowNet: true, allowFs: true },
     },
@@ -151,17 +152,20 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
 export const BUNDLE_GITIGNORE = `# BorgIQ local dev artifacts (reserved for future bundle tooling)
 .borgiq/
 
-# React App actor projects: produced by local tooling, never synced by the CLI
-actors/*/react-app/*/code/node_modules/
-actors/*/react-app/*/code/dist/
-actors/*/react-app/*/code/.vite/
-actors/*/react-app/*/code/deno.lock
-actors/*/react-app/*/code/package-lock.json
-actors/*/react-app/*/code/npm-shrinkwrap.json
-actors/*/react-app/*/code/yarn.lock
-actors/*/react-app/*/code/pnpm-lock.yaml
-actors/*/react-app/*/code/bun.lockb
-actors/*/react-app/*/code/bun.lock
+# Actor project trees: produced by local tooling, never synced by the CLI
+actors/**/code/**/node_modules/
+actors/**/code/**/dist/
+actors/**/code/**/.vite/
+actors/**/code/**/.venv/
+actors/**/code/**/__pycache__/
+actors/**/code/**/deno.lock
+actors/**/code/**/uv.lock
+actors/**/code/**/package-lock.json
+actors/**/code/**/npm-shrinkwrap.json
+actors/**/code/**/yarn.lock
+actors/**/code/**/pnpm-lock.yaml
+actors/**/code/**/bun.lockb
+actors/**/code/**/bun.lock
 
 # CLI-materialized @borgiq/actors stub; the platform supplies the real SDK at build time
 actors/*/react-app/*/code/__borgiq_sdk_placeholder__/
@@ -180,11 +184,13 @@ canvas export format. Format: borgiq.canvas.bundle v1.
   index. Do not edit sync metadata by hand.
 - actors/<category>/<type>/<ACTOR_ID>/actor.yaml: one actor per folder. Edges
   and positions do not live here; they live in canvas.yaml.
-- actors/.../<ACTOR_ID>/code/: native code files for Deno, Deno Test,
-  Universal Trigger, Python, and App actors. When present, actor.yaml carries
-  configuration.codeDir: code and must not also contain inline code.
-- actors/triggers/react-app/<ACTOR_ID>/code/: a whole Vite project rather than
-  a single entrypoint. Push publishes its source; borgiq bundle build (or Build
+- actors/.../<ACTOR_ID>/code/: native code files. When present, actor.yaml
+  carries configuration.codeDir: code and must not also contain inline code.
+  Deno, Deno Test, Universal Trigger, and Python actors hold a project tree
+  there - see "Code actors" below; App actors hold their fixed index.html,
+  styles.css, and script.js.
+- actors/triggers/react-app/<ACTOR_ID>/code/: a whole Vite project, which the
+  platform builds. Push publishes its source; borgiq bundle build (or Build
   in the web editor) compiles and serves it. See "React App actors" below.
 
 ## Editing Rules
@@ -192,12 +198,51 @@ canvas export format. Format: borgiq.canvas.bundle v1.
 1. Adding an actor takes three edits: create actor.yaml, add an actors[] entry
    in canvas.yaml, and add a graph.nodes entry. Wire it with graph.edges.
 2. An edge sourcePortId must exist in the source actor's sourcePorts.
-3. Edit code in code/ files, not in actor.yaml. Except for React App actors,
-   only the canonical entrypoint file is allowed in code/; helper files are not
-   supported yet.
+3. Edit code in code/ files, not in actor.yaml. Code actors take an entrypoint
+   plus any helper files and folders you like; App actors take the three fixed
+   files named above.
 4. Folder names are actor IDs and must match actor.yaml and the index.
 5. Extra files under actors/ are ignored with warnings. Unmanaged files outside
    canvas.yaml and actors/ are left alone by the CLI.
+
+## Code actors
+
+Deno, Deno Test, Universal Trigger, and Python actors run a small project, not
+a single file. code/ holds an entrypoint plus whatever helper files you add:
+
+\`\`\`
+actors/tasks/deno/<ACTOR_ID>/
+  actor.yaml            # configuration.codeDir: code (marker)
+  code/
+    main.ts             # required entrypoint: exports the default handler
+    lib/format.ts       # helpers, in as many folders as you like
+\`\`\`
+
+| Actor | Entrypoint |
+|---|---|
+| Deno, Deno Test, Universal Trigger | code/main.ts |
+| Python | code/main.py |
+
+- The entrypoint is required and must sit at the root of code/. Everything
+  else is yours to arrange.
+- Import between your own files with ordinary relative imports
+  (import { format } from './lib/format.ts' in Deno,
+  from lib.format import format in Python). Imports may not leave code/;
+  reach anything else through registry specifiers (npm:, jsr:, https URLs)
+  in Deno, or configuration.options.dependencies in Python.
+- Text only, and the same budget as any project tree: at most 200 files and
+  1 MiB of source in total.
+- Some filenames are reserved by the BorgIQ runtime, which writes its own
+  files into the same directory. bundle validate rejects them:
+    Deno family: server.ts, handler.ts, actor.ts, main_test.ts, deno.json,
+    deno.jsonc, deno.lock, package.json, and anything under shared/ or
+    node_modules/.
+    Python: server.py, handler.py, borgiq.py, pyproject.toml,
+    .python-version, uv.lock, and anything under .borgiq/, .venv/ or borgiq/.
+  Python dependencies belong in configuration.options.dependencies, which is
+  why a pyproject.toml of your own is reserved rather than merged.
+- A bundle pulled before multi-file support has code/mod.ts (or code/mod.py).
+  Rename it to main.ts (or main.py); the old name is just another file now.
 
 ## React App actors
 
@@ -341,7 +386,9 @@ node_modules/, dist/, .git/, .vite/, __borgiq_sdk_placeholder__/, lockfiles
 (deno.lock, package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lock*),
 .DS_Store, and Thumbs.db. These survive every pull, push, and --replace. Lock
 files are deliberately not synced: the platform installs dependencies itself,
-and a lockfile can exceed the source-size budget on its own.
+and a lockfile can exceed the source-size budget on its own. The same holds
+under a code actor's code/, where .venv/, __pycache__/ and uv.lock are ignored
+too.
 
 .env and .env.* are ignored with a warning: an actor's source is readable by
 anyone who can open the canvas, and a Vite build inlines VITE_* values into the

@@ -382,10 +382,12 @@ borgiq canvases list --all --json | jq '.data[].slug'
 Canvas bundles expand the platform's canvas export document into a git-friendly
 folder. `canvas.yaml` holds canvas metadata, graph nodes/edges, dependencies,
 export errors, warnings, sync baselines, and the actor index. Each actor lives in
-`actors/<category>/<type>/<ACTOR_ID>/actor.yaml`; Deno, Deno Test, Python,
-Universal Trigger, and App actors use native files under `code/` for editable source.
-React App actors expand to a whole Vite project under `code/` — see
-[React App actors](#react-app-actors) below.
+`actors/<category>/<type>/<ACTOR_ID>/actor.yaml`; actors that carry code use native
+files under `code/` for editable source. Deno, Deno Test, Universal Trigger, and
+Python actors hold a project tree there — see [Code actors](#code-actors) below.
+App actors hold their three fixed files (`index.html`, `styles.css`, `script.js`),
+and React App actors expand to a whole Vite project — see
+[React App actors](#react-app-actors).
 
 Pack/unpack is deterministic and lossless over managed bundle paths. Push/pull
 refresh `canvas.yaml` `sync.actors` with each server actor's edit version and
@@ -419,6 +421,43 @@ borgiq bundle push ./my-flow.borgiq-canvas --create
 Files such as `.git/`, `AGENTS.md`, `.gitignore`, and notes are preserved.
 `AGENTS.md` and `.gitignore` are created only when missing.
 Push refuses exports with actor errors, verifies that the batch API confirmed every requested actor operation, and skips local refresh after any incomplete response. Bundles without `sync.actors` fail closed when an existing local actor differs from the server. Run `bundle pull` to establish the visible sync baseline, or choose `--replace`/`--force-local` explicitly.
+
+#### Code actors
+
+Deno, Deno Test, Universal Trigger, and Python actors keep their source as a project
+under `code/`: a required entrypoint plus any helper files and folders.
+
+```
+actors/tasks/deno/<ACTOR_ID>/
+  actor.yaml            # configuration.codeDir: code
+  code/
+    main.ts             # required entrypoint
+    lib/format.ts       # helpers, nested as deeply as you like
+```
+
+The entrypoint is `code/main.ts` for Deno, Deno Test, and Universal Trigger actors and
+`code/main.py` for Python actors; `bundle validate` reports a project that is missing it.
+Import between your own files with ordinary relative imports; imports may not leave
+`code/`. Source is UTF-8 text only, capped at 200 files and 1 MiB in total.
+
+Some filenames are reserved by the BorgIQ runtime and rejected in a bundle: `server.ts`,
+`handler.ts`, `actor.ts`, `main_test.ts`, `deno.json`, `deno.jsonc`, `deno.lock`,
+`package.json`, `shared/**`, and `node_modules/**` for the Deno family; `server.py`,
+`handler.py`, `borgiq.py`, `pyproject.toml`, `.python-version`, `uv.lock`, `.borgiq/**`,
+`.venv/**`, and `borgiq/**` for Python. Python dependencies belong in
+`configuration.options.dependencies`.
+
+Multi-file code needs a CLI new enough to understand it. An older `@borgiq/cli` pulling
+a canvas whose code actors are multi-file leaves the file list inline in `actor.yaml` and
+then refuses to pack or push it (`configuration.codeDir must be 'code'`) — upgrade rather
+than working around that. This release reports an explicit upgrade message whenever it
+meets a code shape it cannot represent. A bundle pulled before this release has
+`code/mod.ts` (or `code/mod.py`) — rename it to `main.ts` (or `main.py`) and push;
+`bundle validate` says so too. A canvas whose code actors the platform has not converted
+yet pulls into the same layout, with the actor's source written to its entrypoint file, so
+the first push afterwards converts it — expect one pending update per such actor even
+before you edit anything. Local tooling output under `code/` (`node_modules/`, `dist/`,
+`.venv/`, `__pycache__/`, lockfiles) is never read, written, or deleted by the CLI.
 
 #### React App actors
 
@@ -482,9 +521,9 @@ pull, push, and `--replace`. `.env` and `.env.*` are ignored with a warning: act
 source is readable by anyone who can open the canvas, and a Vite build inlines `VITE_*`
 values into the served app — use platform variables or secrets instead.
 
-`bundle init`'s `.gitignore` covers the generated directories, but companion files are
-only written when missing, so a bundle created before this release keeps its old
-`.gitignore` — add the React App entries by hand or delete the file and re-pull.
+`bundle init`'s `.gitignore` and `AGENTS.md` cover every actor project tree, but companion
+files are only written when missing, so a bundle created before this release keeps its old
+copies — update them by hand, or delete them and re-pull.
 
 `unpack` stays offline and does not materialize asset files; run `bundle pull` for those.
 Content is compared byte for byte, so a git `core.autocrlf`/`.gitattributes` setting that
@@ -789,10 +828,8 @@ workflow JSON/YAML for the `borgiq-actor-builder` skill.
 
 ### validate
 - `borgiq validate <file.yaml>` — validate a workflow YAML (structure + per-actor rules). Exit 2 when invalid.
-- `borgiq validate <file.yaml> --skip-typecheck` — skip Deno/Python code typechecking.
+- `borgiq validate <file.yaml> --skip-typecheck` — accepted for compatibility; actor code is no longer typechecked locally.
 - `borgiq validate <file.yaml> --post-process [--in-place]` — clean up redundant fields.
-
-Code typechecking (DenoActor/PythonActor) runs only when `deno` / `python3` are installed; otherwise it is skipped with a warning.
 
 ---
 

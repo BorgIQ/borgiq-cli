@@ -9,7 +9,7 @@ import {
   toCanvasActorMutationData,
 } from '../../src/lib/bundle/diff.js';
 import type { BundleSyncActor, ExportedActor } from '../../src/lib/bundle/types.js';
-import { makeActor, makeDoc } from './fixtures.js';
+import { DENO_PROJECT, TASK_ID, makeActor, makeDenoActor, makeDoc } from './fixtures.js';
 
 const actor = (id: string, version: number | undefined, name = id, extra: Record<string, unknown> = {}) => {
   const out = makeActor({ id, type: 'EchoActor', version, name, ...extra });
@@ -308,5 +308,42 @@ describe('mergeForPull', () => {
     expect(merged.data.actors.ACTRserveredit.name).toBe('Server changed');
     expect(merged.data.actors.ACTRnewserver.name).toBe('New server');
     expect(merged.metadata.name).toBe('Server canvas');
+  });
+});
+
+describe('project-tree content hashing', () => {
+  const denoDoc = (codeDir: { path: string; content: string }[]) =>
+    makeDoc([makeDenoActor({ configuration: { codeDir, inputs: {}, options: { allowNet: true, allowFs: true } } })]);
+
+  it('hashes a helper-file edit as a local edit of the actor', () => {
+    const baseline = denoDoc(DENO_PROJECT.map((file) => ({ ...file })));
+    const edited = denoDoc([
+      { ...DENO_PROJECT[0], content: 'export const greeting = () => "edited";\n' },
+      { ...DENO_PROJECT[1] },
+    ]);
+
+    const diff = diffCanvas(edited, baseline, {
+      localActorStates: { [TASK_ID]: syncState(baseline.data.actors[TASK_ID], 1) },
+      serverActorVersions: { [TASK_ID]: 1 },
+    });
+
+    expect(diff.entries[0].verdict).toBe('local-edit');
+  });
+
+  it('hashes array order, which is why every ingest path sorts codeDir', () => {
+    const canonical = denoDoc(DENO_PROJECT.map((file) => ({ ...file })));
+    const reversed = denoDoc([...DENO_PROJECT].reverse().map((file) => ({ ...file })));
+
+    expect(actorContentHash(reversed.data.actors[TASK_ID]))
+      .not.toBe(actorContentHash(canonical.data.actors[TASK_ID]));
+  });
+
+  it('sends the file array to the API as a native list, not a YAML string', () => {
+    const data = toCanvasActorMutationData(
+      denoDoc(DENO_PROJECT.map((file) => ({ ...file }))).data.actors[TASK_ID] as unknown as Record<string, unknown>,
+    );
+
+    expect((data.configuration as Record<string, unknown>).codeDir).toEqual(DENO_PROJECT);
+    expect(typeof (data.configuration as Record<string, unknown>).options).toBe('string');
   });
 });

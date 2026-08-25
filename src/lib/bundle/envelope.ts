@@ -1,4 +1,4 @@
-import { normalizeReactAppExport } from './reactApp.js';
+import { normalizeProjectDirExport } from './projectDir.js';
 import { BundleError } from './types.js';
 import type { CanvasExportDocument } from './types.js';
 import { parseYamlDoc } from './yaml.js';
@@ -41,7 +41,7 @@ const parseDocument = (text: string): CanvasExportDocument => {
   if (!isPlainObject(parsed) || !isPlainObject(parsed.metadata) || !isPlainObject(parsed.data) || !isPlainObject(parsed.data.actors)) {
     throw new BundleError('Input is not a canvas export document (expected `metadata` and `data.actors` keys).');
   }
-  return normalizeReactAppExport(parsed as unknown as CanvasExportDocument);
+  return normalizeProjectDirExport(parsed as unknown as CanvasExportDocument);
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>

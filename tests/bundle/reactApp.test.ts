@@ -1,35 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  MAX_CODE_DIR_FILES,
   MAX_OPTIONS_FILES,
   assetExpression,
   assetKeyForFileName,
-  isIgnoredProjectDir,
-  isIgnoredProjectPath,
   isReactAppAssetPath,
   managedAssetEntries,
-  normalizeReactAppExport,
   optionsFileEntries,
   parseAssetExpression,
   reactAppCodePrefix,
-  splitReactAppCodePath,
   unmanagedAssetDirEntries,
 } from '../../src/lib/bundle/reactApp.js';
-import { REACT_APP_ID, makeActor, makeDoc, makeReactAppActor } from './fixtures.js';
+import { REACT_APP_ID } from './fixtures.js';
 
 describe('react-app path helpers', () => {
-  it('maps actor ids to their project prefix and back', () => {
+  it('maps an actor id to its project prefix', () => {
     expect(reactAppCodePrefix(REACT_APP_ID)).toBe(`actors/triggers/react-app/${REACT_APP_ID}/code/`);
-    expect(splitReactAppCodePath(`actors/triggers/react-app/${REACT_APP_ID}/code/src/App.tsx`))
-      .toEqual({ actorId: REACT_APP_ID, projectPath: 'src/App.tsx' });
-  });
-
-  it('ignores paths outside a react-app project tree', () => {
-    expect(splitReactAppCodePath(`actors/tasks/deno/${REACT_APP_ID}/code/mod.ts`)).toBeUndefined();
-    expect(splitReactAppCodePath(`actors/triggers/react-app/${REACT_APP_ID}/actor.yaml`)).toBeUndefined();
-    expect(splitReactAppCodePath(`actors/triggers/react-app/${REACT_APP_ID}/code/`)).toBeUndefined();
-    expect(splitReactAppCodePath('canvas.yaml')).toBeUndefined();
   });
 
   it('recognizes the asset directory only for files inside it', () => {
@@ -39,41 +25,6 @@ describe('react-app path helpers', () => {
     expect(isReactAppAssetPath('src/assets/')).toBe(false);
     expect(isReactAppAssetPath('public/vite.svg')).toBe(false);
     expect(isReactAppAssetPath('src/App.tsx')).toBe(false);
-  });
-});
-
-describe('isIgnoredProjectPath', () => {
-  it('ignores tooling directories at any depth', () => {
-    expect(isIgnoredProjectPath('node_modules/react/index.js').ignored).toBe(true);
-    expect(isIgnoredProjectPath('packages/ui/node_modules/react/index.js').ignored).toBe(true);
-    expect(isIgnoredProjectPath('dist/assets/index.js').ignored).toBe(true);
-    expect(isIgnoredProjectPath('.vite/deps/react.js').ignored).toBe(true);
-    expect(isIgnoredProjectPath('__borgiq_sdk_placeholder__/index.js').ignored).toBe(true);
-  });
-
-  it('ignores lockfiles and editor droppings', () => {
-    for (const name of ['deno.lock', 'package-lock.json', 'pnpm-lock.yaml', 'bun.lockb', '.DS_Store']) {
-      expect(isIgnoredProjectPath(name).ignored).toBe(true);
-    }
-    expect(isIgnoredProjectPath('src/.DS_Store').ignored).toBe(true);
-  });
-
-  it('ignores env files with a warning that points elsewhere', () => {
-    const verdict = isIgnoredProjectPath('.env.production');
-    expect(verdict.ignored).toBe(true);
-    expect(verdict.warn).toMatch(/VITE_\*/);
-    expect(isIgnoredProjectPath('.env').warn).toBeDefined();
-  });
-
-  it('keeps real source files', () => {
-    for (const path of ['src/App.tsx', 'package.json', 'index.html', 'src/assets/hero.png', 'public/vite.svg']) {
-      expect(isIgnoredProjectPath(path)).toEqual({ ignored: false });
-    }
-  });
-
-  it('exposes the directory names a walker must not descend into', () => {
-    expect(isIgnoredProjectDir('node_modules')).toBe(true);
-    expect(isIgnoredProjectDir('src')).toBe(false);
   });
 });
 
@@ -153,56 +104,8 @@ describe('options.files classification', () => {
   });
 });
 
-describe('normalizeReactAppExport', () => {
-  it('sorts every react-app codeDir array by path', () => {
-    const doc = makeDoc([
-      makeReactAppActor({
-        configuration: {
-          codeDir: [
-            { path: 'src/main.tsx', content: 'main' },
-            { path: 'index.html', content: 'html' },
-            { path: 'src/App.tsx', content: 'app' },
-          ],
-        },
-      }),
-    ]);
-
-    normalizeReactAppExport(doc);
-
-    const codeDir = doc.data.actors[REACT_APP_ID].configuration!.codeDir as { path: string }[];
-    expect(codeDir.map((file) => file.path)).toEqual(['index.html', 'src/App.tsx', 'src/main.tsx']);
-  });
-
-  it('never reorders options.files, where a later overlay wins', () => {
-    const files = [
-      { path: 'src/assets/z.png', content: '${{ assets["z.png"] }}' },
-      { path: 'src/assets/a.png', content: '${{ assets["a.png"] }}' },
-    ];
-    const doc = makeDoc([makeReactAppActor({ configuration: { codeDir: [], options: { files } } })]);
-
-    normalizeReactAppExport(doc);
-
-    expect(doc.data.actors[REACT_APP_ID].configuration!.options).toEqual({ files });
-  });
-
-  it('leaves other actor types and malformed codeDir values alone', () => {
-    const doc = makeDoc([
-      makeActor({ id: 'ACTR01deno0000000000000000000', type: 'DenoActor', configuration: { code: 'x' } }),
-      makeReactAppActor({ configuration: { codeDir: 'code' } }),
-    ]);
-    const malformed = makeDoc([
-      makeReactAppActor({ configuration: { codeDir: [{ path: 'b' }, { nope: true }] } }),
-    ]);
-
-    expect(normalizeReactAppExport(doc)).toBe(doc);
-    expect(doc.data.actors[REACT_APP_ID].configuration!.codeDir).toBe('code');
-    expect((malformed.data.actors[REACT_APP_ID].configuration!.codeDir as unknown[])[0]).toEqual({ path: 'b' });
-  });
-});
-
 describe('limit mirrors', () => {
-  it('tracks the limits the API enforces', () => {
-    expect(MAX_CODE_DIR_FILES).toBe(200);
+  it('tracks the options.files limit the API enforces', () => {
     expect(MAX_OPTIONS_FILES).toBe(50);
   });
 });

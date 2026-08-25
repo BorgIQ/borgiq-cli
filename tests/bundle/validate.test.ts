@@ -4,10 +4,16 @@ import { disassemble } from '../../src/lib/bundle/disassemble.js';
 import { validateBundle } from '../../src/lib/bundle/validate.js';
 import { parseYamlDoc, stringifyYamlDoc } from '../../src/lib/bundle/yaml.js';
 import type { BundleFileMap } from '../../src/lib/bundle/types.js';
-import { TASK_ID, TRIGGER_ID, makeWiredDoc } from './fixtures.js';
+import { DENO_DIR, TASK_ID, TRIGGER_ID, makeDoc, makeLegacyDenoActor, makePythonActor, makeWiredDoc } from './fixtures.js';
 
 const validFiles = (): BundleFileMap => ({ ...disassemble(makeWiredDoc()).files });
-const TASK_DIR = `actors/tasks/deno/${TASK_ID}`;
+const TASK_DIR = DENO_DIR;
+
+const withActorDoc = (files: BundleFileMap, mutate: (configuration: Record<string, unknown>) => void): BundleFileMap => {
+  const actorDoc = parseYamlDoc(files[`${TASK_DIR}/actor.yaml`]) as { configuration: Record<string, unknown> };
+  mutate(actorDoc.configuration);
+  return { ...files, [`${TASK_DIR}/actor.yaml`]: stringifyYamlDoc(actorDoc) };
+};
 
 const mutateRoot = (files: BundleFileMap, mutate: (root: Record<string, unknown>) => void): BundleFileMap => {
   const root = parseYamlDoc(files['canvas.yaml']) as Record<string, unknown>;
@@ -89,36 +95,132 @@ describe('validateBundle', () => {
     expect(messages(validateBundle(files).errors)).toMatch(/Unknown actor type 'FutureActor'.*upgrade/);
   });
 
-  it('enforces the codeDir contract', () => {
-    let files = validFiles();
-    let actorDoc = parseYamlDoc(files[`${TASK_DIR}/actor.yaml`]) as { configuration: Record<string, unknown> };
-    actorDoc.configuration.codeDir = 'src';
-    files[`${TASK_DIR}/actor.yaml`] = stringifyYamlDoc(actorDoc);
-    expect(messages(validateBundle(files).errors)).toMatch(/codeDir must be 'code'/);
+  it('enforces the codeDir marker contract', () => {
+    let files = withActorDoc(validFiles(), (configuration) => { configuration.codeDir = 'src'; });
+    expect(messages(validateBundle(files).errors)).toMatch(/codeDir must be 'code' or an inline list/);
 
-    files = validFiles();
-    actorDoc = parseYamlDoc(files[`${TASK_DIR}/actor.yaml`]) as { configuration: Record<string, unknown> };
-    actorDoc.configuration.code = 'inline';
-    files[`${TASK_DIR}/actor.yaml`] = stringifyYamlDoc(actorDoc);
-    expect(messages(validateBundle(files).errors)).toMatch(/[Bb]oth codeDir and inline code/);
-
-    files = validFiles();
-    delete files[`${TASK_DIR}/code/mod.ts`];
-    expect(messages(validateBundle(files).errors)).toMatch(/mod\.ts/);
-
-    files = validFiles();
-    files[`${TASK_DIR}/code/helper.ts`] = 'export const x = 1;\n';
-    expect(messages(validateBundle(files).errors)).toMatch(/multi-file actor code is not yet supported/);
-
-    files = validFiles();
-    files[`${TASK_DIR}/code/server.ts`] = '// nope\n';
-    expect(messages(validateBundle(files).errors)).toMatch(/runtime-owned/);
-
-    files = validFiles();
-    actorDoc = parseYamlDoc(files[`${TASK_DIR}/actor.yaml`]) as { configuration: Record<string, unknown> };
-    delete actorDoc.configuration.codeDir;
-    files[`${TASK_DIR}/actor.yaml`] = stringifyYamlDoc(actorDoc);
+    files = withActorDoc(validFiles(), (configuration) => { delete configuration.codeDir; });
     expect(messages(validateBundle(files).errors)).toMatch(/no configuration\.codeDir/);
+
+    files = withActorDoc(validFiles(), (configuration) => {
+      configuration.codeDir = [{ path: 'main.ts', content: 'x' }];
+    });
+    expect(messages(validateBundle(files).errors)).toMatch(/inline list but code\/ also contains files/);
+  });
+
+  it('rejects a project that keeps both an inline code string and project files', () => {
+    const files = withActorDoc(validFiles(), (configuration) => { configuration.code = 'inline'; });
+    expect(messages(validateBundle(files).errors)).toMatch(/Both configuration\.code and codeDir project files/);
+  });
+
+  it('tells a hand-authored inline code string where the source belongs', () => {
+    const files = disassemble(makeDoc([makeLegacyDenoActor({ configuration: { options: {} } })])).files;
+    const actorFile = `${TASK_DIR}/actor.yaml`;
+    const actorDoc = parseYamlDoc(files[actorFile]) as { configuration: Record<string, unknown> };
+    actorDoc.configuration.code = 'export default 1;\n';
+    files[actorFile] = stringifyYamlDoc(actorDoc);
+
+    expect(messages(validateBundle(files).errors)).toMatch(/Inline configuration\.code is not supported for DenoActor.*code\/main\.ts/s);
+  });
+
+  it('requires the entrypoint each code actor runtime imports', () => {
+    const files = validFiles();
+    delete files[`${TASK_DIR}/code/main.ts`];
+    expect(messages(validateBundle(files).errors)).toMatch(/DenoActor needs an entrypoint file at code\/main\.ts\./);
+
+    const python = disassemble(makeDoc([makePythonActor()])).files;
+    delete python[`actors/tasks/python/${TASK_ID}/code/main.py`];
+    expect(messages(validateBundle(python).errors)).toMatch(/PythonActor needs an entrypoint file at code\/main\.py/);
+  });
+
+  it('holds the entrypoint to its exact name, as the API does', () => {
+    const files = validFiles();
+    files[`${TASK_DIR}/code/Main.ts`] = files[`${TASK_DIR}/code/main.ts`];
+    delete files[`${TASK_DIR}/code/main.ts`];
+
+    expect(messages(validateBundle(files).errors)).toMatch(/needs an entrypoint file at code\/main\.ts/);
+  });
+
+  it('tells a bundle still on the old entrypoint name how to migrate', () => {
+    const files = validFiles();
+    files[`${TASK_DIR}/code/mod.ts`] = files[`${TASK_DIR}/code/main.ts`];
+    delete files[`${TASK_DIR}/code/main.ts`];
+
+    expect(messages(validateBundle(files).errors)).toMatch(/rename code\/mod\.ts to code\/main\.ts/);
+  });
+
+  it('rejects filenames the runtime owns, per language', () => {
+    let files = validFiles();
+    files[`${TASK_DIR}/code/server.ts`] = '// nope\n';
+    expect(messages(validateBundle(files).errors)).toMatch(/'server\.ts' is reserved by the BorgIQ runtime/);
+
+    files = validFiles();
+    files[`${TASK_DIR}/code/shared/api.ts`] = '// nope\n';
+    expect(messages(validateBundle(files).errors)).toMatch(/reserved by the BorgIQ runtime \('shared\/'\)/);
+
+    // Deno config discovery would prefer a user deno.json over the runtime's own config.
+    files = validFiles();
+    files[`${TASK_DIR}/code/deno.json`] = '{}\n';
+    expect(messages(validateBundle(files).errors)).toMatch(/'deno\.json' is reserved/);
+
+    // Case-insensitive, because a case-insensitive filesystem cannot tell the two apart.
+    files = validFiles();
+    files[`${TASK_DIR}/code/Handler.ts`] = '// nope\n';
+    expect(messages(validateBundle(files).errors)).toMatch(/'Handler\.ts' is reserved by the BorgIQ runtime \('handler\.ts'\)/);
+
+    const python = disassemble(makeDoc([makePythonActor()])).files;
+    python[`actors/tasks/python/${TASK_ID}/code/borgiq/errors.py`] = '# nope\n';
+    python[`actors/tasks/python/${TASK_ID}/code/pyproject.toml`] = '[project]\n';
+    const pythonErrors = messages(validateBundle(python).errors);
+    expect(pythonErrors).toMatch(/'borgiq\/errors\.py' is reserved by the BorgIQ runtime \('borgiq\/'\)/);
+    expect(pythonErrors).toMatch(/'pyproject\.toml' is reserved/);
+  });
+
+  it('accepts a helper file the runtime does not own', () => {
+    const files = validFiles();
+    files[`${TASK_DIR}/code/lib/deep/util.ts`] = 'export const x = 1;\n';
+    expect(validateBundle(files).errors).toEqual([]);
+  });
+
+  it('rejects two project paths that differ only in letter case', () => {
+    const files = withActorDoc(
+      { ...disassemble(makeDoc([makeLegacyDenoActor({ configuration: { options: {} } })])).files },
+      (configuration) => {
+        configuration.codeDir = [
+          { path: 'main.ts', content: 'a' },
+          { path: 'lib/Util.ts', content: 'b' },
+          { path: 'lib/util.ts', content: 'c' },
+        ];
+      },
+    );
+
+    expect(messages(validateBundle(files).errors)).toMatch(/differ only in letter case/);
+  });
+
+  it('rejects a fixed-code actor carrying multi-file code, pointing at the upgrade', () => {
+    const app = disassemble(makeDoc([{
+      id: TASK_ID,
+      type: 'AppTriggerActor',
+      version: 1,
+      name: 'App',
+      msgVar: 'app',
+      description: '',
+      isActive: true,
+      sourcePorts: [{ id: 'SPRTdefault' }],
+      continueOnError: false,
+      enableLTM: false,
+      enableSTM: false,
+      configuration: { options: {} },
+      schemas: {},
+      edges: {},
+      position: { x: 0, y: 0 },
+    }])).files;
+    const actorFile = `actors/triggers/app/${TASK_ID}/actor.yaml`;
+    const actorDoc = parseYamlDoc(app[actorFile]) as Record<string, unknown>;
+    actorDoc.configuration = { codeDir: [{ path: 'index.html', content: '<h1>hi</h1>' }], options: {} };
+    app[actorFile] = stringifyYamlDoc(actorDoc);
+
+    expect(messages(validateBundle(app).errors)).toMatch(/multi-file actor code.*upgrade @borgiq\/cli/);
   });
 
   it('validates graph referential integrity', () => {

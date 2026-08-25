@@ -1,14 +1,13 @@
-import { BUNDLE_PATH_REGISTRY, RESERVED_CODE_FILENAMES, actorFolderPath, isKnownActorType } from './registry.js';
-import type { CodeSource } from './registry.js';
+import { BUNDLE_PATH_REGISTRY, REACT_APP_TYPE, actorFolderPath, isKnownActorType } from './registry.js';
+import type { BundleActorType, BundlePathSpec, CodeSource } from './registry.js';
 import {
   MAX_CODE_DIR_FILES,
   MAX_CODE_DIR_TOTAL_BYTES,
-  MAX_OPTIONS_FILES,
   MAX_PROJECT_PATH_LENGTH,
-  isIgnoredProjectPath,
-  managedAssetEntries,
-  unmanagedAssetDirEntries,
-} from './reactApp.js';
+  isIgnoredProjectPathFor,
+  matchReservedPath,
+} from './projectDir.js';
+import { MAX_OPTIONS_FILES, managedAssetEntries, unmanagedAssetDirEntries } from './reactApp.js';
 import { ACTOR_FILE, CODE_DIR, FORMAT_NAME, FORMAT_VERSION, ROOT_FILE } from './types.js';
 import type { BundleFileMap, BundleIssue } from './types.js';
 import { parseYamlDoc } from './yaml.js';
@@ -45,7 +44,7 @@ interface ActorIndexEntry {
   path: string;
 }
 
-/** One file of a React App project, from either the `code/` tree or an inline `codeDir`. */
+/** One file of an actor's project, from either the `code/` tree or an inline `codeDir`. */
 interface ProjectFile {
   path: string;
   content: string;
@@ -275,6 +274,13 @@ const validateCodeDir = (
     return;
   }
 
+  if (Array.isArray(configuration.codeDir)) {
+    errors.push({
+      path: actorFile,
+      message: `Actor type ${entry.type} carries multi-file actor code, which this CLI version cannot represent - upgrade @borgiq/cli.`,
+    });
+    return;
+  }
   if (configuration.codeDir !== CODE_DIR) {
     errors.push({ path: actorFile, message: `configuration.codeDir must be 'code', got '${String(configuration.codeDir)}'.` });
   }
@@ -296,13 +302,9 @@ const validateCodeDir = (
 
   for (const path of codeFilesPresent) {
     if (canonical.has(path)) continue;
-    const name = path.slice(codePrefix.length);
-    const reserved = RESERVED_CODE_FILENAMES.has(name) || name.startsWith('shared/');
     errors.push({
       path,
-      message: reserved
-        ? `'${name}' is runtime-owned and may not appear in a bundle.`
-        : `Unexpected file in code/ - multi-file actor code is not yet supported (v1 allows only: ${spec.codeFiles.map((codeFile) => codeFile.file).join(', ')}).`,
+      message: `Unexpected file in code/ - ${entry.type} allows only: ${spec.codeFiles.map((codeFile) => codeFile.file).join(', ')}.`,
     });
   }
 };
@@ -324,8 +326,9 @@ const findInlineCodeSources = (
 
 /**
  * A project-tree actor carries an arbitrary source tree under `code/`, so the canonical
- * filename rules do not apply. Only genuine format ambiguities are errors here; every
- * shape and size rule is a warning, because the API validates the push and is the authority.
+ * filename rules do not apply. Genuine format ambiguities and the rules the runtime cannot
+ * bend (its entrypoint, its reserved filenames) are errors; every shape and size rule is a
+ * warning, because the API validates the push and is the authority.
  */
 const validateProjectDir = (
   entry: ActorIndexEntry,
@@ -333,17 +336,105 @@ const validateProjectDir = (
   run: ValidationRun,
   referenced: Set<string>,
 ): void => {
+  const spec = BUNDLE_PATH_REGISTRY[entry.type as BundleActorType];
   const configuration = isPlainObject(actorDoc.configuration) ? actorDoc.configuration : {};
   const codePrefix = `${entry.path}/${CODE_DIR}/`;
   const treePaths = Object.keys(run.files).filter((path) => path.startsWith(codePrefix)).sort();
   for (const path of treePaths) referenced.add(path);
 
   const project = collectProjectFiles(entry, configuration, treePaths, codePrefix, run);
-  validateOptionsFiles(entry, configuration, project, run);
+  if (entry.type === REACT_APP_TYPE) validateOptionsFiles(entry, configuration, project, run);
   if (!project) return;
 
+  validateInlineCode(entry, configuration, project, run);
+  validateProjectPaths(entry, spec, configuration, project, run);
   warnProjectLimits(entry, project, run);
-  warnTemplateShape(entry, project, run);
+  if (entry.type === REACT_APP_TYPE) warnTemplateShape(entry, project, run);
+};
+
+/**
+ * `configuration.code` is the single-string shape the four code actors used before multi-file
+ * support. A bundle that still carries it either has two sources of truth, or one the CLI no
+ * longer writes; either way, say which file the code belongs in.
+ */
+const validateInlineCode = (
+  entry: ActorIndexEntry,
+  configuration: Record<string, unknown>,
+  project: ProjectFile[],
+  run: ValidationRun,
+): void => {
+  if (typeof configuration.code !== 'string') return;
+
+  const actorFile = `${entry.path}/${ACTOR_FILE}`;
+  const entrypoint = BUNDLE_PATH_REGISTRY[entry.type as BundleActorType].entrypoint;
+  if (project.length > 0 || configuration.codeDir !== undefined) {
+    run.errors.push({ path: actorFile, message: 'Both configuration.code and codeDir project files are present - remove one source.' });
+    return;
+  }
+  run.errors.push({
+    path: actorFile,
+    message: entrypoint === undefined
+      ? `Actor type ${entry.type} does not support inline configuration.code - move the source into ${CODE_DIR}/.`
+      : `Inline configuration.code is not supported for ${entry.type} - move the source into ${CODE_DIR}/${entrypoint} and set configuration.codeDir: ${CODE_DIR}.`,
+  });
+};
+
+/**
+ * The two path rules the runtime imposes on a project tree: it must contain the entrypoint it
+ * imports, and it may not contain a file the runtime writes itself. Both are compared the way a
+ * case-insensitive filesystem would, which is also why two paths differing only in case are
+ * rejected outright.
+ */
+const validateProjectPaths = (
+  entry: ActorIndexEntry,
+  spec: BundlePathSpec,
+  configuration: Record<string, unknown>,
+  project: ProjectFile[],
+  run: ValidationRun,
+): void => {
+  const { errors } = run;
+  const actorFile = `${entry.path}/${ACTOR_FILE}`;
+  const codePrefix = `${entry.path}/${CODE_DIR}/`;
+
+  const byFold = new Map<string, string>();
+  for (const file of project) {
+    const fold = file.path.toLowerCase();
+    const clashing = byFold.get(fold);
+    if (clashing !== undefined) {
+      errors.push({
+        path: `${codePrefix}${file.path}`,
+        message: clashing === file.path
+          ? `'${file.path}' appears twice - each project path may only be listed once.`
+          : `'${clashing}' and '${file.path}' differ only in letter case, which case-insensitive filesystems cannot represent.`,
+      });
+      continue;
+    }
+    byFold.set(fold, file.path);
+
+    if (!spec.reservedPaths) continue;
+    const reserved = matchReservedPath(file.path, spec.reservedPaths);
+    if (reserved !== null) {
+      errors.push({
+        path: `${codePrefix}${file.path}`,
+        message: `'${file.path}' is reserved by the BorgIQ runtime${reserved === file.path ? '' : ` ('${reserved}')`}`
+          + ' and may not appear in a bundle.',
+      });
+    }
+  }
+
+  if (spec.entrypoint === undefined) return;
+  // An actor with no project source at all is the API's business, not the bundle format's.
+  if (project.length === 0 && configuration.codeDir === undefined) return;
+  // Matched exactly, the way the runtime imports it and the API validates it: on a
+  // case-sensitive filesystem 'Main.ts' is simply a different file.
+  if (project.some((file) => file.path === spec.entrypoint)) return;
+
+  const staleEntrypoint = project.find((file) => /^mod\.(ts|py)$/.test(file.path));
+  errors.push({
+    path: `${codePrefix}${spec.entrypoint}`,
+    message: `${entry.type} needs an entrypoint file at ${CODE_DIR}/${spec.entrypoint}`
+      + (staleEntrypoint ? ` - rename ${CODE_DIR}/${staleEntrypoint.path} to ${CODE_DIR}/${spec.entrypoint}.` : '.'),
+  });
 };
 
 /** Resolves the effective project files, or undefined when the source is missing or ambiguous. */
@@ -439,7 +530,7 @@ const warnProjectLimits = (entry: ActorIndexEntry, project: ProjectFile[], run: 
         message: `Project path is ${file.path.length} characters; the API rejects paths longer than ${MAX_PROJECT_PATH_LENGTH}.`,
       });
     }
-    const ignore = isIgnoredProjectPath(file.path);
+    const ignore = isIgnoredProjectPathFor(file.path, entry.type as BundleActorType);
     if (ignore.warn) warnings.push({ path: `${entry.path}/${CODE_DIR}/${file.path}`, message: ignore.warn });
   }
 };
