@@ -223,42 +223,35 @@ const assertRepresentable = (
 };
 
 /**
- * The project files of a project-dir actor: its `configuration.codeDir` array, or - for a
- * document the platform has not migrated yet - its single `configuration.code` string read as
- * the entrypoint file. Consuming the legacy string here is what makes the next push migrate
- * the actor, since assembly only ever writes `codeDir` back.
+ * The project files of a project-dir actor: its `configuration.codeDir` array.
  *
- * The string is consumed on every path, never left beside the file list: a bundle carrying both
- * has two sources of truth, which `validate` rejects - so leaving it would mean pulling a
- * directory that cannot be validated, packed, or pushed.
+ * A stray `configuration.code` beside that array is consumed rather than written out - a bundle
+ * carrying both has two sources of truth, which `validate` rejects, so leaving it would mean
+ * pulling a directory that cannot be validated, packed, or pushed.
+ *
+ * A document whose ONLY source is `configuration.code` is not turned into an entrypoint file.
+ * BorgIQ does not run that shape for these actor types any more, so materializing it would
+ * rebuild a bundle the API rejects on push. The string is left in `actor.yaml` untouched, where
+ * `validate` names the file it belongs in - which is both the diagnosis and the fix.
  */
 const projectFileEntries = (
   configuration: Record<string, unknown>,
   actorId: string,
-  entrypoint: string | undefined,
   warnings: string[],
 ): unknown[] | undefined => {
-  const legacyCode = typeof configuration.code === 'string' ? configuration.code : undefined;
+  if (!Array.isArray(configuration.codeDir)) return undefined;
 
-  if (Array.isArray(configuration.codeDir)) {
-    if (legacyCode !== undefined) {
-      delete configuration.code;
-      if (legacyCode.length > 0) {
-        warnings.push(
-          `Actor ${actorId}: configuration.code was dropped because the actor also carries a file list, `
-          + 'which is the source of truth. The next push removes the leftover string from the actor.',
-        );
-      }
+  if (typeof configuration.code === 'string') {
+    const strayCode = configuration.code;
+    delete configuration.code;
+    if (strayCode.length > 0) {
+      warnings.push(
+        `Actor ${actorId}: configuration.code was dropped because the actor also carries a file list, `
+        + 'which is the source of truth. The next push removes the leftover string from the actor.',
+      );
     }
-    return configuration.codeDir;
   }
-
-  if (entrypoint === undefined || legacyCode === undefined) return undefined;
-
-  // An empty string is not code: consume it so it cannot reappear as a second source, but
-  // write no entrypoint file for it - the actor simply has no code yet.
-  delete configuration.code;
-  return legacyCode.length > 0 ? [{ path: entrypoint, content: legacyCode }] : undefined;
+  return configuration.codeDir;
 };
 
 /**
@@ -275,7 +268,7 @@ const externalizeProjectDir = (
   files: BundleFileMap,
   warnings: string[],
 ): void => {
-  const codeDir = projectFileEntries(configuration, actorId, BUNDLE_PATH_REGISTRY[type].entrypoint, warnings);
+  const codeDir = projectFileEntries(configuration, actorId, warnings);
   if (!codeDir) return;
 
   const pathsByFold = new Map<string, string>();

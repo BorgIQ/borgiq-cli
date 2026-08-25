@@ -114,13 +114,13 @@ describe('round-trip guarantees', () => {
     expect(() => assembleBundle(files)).toThrow(BundleValidationError);
   });
 
-  it('migrates a legacy code string on the way through: pull writes files, pack sends codeDir', () => {
+  it('refuses to pack a single-string configuration.code instead of quietly converting it', () => {
+    // Pulling one writes no entrypoint file, so packing it back fails validation rather than
+    // producing a document the API rejects. The error names the file the source belongs in.
     const { files } = disassemble(makeLegacyWiredDoc());
-    expect(files[`${DENO_DIR}/code/main.ts`]).toBe(LEGACY_DENO_CODE);
+    expect(files[`${DENO_DIR}/code/main.ts`]).toBeUndefined();
 
-    const configuration = assembleBundle(files).doc.data.actors[TASK_ID].configuration!;
-    expect(configuration.codeDir).toEqual([{ path: 'main.ts', content: LEGACY_DENO_CODE }]);
-    expect(configuration.code).toBeUndefined();
+    expect(() => assembleBundle(files)).toThrow(BundleValidationError);
   });
 
   it('rebuilds a code actor project sorted by path, whatever order the file map has', () => {

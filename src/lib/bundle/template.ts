@@ -243,6 +243,9 @@ actors/tasks/deno/<ACTOR_ID>/
   why a pyproject.toml of your own is reserved rather than merged.
 - A bundle pulled before multi-file support has code/mod.ts (or code/mod.py).
   Rename it to main.ts (or main.py); the old name is just another file now.
+- An actor whose source is still a single configuration.code string is not
+  converted for you. Move it into code/main.ts (or code/main.py) and set
+  configuration.codeDir: code; bundle validate names the file for you.
 
 ## React App actors
 

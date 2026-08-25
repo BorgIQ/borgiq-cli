@@ -66,18 +66,23 @@ describe('disassemble', () => {
     expect(py[`${PYTHON_DIR}/code/lib/greeting.py`]).toBe(PYTHON_PROJECT[0].content);
   });
 
-  it('materializes a legacy code string as the entrypoint file and drops the string', () => {
+  it('leaves a single-string configuration.code where it is, writing no entrypoint file for it', () => {
+    // BorgIQ does not run this shape any more, so pulling it must not rebuild a bundle the API
+    // would reject on push. The string stays visible in actor.yaml and validate names its file.
     const { files, warnings } = disassemble(makeDoc([makeLegacyDenoActor()]));
 
-    expect(files[`${DENO_DIR}/code/main.ts`]).toBe(LEGACY_DENO_CODE);
+    expect(files[`${DENO_DIR}/code/main.ts`]).toBeUndefined();
     const actorDoc = parseYamlDoc(files[`${DENO_DIR}/actor.yaml`]) as { configuration: Record<string, unknown> };
-    expect(actorDoc.configuration.codeDir).toBe('code');
-    expect(actorDoc.configuration.code).toBeUndefined();
+    expect(actorDoc.configuration.codeDir).toBeUndefined();
+    expect(actorDoc.configuration.code).toBe(LEGACY_DENO_CODE);
     expect(warnings).toEqual([]);
+
+    const { errors } = validateBundle(files);
+    expect(errors.some((error) => error.message.includes(`${'code'}/main.ts`))).toBe(true);
   });
 
-  it('consumes the legacy code string on every path, so a bundle never carries two sources', () => {
-    // A document mid-migration can hold both; the file list is the source of truth.
+  it('consumes a stray code string beside a file list, so a bundle never carries two sources', () => {
+    // A document can still hold both if something wrote the string back; the file list wins.
     const both = disassemble(makeDoc([makeLegacyDenoActor({
       configuration: {
         code: LEGACY_DENO_CODE,
@@ -91,13 +96,15 @@ describe('disassemble', () => {
     expect(both.warnings[0]).toMatch(/configuration\.code was dropped/);
     expect(validateBundle(both.files).errors).toEqual([]);
 
-    // An empty string is not code: it becomes no file rather than an unfollowable error.
-    const empty = disassemble(makeDoc([makeLegacyDenoActor({ configuration: { code: '', options: {} } })]));
+    // An empty string beside a file list is still a second source: consumed, but silently -
+    // there is nothing there to warn anybody about losing.
+    const emptyStray = disassemble(makeDoc([makeLegacyDenoActor({
+      configuration: { code: '', codeDir: [{ path: 'main.ts', content: 'export default 2;\n' }], options: {} },
+    })]));
 
-    expect(Object.keys(empty.files).some((path) => path.includes('/code/'))).toBe(false);
-    expect(configurationOf(empty.files).code).toBeUndefined();
-    expect(configurationOf(empty.files).codeDir).toBeUndefined();
-    expect(validateBundle(empty.files).errors).toEqual([]);
+    expect(configurationOf(emptyStray.files).code).toBeUndefined();
+    expect(emptyStray.warnings).toEqual([]);
+    expect(validateBundle(emptyStray.files).errors).toEqual([]);
   });
 
   it('does not write a project file it would never read back', () => {

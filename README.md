@@ -453,11 +453,11 @@ then refuses to pack or push it (`configuration.codeDir must be 'code'`) — upg
 than working around that. This release reports an explicit upgrade message whenever it
 meets a code shape it cannot represent. A bundle pulled before this release has
 `code/mod.ts` (or `code/mod.py`) — rename it to `main.ts` (or `main.py`) and push;
-`bundle validate` says so too. A canvas whose code actors the platform has not converted
-yet pulls into the same layout, with the actor's source written to its entrypoint file, so
-the first push afterwards converts it — expect one pending update per such actor even
-before you edit anything. Local tooling output under `code/` (`node_modules/`, `dist/`,
-`.venv/`, `__pycache__/`, lockfiles) is never read, written, or deleted by the CLI.
+`bundle validate` says so too. An actor whose source is still a single
+`configuration.code` string is not converted for you: it pulls with that string left in
+`actor.yaml` and no file under `code/`, and `bundle validate` names the file to move it
+into. Local tooling output under `code/` (`node_modules/`, `dist/`, `.venv/`,
+`__pycache__/`, lockfiles) is never read, written, or deleted by the CLI.
 
 #### React App actors
 
