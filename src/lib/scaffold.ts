@@ -6,8 +6,8 @@ import type { BIQActorSchema, BIQActorTemplateDetail } from '../client/types.js'
 /**
  * A scaffolded actor in **CanvasActor** shape — the format
  * `borgiq canvas-actors create/batch` expects. Configuration fields are YAML
- * strings (not native objects); see `importActor` in
- * `borgiq-platform/packages/utils/src/canvas.ts`.
+ * strings rather than native objects, which is what the API parses them as on
+ * import; `codeDir` is the exception and stays a structured array.
  */
 export interface ScaffoldedActor {
   id: string;
