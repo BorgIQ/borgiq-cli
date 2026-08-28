@@ -42,6 +42,10 @@ import type {
   BIQTemplateApp,
   TemplateListFilters,
   ReactAppBuildStartResponse,
+  WorkspaceDeploymentStatus,
+  BuildAllRuntimeBuildsResult,
+  RuntimeBuildSummary,
+  CanvasRuntimeBuildState,
   ReactAppBuildResultPayload,
 } from './types.js';
 
@@ -272,6 +276,64 @@ export class BorgIQClient {
     );
     if (status === 202) return { pending: true };
     return data;
+  }
+
+  // ── Workspace deployment and runtime builds ───────────
+
+  /** The workspace's deployment setting and every canvas's build state. */
+  async getWorkspaceDeployment(org: string, workspace: string): Promise<WorkspaceDeploymentStatus> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/deployment`);
+  }
+
+  /** Turn deployment on or off. Changes what triggers execute across every canvas in the workspace. */
+  async updateWorkspaceDeployment(org: string, workspace: string, isDeployed: boolean): Promise<void> {
+    await this.request('PUT', `${this.wkspPath(org, workspace)}/deployment`, { isDeployed });
+  }
+
+  /** Start a build for every buildable canvas in the workspace. */
+  async buildAllRuntimeBuilds(org: string, workspace: string): Promise<BuildAllRuntimeBuildsResult> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/deployment/build-all`, {});
+  }
+
+  /** Start a runtime build for one canvas. Fire and forget — poll `getRuntimeBuild` for the result. */
+  async startRuntimeBuild(org: string, workspace: string, canvasSlugOrId: string): Promise<{ build: RuntimeBuildSummary | null }> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/runtime-build`, {});
+  }
+
+  /**
+   * The canvas's build state, or a long poll on one build.
+   *
+   * With `buildId`, 202 means the wait window elapsed while the build was still running — keep
+   * polling. Without it, the response is the active/latest pair plus whether the canvas has been
+   * edited since its running build.
+   */
+  async getRuntimeBuild(
+    org: string,
+    workspace: string,
+    canvasSlugOrId: string,
+    opts?: { buildId?: string; waitSeconds?: number },
+  ): Promise<{ pending: true; build: RuntimeBuildSummary } | { build: RuntimeBuildSummary } | CanvasRuntimeBuildState> {
+    const params = new URLSearchParams();
+    if (opts?.buildId) params.set('buildId', opts.buildId);
+    if (opts?.waitSeconds !== undefined) params.set('waitSeconds', String(opts.waitSeconds));
+    const qs = params.toString();
+    const { status, data } = await this.requestWithStatus<{ build: RuntimeBuildSummary } & CanvasRuntimeBuildState>(
+      'GET',
+      `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/runtime-build${qs ? `?${qs}` : ''}`,
+    );
+    if (status === 202) return { pending: true, build: data.build };
+    return data;
+  }
+
+  /** The canvas's build history, newest first. */
+  async listRuntimeBuilds(org: string, workspace: string, canvasSlugOrId: string, limit?: number): Promise<{ builds: RuntimeBuildSummary[] }> {
+    const qs = limit ? `?limit=${limit}` : '';
+    return this.request('GET', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/runtime-builds${qs}`);
+  }
+
+  /** Make an earlier build the one the canvas's triggers run. */
+  async activateRuntimeBuild(org: string, workspace: string, canvasSlugOrId: string, buildId: string): Promise<{ build: RuntimeBuildSummary }> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/runtime-build/${buildId}/activate`, {});
   }
 
   // ── Connections ───────────────────────────────────────

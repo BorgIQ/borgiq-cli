@@ -423,6 +423,7 @@ borgiq bundle pack . -o export.yaml
 borgiq bundle push .
 borgiq bundle pull <canvas> .
 borgiq bundle build .            # React App actors: push, then compile and serve
+borgiq bundle push . --runtime-build   # deployed workspaces: push, then build the canvas
 \`\`\`
 
 For React App actors, borgiq bundle build pushes the bundle and then compiles
@@ -432,4 +433,21 @@ builds every React App actor on the canvas by default; pass --actor <id>
 resolve conflicts in favour of the local version. A non-zero exit means a build
 failed; the compiler error and structured details are reported. React App
 actors are the only actor type that needs a build step.
+
+## Deployed workspaces
+
+If this canvas's workspace is deployed, its triggers run the canvas's active
+runtime build rather than its current code. A push updates the canvas but does
+NOT change what triggers execute until the canvas is built again — so push, then
+build:
+
+\`\`\`bash
+borgiq bundle push . --runtime-build
+# or, separately:
+borgiq bundle push .
+borgiq canvases runtime-build <canvas> --wait
+\`\`\`
+
+Check with \`borgiq workspaces deployment\`. Test runs from the editor always use
+the current code, so authoring is unaffected either way.
 `;

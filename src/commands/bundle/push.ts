@@ -35,6 +35,7 @@ export const bundlePush = async (
     create?: boolean;
     forceLocal?: boolean;
     dryRun?: boolean;
+    runtimeBuild?: boolean;
     refresh?: boolean;
     strict?: boolean;
     autoLayout?: boolean;
@@ -55,6 +56,12 @@ export const bundlePush = async (
 
     if (options.mode !== undefined && !MODES.has(options.mode)) {
       throw new CliUsageError(`Invalid --mode '${options.mode}' - use merge, insert, or replace.`);
+    }
+    if (options.runtimeBuild && (options.dryRun || options.mode !== undefined)) {
+      // A dry run applies nothing, so there is nothing to build; --mode takes the legacy
+      // whole-document path and does not carry the sync metadata a build should follow.
+      process.stderr.write('Note: --runtime-build is ignored with --dry-run and --mode.\n');
+      options.runtimeBuild = false;
     }
     if (options.mode !== undefined && (options.forceLocal || options.dryRun || options.refresh === false)) {
       throw new CliUsageError('--mode uses the legacy whole-document import path and cannot be combined with --force-local, --dry-run, or --no-refresh.');
@@ -261,6 +268,13 @@ export const bundlePush = async (
       process.stderr.write('Warning: --no-refresh skipped the local refresh, so no asset sync baselines were recorded. The next push will fail closed on those assets until you pull.\n');
     }
 
+    // A push changes what the canvas contains; on a deployed workspace it does NOT change what
+    // triggers run until the canvas is built again. `--runtime-build` closes that gap in one command.
+    let runtimeBuild: unknown;
+    if (options.runtimeBuild) {
+      runtimeBuild = await runRuntimeBuildAfterPush(client, ctx, target, globalOpts);
+    }
+
     if (!globalOpts.json && process.stderr.isTTY) {
       process.stderr.write(`Synced ${dir} -> '${target}': ${summary.added} added, ${summary.updated} updated, ${summary.removed} deleted, ${summary.deletedOnServer} deleted on server, ${summary.unchanged} unchanged${diff.metadataDelta ? ', metadata updated' : ''}.\n`);
     }
@@ -274,6 +288,7 @@ export const bundlePush = async (
       metadata: metadataResult,
       layout: compactLayoutResult(layout),
       refresh,
+      runtimeBuild,
     }, options.raw, { operations, batch: batchResult, metadata: metadataResult, layout }), globalOpts);
   } catch (error) {
     if (appliedActorOperationCount > 0 || metadataWasUpdated || layoutWasApplied || uploadedAssetCount > 0) {
@@ -393,3 +408,39 @@ const reportPushConflicts = (conflicts: { actorId: string; name: string; verdict
     );
   }
 };
+
+/**
+ * Start a runtime build for the canvas just pushed, and wait for it.
+ *
+ * A build failure does NOT fail the push: the push itself succeeded and the canvas keeps running
+ * whatever it was running before. The outcome is reported and carried in the JSON output so a script
+ * can decide for itself.
+ */
+async function runRuntimeBuildAfterPush(
+  client: ReturnType<typeof createClientWithContext>['client'],
+  ctx: { org: string; workspace: string },
+  target: string,
+  globalOpts: GlobalOptions,
+): Promise<{ status: string; buildId?: string; error?: string }> {
+  try {
+    const started = await client.startRuntimeBuild(ctx.org, ctx.workspace, target);
+    if (!started.build) return { status: 'unknown', error: 'the server returned no build record' };
+
+    let current = started.build;
+    const deadline = Date.now() + 600_000;
+    while ((current.status === 'pending' || current.status === 'building') && Date.now() < deadline) {
+      const result = await client.getRuntimeBuild(ctx.org, ctx.workspace, target, { buildId: started.build.id, waitSeconds: 20 });
+      if ('build' in result && result.build) current = result.build;
+    }
+
+    if (!globalOpts.json && process.stderr.isTTY) {
+      const failed = Object.values(current.actors ?? {}).filter((actor) => actor.status !== 'ok').length;
+      process.stderr.write(`Runtime build ${current.id}: ${current.status}${failed ? ` (${failed} actor(s) did not build)` : ''}.\n`);
+    }
+    return { status: current.status, buildId: current.id, error: current.error ?? undefined };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`Warning: the push succeeded but the runtime build could not be started: ${message}\n`);
+    return { status: 'not-started', error: message };
+  }
+}

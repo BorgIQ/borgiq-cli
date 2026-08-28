@@ -13,6 +13,7 @@ import { canvasesExport } from './export.js';
 import { canvasesValidate } from './validate.js';
 import { canvasesLayout } from './layout.js';
 import { canvasesVerifyImport } from './verify-import.js';
+import { canvasesRuntimeBuild, canvasesRuntimeBuildStatus, canvasesRuntimeBuildActivate } from './runtime-build.js';
 
 export const registerCanvasesCommands = (program: Command): void => {
   const canvases = program.command('canvases').description('Manage canvases');
@@ -103,4 +104,40 @@ Examples:
     .description('Verify canvas import data before creating')
     .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .action(canvasesVerifyImport);
+
+  canvases
+    .command('runtime-build <canvas>')
+    .description('Build this canvas: compile its code actors and install their dependencies ahead of time')
+    .option('--wait', 'Wait for the build to finish and print the per-actor outcome')
+    .option('--timeout <seconds>', 'How long to wait with --wait', '600')
+    .addHelpText(
+      'after',
+      `
+Building takes a snapshot of the canvas, compiles every code actor on it, and installs their
+dependencies. On a deployed workspace, triggers then run that build instead of the canvas's current
+code — so actors start fast and every run executes the same thing.
+
+Exit codes with --wait:
+  0  the build completed. A partly-built canvas also exits 0: the actors that built run from the
+     build, and the ones that did not are listed with the reason.
+  1  the build failed outright, or the wait timed out (the build itself keeps going).
+
+Examples:
+  $ borgiq canvases runtime-build my-canvas
+  $ borgiq canvases runtime-build my-canvas --wait
+  $ borgiq canvases runtime-build my-canvas --wait --json
+`,
+    )
+    .action(canvasesRuntimeBuild);
+
+  canvases
+    .command('runtime-build-status <canvas>')
+    .description('Show which build this canvas runs, and whether it has been edited since')
+    .option('--history', 'List this canvas\'s builds instead')
+    .action(canvasesRuntimeBuildStatus);
+
+  canvases
+    .command('runtime-build-activate <canvas> <buildId>')
+    .description('Make an earlier build the one this canvas\'s triggers run')
+    .action(canvasesRuntimeBuildActivate);
 };
