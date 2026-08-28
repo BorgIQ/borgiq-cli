@@ -21,10 +21,12 @@
 import { parse, stringify } from "yaml";
 
 import {
+  BIQ_ACTOR_TYPES,
   DENO_ACTOR_ENTRYPOINT,
   DENO_TEST_ACTOR_ENTRYPOINT,
   PYTHON_ACTOR_ENTRYPOINT,
   UNIVERSAL_TRIGGER_ACTOR_ENTRYPOINT,
+  type BundleActorType,
 } from "./bundle/registry.js";
 
 // ============================================================
@@ -206,42 +208,13 @@ export interface ActorConfig {
 // Validation Constants
 // ============================================================
 
-const VALID_ACTOR_TYPES = [
-  // Task Actors
-  "HttpRequestActor",
-  "DenoActor",
-  "DenoTestActor",
-  "PythonActor",
-  "AiRouterActor",
-  "RouterActor",
-  "AiActor",
-  "AiAgentActor",
-  "AgentHarnessActor",
-  "MessageProcessorActor",
-  "WebhookResponseActor",
-  "CallableResponseActor",
-  "CallFlowActor",
-  "InterfaceActor",
-  "InterfaceStatusActor",
-  "SendEmailActor",
-  "DataStoreActor",
-  "CollectionActor",
-  "StreamActor",
-  // Trigger Actors
-  "ButtonTriggerActor",
-  "WebhookTriggerActor",
-  "EmailTriggerActor",
-  "InterfaceTriggerActor",
-  "AppTriggerActor",
-  "ReactAppTriggerActor",
-  "ScheduledTriggerActor",
-  "CallableTriggerActor",
-  "UniversalTriggerActor",
-  "McpServerActor",
-  // Non-functional Actors
-  "CommentActor",
-  "EchoActor",
-] as const;
+/**
+ * The actor types a workflow file may declare: every type the bundle registry
+ * knows, except the deprecated agent, which a new workflow must not declare.
+ */
+export const VALID_ACTOR_TYPES: readonly BundleActorType[] = BIQ_ACTOR_TYPES.filter(
+  (type) => type !== "DeprecatedAiAgent",
+);
 
 // Actors that require sourcePorts
 const ACTORS_WITH_SOURCE_PORTS = ["AiRouterActor", "RouterActor", "InterfaceActor", "AiAgentActor"];

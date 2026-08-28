@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { stringify as yamlStringify } from 'yaml';
 
-import { validateYaml } from '../src/lib/workflowValidation.js';
+import { BIQ_ACTOR_TYPES } from '../src/lib/bundle/registry.js';
+import { VALID_ACTOR_TYPES, validateYaml } from '../src/lib/workflowValidation.js';
 
 const ACTOR_ID = 'ACTR01hxxxxxxxxxxxxxxxxxxxxxxx';
 
@@ -27,6 +28,13 @@ const codeErrors = async (configuration: Record<string, unknown>, type?: string)
   const result = await validateYaml(workflow(configuration, type));
   return result.errors.filter((error) => error.includes('codeDir') || error.includes('code'));
 };
+
+describe('VALID_ACTOR_TYPES', () => {
+  it('is the bundle registry minus the deprecated agent type', () => {
+    expect(new Set([...VALID_ACTOR_TYPES, 'DeprecatedAiAgent'])).toEqual(new Set(BIQ_ACTOR_TYPES));
+    expect(VALID_ACTOR_TYPES).not.toContain('DeprecatedAiAgent');
+  });
+});
 
 describe('validateYaml: multi-file code actors', () => {
   it('accepts a project tree carrying its entrypoint', async () => {

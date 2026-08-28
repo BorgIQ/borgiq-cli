@@ -199,7 +199,6 @@ export const BUNDLE_PATH_REGISTRY: Readonly<Record<BundleActorType, BundlePathSp
   CallFlowActor: { category: 'tasks', folder: 'call-flow', codeFiles: [] },
   CallableResponseActor: { category: 'tasks', folder: 'callable-response', codeFiles: [] },
   CollectionActor: { category: 'tasks', folder: 'collection', codeFiles: [] },
-  StreamActor: { category: 'tasks', folder: 'stream', codeFiles: [] },
   DataStoreActor: { category: 'tasks', folder: 'data-store', codeFiles: [] },
   DenoActor: { category: 'tasks', folder: 'deno', ...denoProject(DENO_ACTOR_ENTRYPOINT) },
   DenoTestActor: { category: 'tasks', folder: 'deno-test', ...denoProject(DENO_TEST_ACTOR_ENTRYPOINT) },
@@ -219,6 +218,7 @@ export const BUNDLE_PATH_REGISTRY: Readonly<Record<BundleActorType, BundlePathSp
   },
   RouterActor: { category: 'tasks', folder: 'router', codeFiles: [] },
   SendEmailActor: { category: 'tasks', folder: 'send-email', codeFiles: [] },
+  StreamActor: { category: 'tasks', folder: 'stream', codeFiles: [] },
   WebhookResponseActor: { category: 'tasks', folder: 'webhook-response', codeFiles: [] },
 
   CommentActor: { category: 'other', folder: 'comment', codeFiles: [] },
