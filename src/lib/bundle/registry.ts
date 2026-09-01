@@ -32,6 +32,7 @@ export const BIQ_ACTOR_TYPES = [
   'RouterActor',
   'ScheduledTriggerActor',
   'SendEmailActor',
+  'StreamActor',
   'UniversalTriggerActor',
   'WebhookResponseActor',
   'WebhookTriggerActor',
@@ -217,6 +218,7 @@ export const BUNDLE_PATH_REGISTRY: Readonly<Record<BundleActorType, BundlePathSp
   },
   RouterActor: { category: 'tasks', folder: 'router', codeFiles: [] },
   SendEmailActor: { category: 'tasks', folder: 'send-email', codeFiles: [] },
+  StreamActor: { category: 'tasks', folder: 'stream', codeFiles: [] },
   WebhookResponseActor: { category: 'tasks', folder: 'webhook-response', codeFiles: [] },
 
   CommentActor: { category: 'other', folder: 'comment', codeFiles: [] },
