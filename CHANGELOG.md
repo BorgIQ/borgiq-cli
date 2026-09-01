@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.10.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.9.0...cli-v0.10.0) (2026-09-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* **bundle:** a bundle whose Deno, Deno Test, Universal Trigger or Python actor still uses the old `code/mod.ts` / `code/mod.py` entrypoint filename fails `bundle validate` until the file is renamed to `main.ts` / `main.py`. `borgiq validate --skip-typecheck` is accepted but no longer typechecks actor code.
+
+### Features
+
+* **bundle:** add useGetSession to the react-app SDK ([#52](https://github.com/BorgIQ/borgiq-cli/issues/52)) ([b9468d6](https://github.com/BorgIQ/borgiq-cli/commit/b9468d6a9efe6bf64ae3f4d21f6d4cb9d89b9a96))
+* **bundle:** order the lifecycle configuration section after schedule ([#56](https://github.com/BorgIQ/borgiq-cli/issues/56)) ([9880486](https://github.com/BorgIQ/borgiq-cli/commit/9880486e475e5ebf4d9694b14685c6c2a9bc536e))
+* **bundle:** support multi-file actor code in canvas bundles ([#59](https://github.com/BorgIQ/borgiq-cli/issues/59)) ([628e1bb](https://github.com/BorgIQ/borgiq-cli/commit/628e1bb0368d719190d7ad089ea919fbfc4d8a27))
+* **lib:** support StreamActor in the bundle registry and workflow validation ([#62](https://github.com/BorgIQ/borgiq-cli/issues/62)) ([fb0a54c](https://github.com/BorgIQ/borgiq-cli/commit/fb0a54cf5a876319faf7e48cbb22b79a7533e944))
+
+
+### Bug Fixes
+
+* **bundle:** stop converting single-string actor code on pull ([#60](https://github.com/BorgIQ/borgiq-cli/issues/60)) ([10d3a47](https://github.com/BorgIQ/borgiq-cli/commit/10d3a471b432994134a66d25baba2af18d370abb))
+
 ## [0.9.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.8.0...cli-v0.9.0) (2026-07-22)
 
 
