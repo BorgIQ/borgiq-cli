@@ -4,16 +4,9 @@ import { output } from '../../output/index.js';
 import { handleError, ExitCode } from '../../lib/errors.js';
 import type { RuntimeBuildSummary } from '../../client/types.js';
 
-/** How long each long-poll request holds open. The server caps this. */
-const POLL_WINDOW_SECONDS = 20;
-
 interface RuntimeBuildOptions {
-  wait?: boolean;
   timeout?: string;
 }
-
-/** Statuses that mean the build is still going. */
-const IN_PROGRESS = ['pending', 'building'];
 
 /** Render one build's per-actor outcome — the part a user acts on. */
 function actorRows(build: RuntimeBuildSummary): Record<string, unknown>[] {
@@ -30,8 +23,9 @@ function actorRows(build: RuntimeBuildSummary): Record<string, unknown>[] {
 /**
  * `borgiq canvases runtime-build <canvas>` — compile the canvas's code actors ahead of time.
  *
- * Without `--wait` it starts the build and returns. With `--wait` it long-polls until the build
- * finishes or the timeout elapses, then prints the per-actor outcome.
+ * The build runs inside the request: the command blocks until the build finishes and the response
+ * is the finished build, so there is nothing to poll. `--timeout` bounds only how long this command
+ * waits — the server finishes the build either way, and `runtime-build-status` shows the outcome.
  *
  * Exit codes: 0 when the build completed (even partly — the actors that built still start from it,
  * and the failures are printed), non-zero when the build failed outright or the wait timed out.
@@ -41,64 +35,60 @@ export const canvasesRuntimeBuild = async (
   options: RuntimeBuildOptions,
   command: { parent: { parent: { opts: () => GlobalOptions } } },
 ): Promise<void> => {
+  const timeoutSeconds = Number(options.timeout ?? 900);
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), timeoutSeconds * 1000);
+  timer.unref();
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
-    const started = await client.startRuntimeBuild(ctx.org, ctx.workspace, canvas);
-    const build = started.build;
-    if (!build) {
-      process.stderr.write('The build was started but the server returned no build record.\n');
-      process.exit(ExitCode.GENERAL);
+    let result: { build: RuntimeBuildSummary | null };
+    try {
+      result = await client.startRuntimeBuild(ctx.org, ctx.workspace, canvas, { signal: abort.signal });
+    } catch (error) {
+      if (abort.signal.aborted) {
+        process.stderr.write(`Timed out after ${timeoutSeconds}s waiting for the build. The build itself keeps going on the server — check the outcome with 'borgiq canvases runtime-build-status ${canvas}'.\n`);
+        process.exit(ExitCode.GENERAL);
+      }
+      throw error;
     }
 
-    if (!options.wait) {
-      output(build, globalOpts);
+    const build = result.build;
+    if (!build) {
+      process.stderr.write('The build finished but the server returned no build record.\n');
+      process.exit(ExitCode.GENERAL);
       return;
     }
 
-    const timeoutSeconds = Number(options.timeout ?? 600);
-    const deadline = Date.now() + timeoutSeconds * 1000;
-    let current = build;
-
-    while (IN_PROGRESS.includes(current.status)) {
-      if (Date.now() >= deadline) {
-        process.stderr.write(`Timed out after ${timeoutSeconds}s waiting for the build to finish. It is still running — check again with 'borgiq canvases runtime-build-status ${canvas}'.\n`);
-        process.exit(ExitCode.GENERAL);
-      }
-      const result = await client.getRuntimeBuild(ctx.org, ctx.workspace, canvas, {
-        buildId: build.id,
-        waitSeconds: Math.min(POLL_WINDOW_SECONDS, Math.max(1, Math.ceil((deadline - Date.now()) / 1000))),
-      });
-      if ('build' in result && result.build) current = result.build;
-    }
-
     if (globalOpts.json) {
-      output(current, globalOpts);
+      output(build, globalOpts);
     } else {
-      output(actorRows(current), globalOpts, {
+      output(actorRows(build), globalOpts, {
         columns: [
           { key: 'actor', header: 'ACTOR' },
           { key: 'type', header: 'TYPE' },
           { key: 'status', header: 'STATUS' },
           { key: 'note', header: 'NOTE' },
         ],
-        title: `Build ${current.id} — ${current.status}`,
+        title: `Build ${build.id} — ${build.status}`,
       });
-      if (current.error) process.stderr.write(`\n${current.error}\n`);
+      if (build.error) process.stderr.write(`\n${build.error}\n`);
     }
 
-    if (current.status === 'failed') {
+    if (build.status === 'failed') {
       process.exit(ExitCode.GENERAL);
     }
-    if (current.status === 'partially_ready') {
+    if (build.status === 'partially_ready') {
       // Not a failure: the actors that built still run from the build. Say so on stderr so a script
       // that only checks the exit code is not misled by the warning either way.
-      const failed = Object.values(current.actors ?? {}).filter((actor) => actor.status !== 'ok').length;
+      const failed = Object.values(build.actors ?? {}).filter((actor) => actor.status !== 'ok').length;
       process.stderr.write(`\nWarning: ${failed} actor(s) did not build and will run without the build.\n`);
     }
   } catch (error) {
     handleError(error);
+  } finally {
+    clearTimeout(timer);
   }
 };
 

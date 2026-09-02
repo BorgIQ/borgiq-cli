@@ -101,15 +101,29 @@ describe('workspaces deployment', () => {
     }
   });
 
-  it('reports what --build-all skipped, so a partial start is never silent', async () => {
+  it('reports what --build-all skipped, so a partial outcome is never silent', async () => {
     client.buildAllRuntimeBuilds.mockResolvedValue({
-      builds: [{ canvasId: 'CANV01a0000000000000000000000', buildId: 'CRBD01a0000000000000000000000' }],
+      builds: [{ canvasId: 'CANV01a0000000000000000000000', buildId: 'CRBD01a0000000000000000000000', status: 'ready' }],
       skipped: [{ canvasId: 'CANV02b0000000000000000000000', reason: 'runtime-too-small' }],
     });
 
     await workspacesDeployment({ buildAll: true }, tableCommand);
 
     expect(stdout).toHaveBeenCalledWith(expect.stringContaining('runtime-too-small'));
+  });
+
+  it('warns on stderr when --build-all finished with failed builds', async () => {
+    client.buildAllRuntimeBuilds.mockResolvedValue({
+      builds: [
+        { canvasId: 'CANV01a0000000000000000000000', buildId: 'CRBD01a0000000000000000000000', status: 'ready' },
+        { canvasId: 'CANV03c0000000000000000000000', buildId: 'CRBD03c0000000000000000000000', status: 'failed' },
+      ],
+      skipped: [],
+    });
+
+    await workspacesDeployment({ buildAll: true }, tableCommand);
+
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('1 build(s) failed'));
   });
 
   it('renders a summary row per canvas, with the reason a canvas cannot be built', async () => {

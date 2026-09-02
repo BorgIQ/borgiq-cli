@@ -108,8 +108,7 @@ Examples:
   canvases
     .command('runtime-build <canvas>')
     .description('Build this canvas: compile its code actors and install their dependencies ahead of time')
-    .option('--wait', 'Wait for the build to finish and print the per-actor outcome')
-    .option('--timeout <seconds>', 'How long to wait with --wait', '600')
+    .option('--timeout <seconds>', 'How long to wait for the build before giving up on the answer', '900')
     .addHelpText(
       'after',
       `
@@ -117,15 +116,18 @@ Building takes a snapshot of the canvas, compiles every code actor on it, and in
 dependencies. On a deployed workspace, triggers then run that build instead of the canvas's current
 code — so actors start fast and every run executes the same thing.
 
-Exit codes with --wait:
+The command holds until the build finishes (typically a minute or two) and prints the per-actor
+outcome. --timeout bounds only the wait; the server finishes the build either way, and
+'runtime-build-status' shows the outcome.
+
+Exit codes:
   0  the build completed. A partly-built canvas also exits 0: the actors that built run from the
      build, and the ones that did not are listed with the reason.
   1  the build failed outright, or the wait timed out (the build itself keeps going).
 
 Examples:
   $ borgiq canvases runtime-build my-canvas
-  $ borgiq canvases runtime-build my-canvas --wait
-  $ borgiq canvases runtime-build my-canvas --wait --json
+  $ borgiq canvases runtime-build my-canvas --json
 `,
     )
     .action(canvasesRuntimeBuild);

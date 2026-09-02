@@ -410,7 +410,8 @@ const reportPushConflicts = (conflicts: { actorId: string; name: string; verdict
 };
 
 /**
- * Start a runtime build for the canvas just pushed, and wait for it.
+ * Build the canvas just pushed. The build runs inside the request, so this resolves with the
+ * finished build — nothing to poll.
  *
  * A build failure does NOT fail the push: the push itself succeeded and the canvas keeps running
  * whatever it was running before. The outcome is reported and carried in the JSON output so a script
@@ -423,24 +424,17 @@ async function runRuntimeBuildAfterPush(
   globalOpts: GlobalOptions,
 ): Promise<{ status: string; buildId?: string; error?: string }> {
   try {
-    const started = await client.startRuntimeBuild(ctx.org, ctx.workspace, target);
-    if (!started.build) return { status: 'unknown', error: 'the server returned no build record' };
-
-    let current = started.build;
-    const deadline = Date.now() + 600_000;
-    while ((current.status === 'pending' || current.status === 'building') && Date.now() < deadline) {
-      const result = await client.getRuntimeBuild(ctx.org, ctx.workspace, target, { buildId: started.build.id, waitSeconds: 20 });
-      if ('build' in result && result.build) current = result.build;
-    }
+    const { build } = await client.startRuntimeBuild(ctx.org, ctx.workspace, target);
+    if (!build) return { status: 'unknown', error: 'the server returned no build record' };
 
     if (!globalOpts.json && process.stderr.isTTY) {
-      const failed = Object.values(current.actors ?? {}).filter((actor) => actor.status !== 'ok').length;
-      process.stderr.write(`Runtime build ${current.id}: ${current.status}${failed ? ` (${failed} actor(s) did not build)` : ''}.\n`);
+      const failed = Object.values(build.actors ?? {}).filter((actor) => actor.status !== 'ok').length;
+      process.stderr.write(`Runtime build ${build.id}: ${build.status}${failed ? ` (${failed} actor(s) did not build)` : ''}.\n`);
     }
-    return { status: current.status, buildId: current.id, error: current.error ?? undefined };
+    return { status: build.status, buildId: build.id, error: build.error ?? undefined };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`Warning: the push succeeded but the runtime build could not be started: ${message}\n`);
+    process.stderr.write(`Warning: the push succeeded but the runtime build could not run: ${message}\n`);
     return { status: 'not-started', error: message };
   }
 }

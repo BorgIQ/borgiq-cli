@@ -17,7 +17,7 @@ export const registerWorkspacesCommands = (program: Command): void => {
     .description('Show or change whether this workspace is deployed')
     .option('--enable', 'Deploy the workspace: triggers run each canvas\'s active runtime build')
     .option('--disable', 'Undeploy: triggers run each canvas\'s current code')
-    .option('--build-all', 'Start a runtime build for every buildable canvas')
+    .option('--build-all', 'Build every buildable canvas and wait for the outcomes')
     .addHelpText(
       'after',
       `

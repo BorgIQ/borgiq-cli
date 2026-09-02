@@ -280,6 +280,55 @@ export class BorgIQClient {
 
   // ── Workspace deployment and runtime builds ───────────
 
+  /**
+   * Like request(), but over `node:http(s)` with no timeouts, for the build endpoints: the server
+   * runs a build inside the request, so the response can start many minutes after the request —
+   * past fetch's default header timeout. An optional AbortSignal is the caller's own deadline; note
+   * that aborting only stops the wait, never the server-side build.
+   */
+  private async longRequest<T>(method: string, path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+    const url = new URL(`${this.baseUrl}${path}`);
+    const { request } = url.protocol === 'https:' ? await import('node:https') : await import('node:http');
+    const payload = JSON.stringify(body ?? {});
+    return new Promise<T>((resolve, reject) => {
+      const req = request(url, {
+        method,
+        signal,
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+      }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          const status = res.statusCode ?? 0;
+          let parsed: unknown = undefined;
+          if (text) {
+            try {
+              parsed = JSON.parse(text);
+            } catch {
+              parsed = undefined;
+            }
+          }
+          if (status < 200 || status >= 300) {
+            const errorBody = parsed as { message?: string; details?: { path: (string | number)[]; message: string }[] } | undefined;
+            reject(new ApiError(status, errorBody?.message || res.statusMessage || `HTTP ${status}`, errorBody?.details || []));
+            return;
+          }
+          resolve(parsed as T);
+        });
+        res.on('error', reject);
+      });
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
+  }
+
   /** The workspace's deployment setting and every canvas's build state. */
   async getWorkspaceDeployment(org: string, workspace: string): Promise<WorkspaceDeploymentStatus> {
     return this.request('GET', `${this.wkspPath(org, workspace)}/deployment`);
@@ -290,39 +339,28 @@ export class BorgIQClient {
     await this.request('PUT', `${this.wkspPath(org, workspace)}/deployment`, { isDeployed });
   }
 
-  /** Start a build for every buildable canvas in the workspace. */
-  async buildAllRuntimeBuilds(org: string, workspace: string): Promise<BuildAllRuntimeBuildsResult> {
-    return this.request('POST', `${this.wkspPath(org, workspace)}/deployment/build-all`, {});
-  }
-
-  /** Start a runtime build for one canvas. Fire and forget — poll `getRuntimeBuild` for the result. */
-  async startRuntimeBuild(org: string, workspace: string, canvasSlugOrId: string): Promise<{ build: RuntimeBuildSummary | null }> {
-    return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/runtime-build`, {});
+  /**
+   * Build every buildable canvas in the workspace. Synchronous: the call returns when every build
+   * has finished, with each build's terminal status.
+   */
+  async buildAllRuntimeBuilds(org: string, workspace: string, opts?: { signal?: AbortSignal }): Promise<BuildAllRuntimeBuildsResult> {
+    return this.longRequest('POST', `${this.wkspPath(org, workspace)}/deployment/build-all`, {}, opts?.signal);
   }
 
   /**
-   * The canvas's build state, or a long poll on one build.
-   *
-   * With `buildId`, 202 means the wait window elapsed while the build was still running — keep
-   * polling. Without it, the response is the active/latest pair plus whether the canvas has been
-   * edited since its running build.
+   * Build one canvas. Synchronous: the call blocks for the whole build (typically minutes) and
+   * resolves with the finished build — ready, partially_ready, or failed.
    */
-  async getRuntimeBuild(
-    org: string,
-    workspace: string,
-    canvasSlugOrId: string,
-    opts?: { buildId?: string; waitSeconds?: number },
-  ): Promise<{ pending: true; build: RuntimeBuildSummary } | { build: RuntimeBuildSummary } | CanvasRuntimeBuildState> {
-    const params = new URLSearchParams();
-    if (opts?.buildId) params.set('buildId', opts.buildId);
-    if (opts?.waitSeconds !== undefined) params.set('waitSeconds', String(opts.waitSeconds));
-    const qs = params.toString();
-    const { status, data } = await this.requestWithStatus<{ build: RuntimeBuildSummary } & CanvasRuntimeBuildState>(
-      'GET',
-      `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/runtime-build${qs ? `?${qs}` : ''}`,
-    );
-    if (status === 202) return { pending: true, build: data.build };
-    return data;
+  async startRuntimeBuild(org: string, workspace: string, canvasSlugOrId: string, opts?: { signal?: AbortSignal }): Promise<{ build: RuntimeBuildSummary | null }> {
+    return this.longRequest('POST', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/runtime-build`, {}, opts?.signal);
+  }
+
+  /**
+   * The canvas's build state: which build its triggers run, the latest one, and whether the canvas
+   * has been edited since its running build.
+   */
+  async getRuntimeBuild(org: string, workspace: string, canvasSlugOrId: string): Promise<CanvasRuntimeBuildState> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/runtime-build`);
   }
 
   /** The canvas's build history, newest first. */

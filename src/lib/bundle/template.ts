@@ -445,8 +445,11 @@ build:
 borgiq bundle push . --runtime-build
 # or, separately:
 borgiq bundle push .
-borgiq canvases runtime-build <canvas> --wait
+borgiq canvases runtime-build <canvas>
 \`\`\`
+
+Both forms wait for the build and report the per-actor outcome — the build runs
+as part of the request, so there is nothing to poll.
 
 Check with \`borgiq workspaces deployment\`. Test runs from the editor always use
 the current code, so authoring is unaffected either way.

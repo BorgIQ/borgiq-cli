@@ -37,6 +37,7 @@ export const workspacesDeployment = async (
     }
 
     if (options.buildAll) {
+      // Synchronous: the call holds until every build has finished, so the rows below are verdicts.
       const result = await client.buildAllRuntimeBuilds(ctx.org, ctx.workspace);
       if (globalOpts.json) {
         output(result, globalOpts);
@@ -46,13 +47,18 @@ export const workspacesDeployment = async (
         columns: [
           { key: 'canvasId', header: 'CANVAS' },
           { key: 'buildId', header: 'BUILD' },
+          { key: 'status', header: 'STATUS' },
         ],
-        title: 'Builds started',
+        title: 'Builds finished',
       });
-      // A partial start must never be silent: a canvas skipped because it has no code actors is
+      // A partial outcome must never be silent: a canvas skipped because it has no code actors is
       // fine, one skipped because its runtime is too small is something to act on.
       if (result.skipped.length) {
         process.stdout.write(`\n${result.skipped.length} canvas(es) skipped: ${result.skipped.map((s) => `${s.canvasId} (${s.reason})`).join(', ')}\n`);
+      }
+      const failed = result.builds.filter((build) => build.status === 'failed').length;
+      if (failed) {
+        process.stderr.write(`\n${failed} build(s) failed — see 'borgiq canvases runtime-build-status <canvas>' for the per-actor errors.\n`);
       }
       return;
     }

@@ -408,14 +408,15 @@ borgiq workspaces deployment --json                # full detail, including per-
 
 | Option | Description |
 |--------|-------------|
-| `--wait` | Wait for the build to finish and print the per-actor outcome |
-| `--timeout <seconds>` | How long to wait with `--wait` (default 600) |
+| `--timeout <seconds>` | How long to wait for the build before giving up on the answer (default 900) |
 
 Building takes a snapshot of the canvas, compiles every code actor on it, and installs their
 dependencies. On a deployed workspace, triggers then run that build instead of the canvas's current
-code.
+code. The command holds until the build finishes (typically a minute or two) and prints the
+per-actor outcome — there is nothing to poll. `--timeout` bounds only the wait; the server finishes
+the build either way, and `runtime-build-status` shows the outcome.
 
-Exit codes with `--wait`:
+Exit codes:
 
 | Code | Meaning |
 |------|---------|
@@ -423,7 +424,7 @@ Exit codes with `--wait`:
 | `1` | The build failed outright, or the wait timed out (the build itself keeps going). |
 
 ```bash
-borgiq canvases runtime-build my-canvas --wait
+borgiq canvases runtime-build my-canvas
 borgiq canvases runtime-build-status my-canvas            # which build runs, and if it is outdated
 borgiq canvases runtime-build-status my-canvas --history  # every build of this canvas
 borgiq canvases runtime-build-activate my-canvas CRBD…    # roll back to an earlier build

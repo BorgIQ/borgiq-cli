@@ -555,7 +555,6 @@ export interface TemplateListFilters {
  * the server decided; none of the rules behind these values live here.
  */
 export type RuntimeBuildStatus =
-  | 'pending'
   | 'building'
   | 'ready'
   /** some code actors built and some did not; the ones that did still start from the build */
@@ -604,7 +603,9 @@ export type RuntimeBuildBlockedReason =
   | 'no-code-actors'
   | 'runtime-too-small'
   | 'build-in-progress'
-  | 'no-runtime';
+  | 'no-runtime'
+  /** the build could not run for an unexpected reason (build-all reports this per canvas) */
+  | 'error';
 
 export interface WorkspaceDeploymentCanvas {
   id: string;
@@ -625,14 +626,15 @@ export interface WorkspaceDeploymentStatus {
   canvases: WorkspaceDeploymentCanvas[];
 }
 
-/** What `GET .../runtime-build` answers without a build id. */
+/** What `GET .../runtime-build` answers. */
 export interface CanvasRuntimeBuildState {
   activeBuild: RuntimeBuildSummary | null;
   latestBuild: RuntimeBuildSummary | null;
   outdated: boolean;
 }
 
+/** Builds run inside the request, so each entry carries its terminal status. */
 export interface BuildAllRuntimeBuildsResult {
-  builds: { canvasId: string; buildId: string }[];
+  builds: { canvasId: string; buildId: string; status: RuntimeBuildStatus }[];
   skipped: { canvasId: string; reason: RuntimeBuildBlockedReason }[];
 }

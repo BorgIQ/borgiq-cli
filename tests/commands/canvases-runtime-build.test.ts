@@ -32,11 +32,11 @@ function build(over: Partial<RuntimeBuildSummary> = {}): RuntimeBuildSummary {
   return {
     id: BUILD_ID,
     canvasId: 'CANV01test00000000000000000000',
-    status: 'pending',
+    status: 'ready',
     runtimeSlug: 'default',
     actors: { [ACTOR_ID]: { type: 'DenoActor', hash: 'sha256:x', status: 'ok', path: `actors/task/DenoActor/${ACTOR_ID}` } },
     createdAt: '2026-08-28T00:00:00.000Z',
-    isActive: false,
+    isActive: true,
     ...over,
   };
 }
@@ -71,44 +71,33 @@ afterEach(() => {
 });
 
 describe('canvases runtime-build', () => {
-  it('starts a build and returns immediately without --wait', async () => {
-    client.startRuntimeBuild.mockResolvedValue({ build: build() });
+  it('blocks for the whole build and reports the finished build — nothing is polled', async () => {
+    client.startRuntimeBuild.mockResolvedValue({ build: build({ finishedAt: '2026-08-28T00:02:00.000Z' }) });
 
     await canvasesRuntimeBuild(CANVAS, {}, command);
 
-    expect(client.startRuntimeBuild).toHaveBeenCalledWith('test-org', 'test-workspace', CANVAS);
+    expect(client.startRuntimeBuild).toHaveBeenCalledWith(
+      'test-org', 'test-workspace', CANVAS,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(client.getRuntimeBuild).not.toHaveBeenCalled();
-    expect(mocks.output).toHaveBeenCalledWith(expect.objectContaining({ id: BUILD_ID, status: 'pending' }), expect.anything());
-  });
-
-  it('polls past a 202 and reports the finished build', async () => {
-    client.startRuntimeBuild.mockResolvedValue({ build: build() });
-    client.getRuntimeBuild
-      .mockResolvedValueOnce({ pending: true, build: build({ status: 'building' }) })
-      .mockResolvedValueOnce({ build: build({ status: 'ready', finishedAt: '2026-08-28T00:02:00.000Z' }) });
-
-    await canvasesRuntimeBuild(CANVAS, { wait: true }, command);
-
-    expect(client.getRuntimeBuild).toHaveBeenCalledTimes(2);
-    expect(mocks.output).toHaveBeenCalledWith(expect.objectContaining({ status: 'ready' }), expect.anything());
+    expect(mocks.output).toHaveBeenCalledWith(expect.objectContaining({ id: BUILD_ID, status: 'ready' }), expect.anything());
     expect(exit).not.toHaveBeenCalled();
   });
 
   it('exits non-zero when the build failed outright', async () => {
-    client.startRuntimeBuild.mockResolvedValue({ build: build() });
-    client.getRuntimeBuild.mockResolvedValue({
-      build: build({ status: 'failed', error: 'No actor in this canvas could be built.' }),
+    client.startRuntimeBuild.mockResolvedValue({
+      build: build({ status: 'failed', isActive: false, error: 'No actor in this canvas could be built.' }),
     });
 
-    await expect(canvasesRuntimeBuild(CANVAS, { wait: true }, command)).rejects.toThrow('process.exit:1');
+    await expect(canvasesRuntimeBuild(CANVAS, {}, command)).rejects.toThrow('process.exit:1');
     expect(exit).toHaveBeenCalledWith(ExitCode.GENERAL);
   });
 
   it('exits ZERO on a partly built canvas, but warns which actors did not build', async () => {
     // A partially built canvas is a success: the actors that built run from the build. Exiting
     // non-zero here would make every CI pipeline treat a working deploy as a failure.
-    client.startRuntimeBuild.mockResolvedValue({ build: build() });
-    client.getRuntimeBuild.mockResolvedValue({
+    client.startRuntimeBuild.mockResolvedValue({
       build: build({
         status: 'partially_ready',
         actors: {
@@ -118,32 +107,35 @@ describe('canvases runtime-build', () => {
       }),
     });
 
-    await canvasesRuntimeBuild(CANVAS, { wait: true }, command);
+    await canvasesRuntimeBuild(CANVAS, {}, command);
 
     expect(exit).not.toHaveBeenCalled();
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('1 actor(s) did not build'));
   });
 
-  it('gives up at the timeout and says the build is still running', async () => {
-    client.startRuntimeBuild.mockResolvedValue({ build: build() });
-    client.getRuntimeBuild.mockResolvedValue({ pending: true, build: build({ status: 'building' }) });
+  it('gives up at the timeout and says the build keeps going on the server', async () => {
+    // The client rejects when its AbortSignal fires; the command reads the signal, not the error.
+    client.startRuntimeBuild.mockImplementation(async (_org: string, _ws: string, _canvas: string, opts: { signal: AbortSignal }) => {
+      await new Promise((_resolve, reject) => {
+        opts.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      });
+      throw new Error('unreachable');
+    });
 
-    await expect(canvasesRuntimeBuild(CANVAS, { wait: true, timeout: '0' }, command)).rejects.toThrow('process.exit:1');
-    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('still running'));
+    await expect(canvasesRuntimeBuild(CANVAS, { timeout: '0' }, command)).rejects.toThrow('process.exit:1');
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('keeps going on the server'));
   });
 
   it('renders the per-actor outcome as a table when not asked for JSON', async () => {
-    client.startRuntimeBuild.mockResolvedValue({ build: build() });
-    client.getRuntimeBuild.mockResolvedValue({
+    client.startRuntimeBuild.mockResolvedValue({
       build: build({
-        status: 'ready',
         actors: {
           [ACTOR_ID]: { type: 'DenoActor', hash: 'sha256:x', status: 'ok', warm: 'failed', path: 'actors/task/DenoActor/a' },
         },
       }),
     });
 
-    await canvasesRuntimeBuild(CANVAS, { wait: true }, tableCommand);
+    await canvasesRuntimeBuild(CANVAS, {}, tableCommand);
 
     expect(mocks.output).toHaveBeenCalledWith(
       [expect.objectContaining({ actor: 'actors/task/DenoActor/a', status: 'ok', note: 'installed, but did not start' })],
@@ -155,7 +147,7 @@ describe('canvases runtime-build', () => {
 
 describe('canvases runtime-build-status', () => {
   it('reports which build runs and whether the canvas has been edited since', async () => {
-    client.getRuntimeBuild.mockResolvedValue({ activeBuild: build({ status: 'ready', isActive: true }), latestBuild: null, outdated: true });
+    client.getRuntimeBuild.mockResolvedValue({ activeBuild: build(), latestBuild: null, outdated: true });
 
     await canvasesRuntimeBuildStatus(CANVAS, {}, command);
 
@@ -164,7 +156,7 @@ describe('canvases runtime-build-status', () => {
   });
 
   it('lists the history with --history', async () => {
-    client.listRuntimeBuilds.mockResolvedValue({ builds: [build({ status: 'ready', isActive: true })] });
+    client.listRuntimeBuilds.mockResolvedValue({ builds: [build()] });
 
     await canvasesRuntimeBuildStatus(CANVAS, { history: true }, command);
 
@@ -175,7 +167,7 @@ describe('canvases runtime-build-status', () => {
 
 describe('canvases runtime-build-activate', () => {
   it('points the canvas at the named build', async () => {
-    client.activateRuntimeBuild.mockResolvedValue({ build: build({ status: 'ready', isActive: true }) });
+    client.activateRuntimeBuild.mockResolvedValue({ build: build() });
 
     await canvasesRuntimeBuildActivate(CANVAS, BUILD_ID, {}, command);
 
