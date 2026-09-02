@@ -87,6 +87,7 @@ Values are resolved in this order (highest priority first):
 | Command | Description |
 |---------|-------------|
 | `borgiq workspaces list` | List workspaces in an organization |
+| `borgiq workspaces deployment` | Show or change whether the workspace is deployed |
 
 ### Canvases
 
@@ -103,6 +104,9 @@ Values are resolved in this order (highest priority first):
 | `borgiq canvases validate <canvas>` | Validate canvas configuration by slug or ID |
 | `borgiq canvases layout <canvas>` | Auto-layout actors by slug or ID |
 | `borgiq canvases verify-import` | Verify import data before creating |
+| `borgiq canvases runtime-build <canvas>` | Build the canvas's code actors ahead of time |
+| `borgiq canvases runtime-build-status <canvas>` | Show which build the canvas runs (`--history` for the list) |
+| `borgiq canvases runtime-build-activate <canvas> <buildId>` | Make an earlier build the one that runs |
 
 ### Canvas Bundles
 
@@ -271,11 +275,36 @@ borgiq canvases list --all --json | jq '.data[].slug'
 | Command | Description |
 |---------|-------------|
 | `borgiq workspaces list` | List workspaces in an organization |
+| `borgiq workspaces deployment` | Show or change whether the workspace is deployed |
 
 | Option | Description |
 |--------|-------------|
 | `--page <number>` | Page number |
 | `--page-size <number>` | Items per page |
+
+**`borgiq workspaces deployment`**
+
+| Option | Description |
+|--------|-------------|
+| `--enable` | Deploy the workspace |
+| `--disable` | Undeploy the workspace |
+| `--build-all` | Start a runtime build for every buildable canvas |
+
+A **deployed** workspace's triggers run each canvas's **active runtime build** — a snapshot of the
+canvas whose code actors were compiled and had their dependencies installed ahead of time. Actors
+start faster, and every run of a canvas executes the same code.
+
+What that means day to day:
+
+- Edits reach triggers only after the next build finishes. Push, then build.
+- Test runs from the editor always use your current code, so authoring is unaffected.
+- A canvas with no build, or whose build failed, keeps running its current code.
+
+```bash
+borgiq workspaces deployment                      # show the status
+borgiq workspaces deployment --enable --build-all  # deploy and build everything
+borgiq workspaces deployment --json                # full detail, including per-actor build results
+```
 
 ---
 
@@ -375,6 +404,32 @@ borgiq canvases list --all --json | jq '.data[].slug'
 |--------|-------------|
 | `--file <path>` | Path to JSON/YAML file (or pipe YAML/JSON via stdin) |
 
+**`borgiq canvases runtime-build`**
+
+| Option | Description |
+|--------|-------------|
+| `--timeout <seconds>` | How long to wait for the build before giving up on the answer (default 900) |
+
+Building takes a snapshot of the canvas, compiles every code actor on it, and installs their
+dependencies. On a deployed workspace, triggers then run that build instead of the canvas's current
+code. The command holds until the build finishes (typically a minute or two) and prints the
+per-actor outcome — there is nothing to poll. `--timeout` bounds only the wait; the server finishes
+the build either way, and `runtime-build-status` shows the outcome.
+
+Exit codes:
+
+| Code | Meaning |
+|------|---------|
+| `0` | The build completed. A **partly built** canvas also exits 0 — the actors that built run from the build, and the ones that did not are listed with the reason on stderr. |
+| `1` | The build failed outright, or the wait timed out (the build itself keeps going). |
+
+```bash
+borgiq canvases runtime-build my-canvas
+borgiq canvases runtime-build-status my-canvas            # which build runs, and if it is outdated
+borgiq canvases runtime-build-status my-canvas --history  # every build of this canvas
+borgiq canvases runtime-build-activate my-canvas CRBD…    # roll back to an earlier build
+```
+
 ---
 
 ### Canvas Bundles
@@ -406,6 +461,7 @@ borgiq bundle push ./my-flow.borgiq-canvas --raw
 borgiq bundle push ./my-flow.borgiq-canvas --auto-layout
 borgiq bundle push ./my-flow.borgiq-canvas --mode replace
 borgiq bundle push ./my-flow.borgiq-canvas --create
+borgiq bundle push ./my-flow.borgiq-canvas --runtime-build
 ```
 
 | Command | Description |
@@ -415,7 +471,7 @@ borgiq bundle push ./my-flow.borgiq-canvas --create
 | `borgiq bundle pack <dir>` | Validate and emit platform export YAML to stdout or `-o, --output <file>`. |
 | `borgiq bundle validate <dir>` | Report all bundle errors and warnings; `--strict` treats warnings as fatal. |
 | `borgiq bundle pull <canvas> [dir]` | Sync by slug or ID from the API. Existing bundles fast-forward server-only changes, preserve local edits/deletions, and abort on genuine concurrent or unknown-baseline conflicts; `--replace` explicitly accepts the server state with a full managed-path rewrite. |
-| `borgiq bundle push <dir>` | Validate and sync only changed actors by default. A server-side change blocks push until it is pulled, unless `--force-local` explicitly selects local wins. `--strict` also enables strict actor batch validation on the API. Structured output is compact; use `--raw` for generated operation payloads and raw API responses. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. |
+| `borgiq bundle push <dir>` | Validate and sync only changed actors by default. A server-side change blocks push until it is pulled, unless `--force-local` explicitly selects local wins. `--strict` also enables strict actor batch validation on the API. Structured output is compact; use `--raw` for generated operation payloads and raw API responses. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. Use `--runtime-build` to build the canvas after pushing and wait for it — on a deployed workspace a push alone does not change what triggers run until the canvas is built again. |
 
 `pull --replace` and `unpack` rewrite only managed paths: `canvas.yaml` and `actors/`.
 Files such as `.git/`, `AGENTS.md`, `.gitignore`, and notes are preserved.

@@ -60,6 +60,7 @@ Examples:
     .option('--force-local', 'Resolve sync conflicts by applying the local actor version')
     .option('--dry-run', 'Show the push sync plan without applying changes')
     .option('--no-refresh', 'Skip the post-push pull that refreshes local version markers')
+    .option('--runtime-build', "Build the canvas after pushing, and wait for it (ignored with --dry-run and --mode)")
     .option('--strict', 'Treat validation warnings as errors')
     .option('--raw', 'Include generated operation payloads and raw API responses in output')
     .option('--auto-layout', 'Run canvas auto-layout after a successful sync, create, or legacy import')

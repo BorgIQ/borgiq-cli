@@ -544,3 +544,97 @@ export interface TemplateListFilters {
   types?: BIQActorTemplateType[];
   appId?: string;
 }
+
+// ── Workspace deployment and runtime builds ─────────────
+
+/**
+ * A runtime build compiles a canvas's code actors ahead of time and installs their dependencies, so
+ * the canvas starts fast and every run executes the same code.
+ *
+ * These mirror the server's response shapes. The CLI is a thin client — it renders and exits on what
+ * the server decided; none of the rules behind these values live here.
+ */
+export type RuntimeBuildStatus =
+  | 'building'
+  | 'ready'
+  /** some code actors built and some did not; the ones that did still start from the build */
+  | 'partially_ready'
+  | 'failed'
+  /** superseded — the workspace's runtime was updated after this build was made */
+  | 'stale'
+  /** the build's artifacts have been cleaned up; the record is kept for reference */
+  | 'expired';
+
+/** How one actor fared in a build. */
+export interface RuntimeBuildActorResult {
+  type: string;
+  hash: string;
+  status: 'ok' | 'failed';
+  /** whether the actor's imports were verified */
+  guard?: 'ok' | 'rejected' | 'skipped';
+  /** whether the actor started successfully once during the build */
+  warm?: 'ok' | 'failed' | 'skipped';
+  error?: string;
+  durations?: Record<string, number>;
+  /** where the actor sits in the canvas, in bundle path form */
+  path?: string;
+}
+
+export interface RuntimeBuildSummary {
+  id: string;
+  canvasId: string;
+  status: RuntimeBuildStatus;
+  runtimeSlug: string;
+  denoVersion?: string | null;
+  uvVersion?: string | null;
+  pythonVersion?: string | null;
+  artifactBytes?: number | null;
+  actors: Record<string, RuntimeBuildActorResult>;
+  error?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  createdAt: string;
+  /** whether this is the build the canvas's triggers currently run */
+  isActive: boolean;
+}
+
+/** Why a canvas cannot be built right now. */
+export type RuntimeBuildBlockedReason =
+  | 'no-code-actors'
+  | 'runtime-too-small'
+  | 'build-in-progress'
+  | 'no-runtime'
+  /** the build could not run for an unexpected reason (build-all reports this per canvas) */
+  | 'error';
+
+export interface WorkspaceDeploymentCanvas {
+  id: string;
+  slug: string;
+  name: string;
+  codeActorCount: number;
+  activeBuild: RuntimeBuildSummary | null;
+  latestBuild: RuntimeBuildSummary | null;
+  /** the canvas has been edited since its running build was made */
+  outdated: boolean;
+  buildable: boolean;
+  blockedReason?: RuntimeBuildBlockedReason | null;
+  blockedDetail?: string | null;
+}
+
+export interface WorkspaceDeploymentStatus {
+  isDeployed: boolean;
+  canvases: WorkspaceDeploymentCanvas[];
+}
+
+/** What `GET .../runtime-build` answers. */
+export interface CanvasRuntimeBuildState {
+  activeBuild: RuntimeBuildSummary | null;
+  latestBuild: RuntimeBuildSummary | null;
+  outdated: boolean;
+}
+
+/** Builds run inside the request, so each entry carries its terminal status. */
+export interface BuildAllRuntimeBuildsResult {
+  builds: { canvasId: string; buildId: string; status: RuntimeBuildStatus }[];
+  skipped: { canvasId: string; reason: RuntimeBuildBlockedReason }[];
+}
