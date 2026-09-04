@@ -19,7 +19,7 @@ export const SDK_PLACEHOLDER_DIR = '__borgiq_sdk_placeholder__';
 
 const PACKAGE_JSON = `{
   "name": "@borgiq/actors",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "type": "module",
   "main": "./index.js",
   "types": "./index.d.ts",
@@ -40,7 +40,7 @@ const INDEX_JS = `// @borgiq/actors — the browser-side SDK for React App actor
 //   useEndpoint(name, search?, init?)  — React hook: { data, loading, error, trigger }; does NOT auto-fetch
 //   callEndpoint(name, search?, init?) — non-hook: Promise resolving to the parsed response body
 //   useGetSession()                    — React hook: { data, loading, error }; auto-resolves the viewer on mount
-//   getSession()                       — non-hook: Promise resolving to the viewer { id, email, name }
+//   getSession()                       — non-hook: Promise resolving to the viewer { id, userId, email, name, appSessionId }
 //   getBasename()                      — router basename for the token path (from document.baseURI)
 //
 // Endpoints + token-bridge constants are BAKED into \`./generated.js\` when the platform builds the app.
@@ -118,6 +118,18 @@ function getBridge() {
       if (event.data && event.data.type === 'APP_ACTOR_WEBHOOK_TOKEN') {
         token = event.data.token; // update on every re-post (parent refreshes before expiry)
         if (resolveFirstToken) { resolveFirstToken(); resolveFirstToken = null; }
+        // A re-post normally refreshes the SAME login's token, and the memoized session stays
+        // valid (appSessionId is stable across token refreshes). But a re-login in the parent
+        // without a page reload delivers a token for a NEW session — serving the memo then means
+        // a stale userId and a stale appSessionId, under which an app would keep writing into the
+        // dead session's bucket. Compare against the memoized value and drop the memo on change,
+        // so the next getSession() re-resolves from the new token.
+        if (sessionPromise) {
+          const repostedAppSessionId = (decodeTokenPayload(token) || {}).appSessionId;
+          sessionPromise.then((session) => {
+            if (session.appSessionId !== repostedAppSessionId) sessionPromise = null;
+          }, () => {});
+        }
       }
     });
     if (trustedParentOrigin && window.parent && window.parent !== window) {
@@ -226,10 +238,11 @@ async function requestEndpoint(name, search, init) {
 
 // ── Viewer session ───────────────────────────────────────────────────────────────────────────────
 // The identity is already inside the token the bridge holds: BorgIQ issues the app token for the
-// signed-in viewer, with their id, name and email as claims, and only the origin-checked trusted
-// parent ever delivers it. So the session is decoded client-side here — no extra request. The result
-// is memoized for the page load; token re-posts (the parent's pre-expiry refresh) are deliberately
-// ignored because the claims are stable per viewer per page load.
+// signed-in viewer, with their id, name and email as claims (plus appSessionId, the per-login-per-app
+// session id), and only the origin-checked trusted parent ever delivers it. So the session is decoded
+// client-side here — no extra request. The result is memoized for the login: the claims are stable
+// across the parent's pre-expiry token refreshes, and the bridge drops the memo when a re-posted
+// token carries a different appSessionId (a re-login without a reload).
 
 /** Decode a JWT's payload segment (base64url). Returns null on ANY malformed input — never throws. */
 function decodeTokenPayload(token) {
@@ -262,7 +275,16 @@ async function resolveSession() {
   // An absent user id is a real error, not a silent null: it distinguishes misconfiguration from
   // "still loading".
   if (!claims || !claims.userId) throw new SessionUnavailableError('the app token carries no viewer identity');
-  return { id: claims.userId, email: claims.userEmail ?? '', name: claims.userName ?? '' };
+  return {
+    id: claims.userId,
+    // alias of \`id\`; prefer it in new code — it cannot be confused with \`appSessionId\`
+    userId: claims.userId,
+    email: claims.userEmail ?? '',
+    name: claims.userName ?? '',
+    // this visit: one id per (BorgIQ login x this app); absent when the token predates the claim —
+    // apps should degrade (treat as "no session info"), never crash
+    appSessionId: claims.appSessionId,
+  };
 }
 
 // ── Public surface ───────────────────────────────────────────────────────────────────────────────
@@ -347,13 +369,16 @@ export function useEndpoint(name, search, init) {
 }
 
 /**
- * The signed-in viewer of this app — \`{ id, email, name }\` (\`name\` may be \`''\`). Non-hook parity with
- * \`callEndpoint\`; usable anywhere. Rejects with \`SessionUnavailableError\` when no session can exist
- * here (not embedded, local \`npm run dev\`, or a token without identity claims), or \`TokenTimeoutError\`
- * if the token bridge never produced a token.
+ * The signed-in viewer of this app — \`{ id, userId, email, name, appSessionId }\` (\`name\` may be \`''\`;
+ * \`userId\` aliases \`id\`; \`appSessionId\` identifies this visit — one id per BorgIQ login per app,
+ * stable across reloads and token refreshes, absent for tokens that predate the claim). Non-hook
+ * parity with \`callEndpoint\`; usable anywhere. Rejects with \`SessionUnavailableError\` when no session
+ * can exist here (not embedded, local \`npm run dev\`, or a token without identity claims), or
+ * \`TokenTimeoutError\` if the token bridge never produced a token.
  *
- * Memoized for the page load, so repeated calls are free; a rejection clears the memo, so a transient
- * startup \`TokenTimeoutError\` is retryable on a later call.
+ * Memoized, so repeated calls are free; a rejection clears the memo, so a transient startup
+ * \`TokenTimeoutError\` is retryable on a later call, and the token bridge clears it when a re-posted
+ * token carries a different \`appSessionId\` (a re-login in the parent without a page reload).
  */
 export function getSession() {
   if (!sessionPromise) {
@@ -418,7 +443,7 @@ export function getBasename() {
   return '/';
 }
 
-export const version = '2.1.0';
+export const version = '2.2.0';
 `;
 
 const INDEX_D_TS = `// Hand-maintained type declarations for @borgiq/actors (no build step). Fetch-protocol surface.
@@ -488,9 +513,21 @@ export declare class SessionUnavailableError extends Error {
 
 /** The authenticated viewer of the rendered app. \`name\` may be \`''\`. */
 export interface SessionUser {
+  /** the signed-in viewer's user id */
   id: string;
+  /** alias of \`id\`; prefer this in new code — it cannot be confused with \`appSessionId\` */
+  userId: string;
   email: string;
   name: string;
+  /**
+   * This visit: one id per (BorgIQ login x this app). Stable across reloads and token
+   * refreshes; a different app under the same login gets a different id; a new BorgIQ
+   * login gets a new one. Absent when the token predates the claim — treat absence as
+   * "no session information" and degrade, never crash. NOT an authorization token:
+   * server-side checks must trust the server-attested trigger user, never a session id
+   * sent in a request body.
+   */
+  appSessionId?: string;
 }
 
 /** State returned by {@link useGetSession}. Passive data — there is no \`trigger()\`. */
