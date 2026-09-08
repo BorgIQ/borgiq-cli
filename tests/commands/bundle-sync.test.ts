@@ -233,6 +233,36 @@ describe('bundle push sync orchestration', () => {
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('no refresh was performed'));
   });
 
+  it('pushes a README-only change as a metadata update with no actor operations', async () => {
+    const server = makeDoc([actor('Same')], { readme: '# Server\n' });
+    writeLocal(server, { [ACTOR_ID]: 1 });
+    fs.writeFileSync(path.join(bundleDir, 'README.md'), '# Local\n\nEdited in the bundle.\n');
+    client.exportCanvas.mockResolvedValue(envelope(server));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 1 } });
+    client.updateCanvas.mockResolvedValue({});
+
+    await bundlePush(bundleDir, { refresh: false }, command);
+
+    expect(process.exitCode).toBeUndefined();
+    expect(client.batchActorOperations).not.toHaveBeenCalled();
+    expect(client.updateCanvas).toHaveBeenCalledWith('test-org', 'test-workspace', 'test-canvas', { readme: '# Local\n\nEdited in the bundle.\n' });
+  });
+
+  it('pulls the server README into README.md and deletes it when the server clears it', async () => {
+    const server = makeDoc([actor('Same')], { readme: '# From server\n' });
+    writeLocal(makeDoc([actor('Same')]), { [ACTOR_ID]: 1 });
+    client.exportCanvas.mockResolvedValue(envelope(server));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 1 } });
+
+    await bundlePull('test-canvas', bundleDir, {}, command);
+    expect(fs.readFileSync(path.join(bundleDir, 'README.md'), 'utf-8')).toBe('# From server\n');
+    expect(fs.existsSync(path.join(bundleDir, 'CLAUDE.md'))).toBe(true);
+
+    client.exportCanvas.mockResolvedValue(envelope(makeDoc([actor('Same')], { readme: '' })));
+    await bundlePull('test-canvas', bundleDir, {}, command);
+    expect(fs.existsSync(path.join(bundleDir, 'README.md'))).toBe(false);
+  });
+
   it('refreshes local actor version markers after a confirmed batch', async () => {
     const local = makeDoc([actor('Local edit')]);
     const server = makeDoc([actor('Server copy')]);

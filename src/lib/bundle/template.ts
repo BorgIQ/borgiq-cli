@@ -31,6 +31,32 @@ const createWebhookConfig = (): Record<string, unknown> => ({
   responseTimeout: 30,
 });
 
+/**
+ * The starter README for a canvas that has none: a heading, a table of contents, and empty
+ * sections. The web editor offers the same skeleton, so a canvas started from either end looks
+ * alike. Keep the two in step when changing the sections.
+ */
+export const canvasReadmeTemplate = (canvasName: string): string => `# ${canvasName.trim() || 'Canvas'}
+
+## Contents
+- [Purpose](#purpose)
+- [How it works](#how-it-works)
+- [Conventions](#conventions)
+- [Gotchas](#gotchas)
+
+## Purpose
+What this canvas is for, and who or what triggers it.
+
+## How it works
+The path a message takes through the actors, and what each stage is responsible for.
+
+## Conventions
+Naming, message shape, error handling — the rules to follow when adding to this canvas.
+
+## Gotchas
+What breaks if you change the wrong thing.
+`;
+
 export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
   const triggerId = Id.create('ACTR');
   const taskId = Id.create('ACTR');
@@ -139,6 +165,7 @@ export const buildStarterBundle = (opts: StarterOptions): BundleFileMap => {
       slug: opts.slug,
       name: opts.name,
       description: '',
+      readme: canvasReadmeTemplate(opts.name),
       tags: '',
       messageTTLInDays: 7,
       runtimeSlug: '',
@@ -173,6 +200,10 @@ actors/*/react-app/*/code/__borgiq_sdk_placeholder__/
 
 export const BUNDLE_AGENTS_MD = `# BorgIQ Canvas Bundle
 
+Canvas-specific instructions live in ./README.md - the canvas's own
+documentation, stored on the canvas and synced by push and pull. Read it
+first; this file only describes the bundle format.
+
 This folder is a BorgIQ canvas bundle: a workflow canvas expanded into files
 for git and AI editing. The borgiq CLI compiles it to and from the platform's
 canvas export format. Format: borgiq.canvas.bundle v1.
@@ -182,6 +213,10 @@ canvas export format. Format: borgiq.canvas.bundle v1.
 - canvas.yaml: authoritative root for canvas metadata, graph.nodes, graph.edges,
   dependencies, export errors, warnings, sync.actors baselines, and the actor
   index. Do not edit sync metadata by hand.
+- README.md: the canvas README (the canvas's readme metadata). Managed like
+  canvas.yaml: pull overwrites it with the server's copy, push uploads it, and
+  an empty README on the server deletes it. Keep unrelated notes elsewhere,
+  for instance NOTES.md, which the CLI never touches.
 - actors/<category>/<type>/<ACTOR_ID>/actor.yaml: one actor per folder. Edges
   and positions do not live here; they live in canvas.yaml.
 - actors/.../<ACTOR_ID>/code/: native code files. When present, actor.yaml
@@ -203,7 +238,7 @@ canvas export format. Format: borgiq.canvas.bundle v1.
    files named above.
 4. Folder names are actor IDs and must match actor.yaml and the index.
 5. Extra files under actors/ are ignored with warnings. Unmanaged files outside
-   canvas.yaml and actors/ are left alone by the CLI.
+   canvas.yaml, README.md and actors/ are left alone by the CLI.
 
 ## Code actors
 
@@ -457,3 +492,6 @@ running, so treat the failures as work to do before the deploy is real.
 
 Check with \`borgiq workspaces deployment\`.
 `;
+
+/** One-line companion so a Claude Code session in the bundle picks up AGENTS.md. Created only when absent. */
+export const BUNDLE_CLAUDE_MD = '@AGENTS.md\n';

@@ -23,6 +23,8 @@ export const makeDoc = (actors: ExportedActor[], metadata?: Record<string, unkno
     slug: 'test-canvas',
     name: 'Test Canvas',
     description: '',
+    // the API always exports readme, as '' when unset - pack mirrors that, so fixtures must too
+    readme: '',
     tags: '',
     imagePath: null,
     messageTTLInDays: 7,

@@ -57,6 +57,33 @@ describe('writeBundleDir and readBundleDir', () => {
     expect(fs.existsSync(path.join(dir, '.git', 'HEAD'))).toBe(true);
   });
 
+  it('manages a root README.md: reads it byte-exact, rewrites it, and deletes it when the map has none', () => {
+    const readme = '# Canvas\r\nno trailing newline';
+    writeBundleDir(dir, { ...FILES, 'README.md': readme });
+    expect(readBundleDir(dir)['README.md']).toBe(readme);
+
+    writeBundleDir(dir, { ...FILES, 'README.md': '# Changed\n' }, { force: true });
+    expect(fs.readFileSync(path.join(dir, 'README.md'), 'utf-8')).toBe('# Changed\n');
+
+    writeBundleDir(dir, FILES, { force: true });
+    expect(fs.existsSync(path.join(dir, 'README.md'))).toBe(false);
+    expect(readBundleDir(dir)).toEqual(FILES);
+  });
+
+  it('incremental writes rewrite and delete README.md while leaving the companions alone', () => {
+    writeBundleDir(dir, { ...FILES, 'README.md': '# v1\n' }, { createIfMissing: { 'AGENTS.md': 'agents\n', 'CLAUDE.md': '@AGENTS.md\n', '.gitignore': 'x\n' } });
+    fs.writeFileSync(path.join(dir, 'NOTES.md'), 'mine\n');
+
+    expect(writeBundleDirIncremental(dir, { ...FILES, 'README.md': '# v2\n' })).toEqual({ write: ['README.md'], delete: [] });
+    expect(fs.readFileSync(path.join(dir, 'README.md'), 'utf-8')).toBe('# v2\n');
+
+    expect(writeBundleDirIncremental(dir, FILES)).toEqual({ write: [], delete: ['README.md'] });
+    expect(fs.existsSync(path.join(dir, 'README.md'))).toBe(false);
+    for (const [name, content] of [['AGENTS.md', 'agents\n'], ['CLAUDE.md', '@AGENTS.md\n'], ['.gitignore', 'x\n'], ['NOTES.md', 'mine\n']]) {
+      expect(fs.readFileSync(path.join(dir, name), 'utf-8')).toBe(content);
+    }
+  });
+
   it('createIfMissing writes companions once and never overwrites them', () => {
     writeBundleDir(dir, FILES, { createIfMissing: { 'AGENTS.md': 'v1\n' } });
     expect(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf-8')).toBe('v1\n');

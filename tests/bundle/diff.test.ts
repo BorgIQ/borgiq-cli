@@ -151,6 +151,15 @@ describe('diffCanvas', () => {
     });
   });
 
+  it('syncs the readme with the other metadata fields, last-writer-wins', () => {
+    const server = makeDoc([], { readme: '# Server\n' });
+    expect(diffCanvas(makeDoc([], { readme: '# Server\n' }), server).metadataDelta).toBeNull();
+    expect(diffCanvas(makeDoc([], { readme: '# Local\n' }), server).metadataDelta).toEqual({ readme: '# Local\n' });
+    // a bundle with no README.md packs to '' and blanks the server's README - the documented
+    // metadata-delta semantics description and tags already have, pinned here on purpose
+    expect(diffCanvas(makeDoc([], { readme: '' }), server).metadataDelta).toEqual({ readme: '' });
+  });
+
   it('fails closed when a differing actor has no baseline metadata', () => {
     const local = makeDoc([actor('ACTRunknown', 1, 'Local name')]);
     const server = makeDoc([actor('ACTRunknown', 1, 'Server name')]);

@@ -65,6 +65,7 @@ Examples:
     .option('--tags <tags>', 'Canvas tags')
     .option('--message-ttl <days>', 'Message TTL in days (1-14)')
     .option('--runtime-slug <slug>', 'Runtime slug')
+    .option('--readme-file <path>', 'Replace the canvas README with the contents of a markdown file (an empty file clears it)')
     .action(canvasesUpdate);
 
   canvases

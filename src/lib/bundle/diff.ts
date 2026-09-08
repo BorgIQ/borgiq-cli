@@ -58,7 +58,7 @@ export interface DiffSummary {
   newOnServer: number;
 }
 
-const SYNC_METADATA_FIELDS = ['name', 'description', 'tags', 'messageTTLInDays', 'runtimeSlug'] as const;
+const SYNC_METADATA_FIELDS = ['name', 'description', 'tags', 'messageTTLInDays', 'runtimeSlug', 'readme'] as const;
 const CONFIG_YAML_FIELDS = ['credentials', 'inputs', 'vars', 'options', 'outputs', 'error'] as const;
 const SCHEMA_YAML_FIELDS = ['inputs', 'outputs'] as const;
 

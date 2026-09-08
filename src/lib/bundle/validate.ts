@@ -8,7 +8,7 @@ import {
   matchReservedPath,
 } from './projectDir.js';
 import { MAX_OPTIONS_FILES, managedAssetEntries, unmanagedAssetDirEntries } from './reactApp.js';
-import { ACTOR_FILE, CODE_DIR, FORMAT_NAME, FORMAT_VERSION, ROOT_FILE } from './types.js';
+import { ACTOR_FILE, CODE_DIR, FORMAT_NAME, FORMAT_VERSION, README_FILE, ROOT_FILE } from './types.js';
 import type { BundleFileMap, BundleIssue } from './types.js';
 import { parseYamlDoc } from './yaml.js';
 import { isSafeBundlePath } from './path.js';
@@ -89,7 +89,8 @@ export const validateBundle = (files: BundleFileMap, context: ValidateBundleCont
   const idToPath = new Map<string, string>();
   const seenPaths = new Set<string>();
   const actorDocs = new Map<string, Record<string, unknown>>();
-  const referenced = new Set<string>([ROOT_FILE]);
+  // README.md is the canvas README, read by pack; no local size or content rule - the API is the authority on what it accepts.
+  const referenced = new Set<string>([ROOT_FILE, README_FILE]);
 
   for (const rawEntry of root.actors) {
     if (!isIndexEntry(rawEntry)) {

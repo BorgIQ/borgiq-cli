@@ -29,6 +29,11 @@ describe('validateBundle', () => {
     expect(validateBundle(validFiles())).toEqual({ errors: [], warnings: [] });
   });
 
+  it('treats README.md as a referenced managed path, never an unreferenced-file warning', () => {
+    const files = { ...validFiles(), 'README.md': '# Canvas\n' };
+    expect(validateBundle(files)).toEqual({ errors: [], warnings: [] });
+  });
+
   it('rejects a missing or unparseable canvas.yaml', () => {
     expect(validateBundle({}).errors[0].message).toMatch(/canvas\.yaml is missing/);
     expect(validateBundle({ 'canvas.yaml': 'format: [\n' }).errors[0].message).toMatch(/parse/i);

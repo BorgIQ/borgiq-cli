@@ -3,13 +3,15 @@ import fs from 'node:fs';
 import { BundleValidationError, assembleBundle } from '../../lib/bundle/assemble.js';
 import type { AssembleResult } from '../../lib/bundle/assemble.js';
 import { sdkPlaceholderCompanions } from '../../lib/bundle/reactAppSdk.js';
-import { BUNDLE_AGENTS_MD, BUNDLE_GITIGNORE } from '../../lib/bundle/template.js';
+import { BUNDLE_AGENTS_MD, BUNDLE_CLAUDE_MD, BUNDLE_GITIGNORE } from '../../lib/bundle/template.js';
 import type { BundleFileMap, BundleIssue, CanvasExportDocument } from '../../lib/bundle/types.js';
 import type { BundleSkippedFile } from '../../lib/bundleFs.js';
 import { CliUsageError } from '../../lib/errors.js';
 
+// README.md is deliberately not a companion: it is a managed file written from the export.
 export const BUNDLE_COMPANIONS: Readonly<BundleFileMap> = Object.freeze({
   'AGENTS.md': BUNDLE_AGENTS_MD,
+  'CLAUDE.md': BUNDLE_CLAUDE_MD,
   '.gitignore': BUNDLE_GITIGNORE,
 });
 

@@ -204,7 +204,7 @@ export class BorgIQClient {
     return this.request('POST', `${this.wkspPath(org, workspace)}/canvases`, body);
   }
 
-  async updateCanvas(org: string, workspace: string, id: string, body: { name?: string; slug?: string; description?: string; tags?: string; messageTTLInDays?: number; runtimeSlug?: string }): Promise<BIQCanvasMetadata> {
+  async updateCanvas(org: string, workspace: string, id: string, body: { name?: string; slug?: string; description?: string; tags?: string; messageTTLInDays?: number; runtimeSlug?: string; readme?: string }): Promise<BIQCanvasMetadata> {
     return this.request('PUT', `${this.wkspPath(org, workspace)}/canvases/${id}`, body);
   }
 
