@@ -288,22 +288,23 @@ borgiq canvases list --all --json | jq '.data[].slug'
 |--------|-------------|
 | `--enable` | Deploy the workspace |
 | `--disable` | Undeploy the workspace |
-| `--build-all` | Start a runtime build for every buildable canvas |
 
-A **deployed** workspace's triggers run each canvas's **active runtime build** — a snapshot of the
-canvas whose code actors were compiled and had their dependencies installed ahead of time. Actors
-start faster, and every run of a canvas executes the same code.
+On a **deployed** workspace, every run of a canvas — triggers and editor test runs alike — executes
+the canvas's **active runtime build**: a snapshot of the canvas whose code actors were compiled and
+had their dependencies installed ahead of time. Actors start faster, and every run of a canvas
+executes the same code.
 
 What that means day to day:
 
-- Edits reach triggers only after the next build finishes. Push, then build.
-- Test runs from the editor always use your current code, so authoring is unaffected.
-- A canvas with no build, or whose build failed, keeps running its current code.
+- Edits reach runs only after the next build finishes. Push, then build.
+- A canvas with no fully successful build refuses every run until it is built.
+- Canvases build one at a time — `borgiq canvases runtime-build <canvas>`, or
+  `borgiq bundle build <dir>` to push and build in one command.
 
 ```bash
-borgiq workspaces deployment                      # show the status
-borgiq workspaces deployment --enable --build-all  # deploy and build everything
-borgiq workspaces deployment --json                # full detail, including per-actor build results
+borgiq workspaces deployment          # show the status, per-canvas build state included
+borgiq workspaces deployment --enable # deploy the workspace (then build each canvas)
+borgiq workspaces deployment --json   # full detail, including per-actor build results
 ```
 
 ---
@@ -410,18 +411,20 @@ borgiq workspaces deployment --json                # full detail, including per-
 |--------|-------------|
 | `--timeout <seconds>` | How long to wait for the build before giving up on the answer (default 900) |
 
-Building takes a snapshot of the canvas, compiles every code actor on it, and installs their
-dependencies. On a deployed workspace, triggers then run that build instead of the canvas's current
-code. The command holds until the build finishes (typically a minute or two) and prints the
-per-actor outcome — there is nothing to poll. `--timeout` bounds only the wait; the server finishes
-the build either way, and `runtime-build-status` shows the outcome.
+Building takes a snapshot of the canvas, compiles every code actor on it (React apps included), and
+installs their dependencies. On a deployed workspace, every run then executes that build instead of
+the canvas's current code. Only a deployed workspace runs builds, so this command refuses on a
+non-deployed one. The command holds until the build finishes (typically a minute or two) and prints
+the per-actor outcome — there is nothing to poll. `--timeout` bounds only the wait; the server
+finishes the build either way, and `runtime-build-status` shows the outcome.
 
 Exit codes:
 
 | Code | Meaning |
 |------|---------|
-| `0` | The build completed. A **partly built** canvas also exits 0 — the actors that built run from the build, and the ones that did not are listed with the reason on stderr. |
-| `1` | The build failed outright, or the wait timed out (the build itself keeps going). |
+| `0` | Every actor built — runs now execute this build. |
+| `1` | The build failed or only **partly** succeeded (a partial build serves nothing — the previous full build keeps running, and the failed actors are listed on stderr), or the wait timed out (the build itself keeps going). |
+| `2` | The workspace is not deployed, so the canvas cannot be built. |
 
 ```bash
 borgiq canvases runtime-build my-canvas
@@ -471,7 +474,7 @@ borgiq bundle push ./my-flow.borgiq-canvas --runtime-build
 | `borgiq bundle pack <dir>` | Validate and emit platform export YAML to stdout or `-o, --output <file>`. |
 | `borgiq bundle validate <dir>` | Report all bundle errors and warnings; `--strict` treats warnings as fatal. |
 | `borgiq bundle pull <canvas> [dir]` | Sync by slug or ID from the API. Existing bundles fast-forward server-only changes, preserve local edits/deletions, and abort on genuine concurrent or unknown-baseline conflicts; `--replace` explicitly accepts the server state with a full managed-path rewrite. |
-| `borgiq bundle push <dir>` | Validate and sync only changed actors by default. A server-side change blocks push until it is pulled, unless `--force-local` explicitly selects local wins. `--strict` also enables strict actor batch validation on the API. Structured output is compact; use `--raw` for generated operation payloads and raw API responses. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. Use `--runtime-build` to build the canvas after pushing and wait for it — on a deployed workspace a push alone does not change what triggers run until the canvas is built again. |
+| `borgiq bundle push <dir>` | Validate and sync only changed actors by default. A server-side change blocks push until it is pulled, unless `--force-local` explicitly selects local wins. `--strict` also enables strict actor batch validation on the API. Structured output is compact; use `--raw` for generated operation payloads and raw API responses. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. Use `--runtime-build` to build the canvas after pushing and wait for it — on a deployed workspace a push alone does not change what runs until the canvas is built again (on a non-deployed workspace the build is skipped with a notice: nothing there would run it). |
 
 `pull --replace` and `unpack` rewrite only managed paths: `canvas.yaml` and `actors/`.
 Files such as `.git/`, `AGENTS.md`, `.gitignore`, and notes are preserved.
@@ -539,6 +542,13 @@ failure (exiting non-zero). When the canvas has more than one react-app actor it
 every one of them (each with its own `--timeout`); pass `--actor <id>` — repeatable — to
 build only some. A push on its own uploads source only; the served app does not change
 until it is built. You can also press **Build** in the web editor instead.
+
+On a **deployed** workspace, `bundle build` builds the whole canvas instead: runs there
+serve the canvas's active runtime build, so the command pushes and then runs one canvas
+runtime build (the `canvases runtime-build` semantics, per-actor outcome table and exit
+codes included — react apps are compiled as part of it, and `--actor` does not apply).
+The command checks the workspace's deployment status itself; you always just run
+`borgiq bundle build`.
 
 **Dependencies.** Add packages the normal way, with two caveats. Pin exact versions: the
 lockfile is never synced, so the platform resolves `package.json` on its own. And the

@@ -15,24 +15,25 @@ export const registerWorkspacesCommands = (program: Command): void => {
   workspaces
     .command('deployment')
     .description('Show or change whether this workspace is deployed')
-    .option('--enable', 'Deploy the workspace: triggers run each canvas\'s active runtime build')
-    .option('--disable', 'Undeploy: triggers run each canvas\'s current code')
-    .option('--build-all', 'Build every buildable canvas and wait for the outcomes')
+    .option('--enable', 'Deploy the workspace: every run executes each canvas\'s active runtime build')
+    .option('--disable', 'Undeploy: runs execute each canvas\'s current code')
     .addHelpText(
       'after',
       `
-A deployed workspace's triggers run each canvas's active runtime build — a snapshot of the canvas
-whose code actors were compiled and had their dependencies installed ahead of time. Actors start
-faster, and every run of a canvas executes the same code.
+On a deployed workspace, every run of a canvas — triggers and editor test runs alike — executes the
+canvas's active runtime build: a snapshot of the canvas whose code actors were compiled and had
+their dependencies installed ahead of time. Actors start faster, and every run of a canvas executes
+the same code.
 
 What that means day to day:
-  - Edits reach triggers only after the next build finishes.
-  - Test runs from the editor always use your current code.
-  - A canvas with no build, or whose build failed, keeps running its current code.
+  - Edits reach runs only after the next build finishes.
+  - A canvas with no fully successful build refuses every run until it is built.
+  - Canvases build one at a time: 'borgiq canvases runtime-build <canvas>' or
+    'borgiq bundle build <dir>' (which pushes first).
 
 Examples:
   $ borgiq workspaces deployment
-  $ borgiq workspaces deployment --enable --build-all
+  $ borgiq workspaces deployment --enable
   $ borgiq workspaces deployment --json
 `,
     )

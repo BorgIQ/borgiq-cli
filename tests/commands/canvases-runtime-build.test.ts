@@ -46,6 +46,7 @@ const makeClient = () => ({
   getRuntimeBuild: vi.fn(),
   listRuntimeBuilds: vi.fn(),
   activateRuntimeBuild: vi.fn(),
+  getWorkspaceDeployment: vi.fn(),
 });
 
 let client: ReturnType<typeof makeClient>;
@@ -55,6 +56,8 @@ let exit: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   client = makeClient();
   mocks.createClientWithContext.mockReturnValue({ client, ctx: { org: 'test-org', workspace: 'test-workspace' } });
+  // Only a deployed workspace runs builds; the suite's default is the buildable case.
+  client.getWorkspaceDeployment.mockResolvedValue({ isDeployed: true, canvases: [] });
   mocks.output.mockReset();
   stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
   // `process.exit` ends the process for real; the command uses it for its failure codes, so it is
@@ -94,12 +97,13 @@ describe('canvases runtime-build', () => {
     expect(exit).toHaveBeenCalledWith(ExitCode.GENERAL);
   });
 
-  it('exits ZERO on a partly built canvas, but warns which actors did not build', async () => {
-    // A partially built canvas is a success: the actors that built run from the build. Exiting
-    // non-zero here would make every CI pipeline treat a working deploy as a failure.
+  it('exits non-zero on a partly built canvas: a partial build serves nothing, so the intent failed', async () => {
+    // Only a build where EVERY actor built can serve runs; a partial build leaves the previous full
+    // build active (or, with none, every run refused) — the caller's edits are NOT live.
     client.startRuntimeBuild.mockResolvedValue({
       build: build({
         status: 'partially_ready',
+        isActive: false,
         actors: {
           [ACTOR_ID]: { type: 'DenoActor', hash: 'sha256:x', status: 'ok' },
           ACTR02broken000000000000000000: { type: 'DenoActor', hash: 'sha256:y', status: 'failed', error: 'error: Import "@x/y" not a dependency' },
@@ -107,10 +111,17 @@ describe('canvases runtime-build', () => {
       }),
     });
 
-    await canvasesRuntimeBuild(CANVAS, {}, command);
-
-    expect(exit).not.toHaveBeenCalled();
+    await expect(canvasesRuntimeBuild(CANVAS, {}, command)).rejects.toThrow('process.exit:1');
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('1 actor(s) did not build'));
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('previous full build'));
+  });
+
+  it('refuses on a non-deployed workspace — nothing there would run the build', async () => {
+    client.getWorkspaceDeployment.mockResolvedValue({ isDeployed: false, canvases: [] });
+
+    await expect(canvasesRuntimeBuild(CANVAS, {}, command)).rejects.toThrow('process.exit:2');
+    expect(client.startRuntimeBuild).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('deployment --enable'));
   });
 
   it('gives up at the timeout and says the build keeps going on the server', async () => {

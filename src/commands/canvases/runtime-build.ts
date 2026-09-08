@@ -1,34 +1,26 @@
 import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
-import { handleError, ExitCode } from '../../lib/errors.js';
+import { handleError, CliUsageError, ExitCode } from '../../lib/errors.js';
+import { RUNTIME_BUILD_COLUMNS, partialBuildWarning, runtimeBuildActorRows } from '../../lib/runtimeBuildReport.js';
 import type { RuntimeBuildSummary } from '../../client/types.js';
 
 interface RuntimeBuildOptions {
   timeout?: string;
 }
 
-/** Render one build's per-actor outcome — the part a user acts on. */
-function actorRows(build: RuntimeBuildSummary): Record<string, unknown>[] {
-  return Object.entries(build.actors ?? {}).map(([actorId, actor]) => ({
-    actor: actor.path ?? actorId,
-    type: actor.type,
-    status: actor.status,
-    // `warm: failed` means the dependencies installed but the actor's own code threw at start-up.
-    // Recorded rather than fatal, and worth surfacing: it will throw at run time too.
-    note: actor.status !== 'ok' ? (actor.error ?? '') : actor.warm === 'failed' ? 'installed, but did not start' : '',
-  }));
-}
-
 /**
  * `borgiq canvases runtime-build <canvas>` — compile the canvas's code actors ahead of time.
  *
- * The build runs inside the request: the command blocks until the build finishes and the response
- * is the finished build, so there is nothing to poll. `--timeout` bounds only how long this command
- * waits — the server finishes the build either way, and `runtime-build-status` shows the outcome.
+ * Only a deployed workspace runs builds, so a non-deployed workspace is refused up front — the same
+ * check that disables the Build button in the web editor. The build itself runs inside the request:
+ * the command blocks until the build finishes and the response is the finished build, so there is
+ * nothing to poll. `--timeout` bounds only how long this command waits — the server finishes the
+ * build either way, and `runtime-build-status` shows the outcome.
  *
- * Exit codes: 0 when the build completed (even partly — the actors that built still start from it,
- * and the failures are printed), non-zero when the build failed outright or the wait timed out.
+ * Exit codes: 0 only when every actor built (the build now serves runs). Non-zero when the build
+ * failed, only partly succeeded (a partial build serves nothing — the previous full build keeps
+ * running), the workspace is not deployed, or the wait timed out.
  */
 export const canvasesRuntimeBuild = async (
   canvas: string,
@@ -42,6 +34,12 @@ export const canvasesRuntimeBuild = async (
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
+
+    const deployment = await client.getWorkspaceDeployment(ctx.org, ctx.workspace);
+    if (!deployment.isDeployed) {
+      throw new CliUsageError(`This workspace is not deployed, so '${canvas}' cannot be built — nothing would run the build. `
+        + 'Deploy the workspace first with \'borgiq workspaces deployment --enable\'.');
+    }
 
     let result: { build: RuntimeBuildSummary | null };
     try {
@@ -64,13 +62,8 @@ export const canvasesRuntimeBuild = async (
     if (globalOpts.json) {
       output(build, globalOpts);
     } else {
-      output(actorRows(build), globalOpts, {
-        columns: [
-          { key: 'actor', header: 'ACTOR' },
-          { key: 'type', header: 'TYPE' },
-          { key: 'status', header: 'STATUS' },
-          { key: 'note', header: 'NOTE' },
-        ],
+      output(runtimeBuildActorRows(build), globalOpts, {
+        columns: RUNTIME_BUILD_COLUMNS,
         title: `Build ${build.id} — ${build.status}`,
       });
       if (build.error) process.stderr.write(`\n${build.error}\n`);
@@ -80,10 +73,10 @@ export const canvasesRuntimeBuild = async (
       process.exit(ExitCode.GENERAL);
     }
     if (build.status === 'partially_ready') {
-      // Not a failure: the actors that built still run from the build. Say so on stderr so a script
-      // that only checks the exit code is not misled by the warning either way.
-      const failed = Object.values(build.actors ?? {}).filter((actor) => actor.status !== 'ok').length;
-      process.stderr.write(`\nWarning: ${failed} actor(s) did not build and will run without the build.\n`);
+      // A failure of intent: only a fully built canvas can serve runs, so this build changed
+      // nothing — the canvas keeps running its previous full build (or refuses runs without one).
+      process.stderr.write(`\n${partialBuildWarning(build)}\n`);
+      process.exit(ExitCode.GENERAL);
     }
   } catch (error) {
     handleError(error);

@@ -422,35 +422,38 @@ borgiq bundle validate .
 borgiq bundle pack . -o export.yaml
 borgiq bundle push .
 borgiq bundle pull <canvas> .
-borgiq bundle build .            # React App actors: push, then compile and serve
-borgiq bundle push . --runtime-build   # deployed workspaces: push, then build the canvas
+borgiq bundle build .            # push, then build (what "build" means depends on the workspace)
 \`\`\`
 
-For React App actors, borgiq bundle build pushes the bundle and then compiles
-and serves the app (what visitors see does not change until it is built). It
-builds every React App actor on the canvas by default; pass --actor <id>
-(repeatable) to build a subset, and --force-local to let the pre-build push
-resolve conflicts in favour of the local version. A non-zero exit means a build
-failed; the compiler error and structured details are reported. React App
-actors are the only actor type that needs a build step.
+borgiq bundle build pushes the bundle and then builds it, asking the API what
+this workspace needs: on a deployed workspace it builds the whole canvas (one
+runtime build compiling every code actor, React apps included; --actor does
+not apply); anywhere else it compiles and serves the bundle's React App
+actor(s) (what visitors see does not change until it is built), every one by
+default — pass --actor <id> (repeatable) to build a subset. --force-local
+lets the pre-build push resolve conflicts in favour of the local version. A
+non-zero exit means a build failed; the errors are reported per actor.
 
 ## Deployed workspaces
 
-If this canvas's workspace is deployed, its triggers run the canvas's active
-runtime build rather than its current code. A push updates the canvas but does
-NOT change what triggers execute until the canvas is built again — so push, then
-build:
+If this canvas's workspace is deployed, EVERY run of the canvas — triggers and
+editor test runs alike — executes the canvas's active runtime build rather than
+its current code. A push updates the canvas but does NOT change what runs until
+the canvas is built again — so push, then build:
 
 \`\`\`bash
+borgiq bundle build .
+# or, equivalently:
 borgiq bundle push . --runtime-build
 # or, separately:
 borgiq bundle push .
 borgiq canvases runtime-build <canvas>
 \`\`\`
 
-Both forms wait for the build and report the per-actor outcome — the build runs
-as part of the request, so there is nothing to poll.
+All forms wait for the build and report the per-actor outcome — the build runs
+as part of the request, so there is nothing to poll. Only a fully successful
+build serves runs: if any actor fails to build, the previous full build keeps
+running, so treat the failures as work to do before the deploy is real.
 
-Check with \`borgiq workspaces deployment\`. Test runs from the editor always use
-the current code, so authoring is unaffected either way.
+Check with \`borgiq workspaces deployment\`.
 `;

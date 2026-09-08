@@ -43,7 +43,6 @@ import type {
   TemplateListFilters,
   ReactAppBuildStartResponse,
   WorkspaceDeploymentStatus,
-  BuildAllRuntimeBuildsResult,
   RuntimeBuildSummary,
   CanvasRuntimeBuildState,
   ReactAppBuildResultPayload,
@@ -337,14 +336,6 @@ export class BorgIQClient {
   /** Turn deployment on or off. Changes what triggers execute across every canvas in the workspace. */
   async updateWorkspaceDeployment(org: string, workspace: string, isDeployed: boolean): Promise<void> {
     await this.request('PUT', `${this.wkspPath(org, workspace)}/deployment`, { isDeployed });
-  }
-
-  /**
-   * Build every buildable canvas in the workspace. Synchronous: the call returns when every build
-   * has finished, with each build's terminal status.
-   */
-  async buildAllRuntimeBuilds(org: string, workspace: string, opts?: { signal?: AbortSignal }): Promise<BuildAllRuntimeBuildsResult> {
-    return this.longRequest('POST', `${this.wkspPath(org, workspace)}/deployment/build-all`, {}, opts?.signal);
   }
 
   /**

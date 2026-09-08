@@ -79,14 +79,20 @@ Examples:
 
   bundle
     .command('build <dir>')
-    .description("Push a bundle and build its ReactAppTriggerActor(s), reporting build status and errors")
+    .description('Push a bundle and build it: the whole canvas on a deployed workspace, its ReactAppTriggerActor(s) elsewhere')
     .option('--canvas <canvas>', "Target canvas slug or ID (default: the bundle's canvas.slug)")
-    .option('--actor <actorId...>', 'React-app actor ID(s) to build (default: every react-app actor in the bundle)')
-    .option('--timeout <seconds>', 'Per-actor build timeout in seconds', '420')
+    .option('--actor <actorId...>', 'React-app actor ID(s) to build (default: every react-app actor in the bundle; not applicable on a deployed workspace)')
+    .option('--timeout <seconds>', 'Build timeout in seconds (default: 420 per react app, 900 for a canvas build)')
     .option('--no-push', 'Build the canvas as it is on the server, without pushing the local bundle first')
     .option('--force-local', 'On the auto-push, resolve sync conflicts by applying the local actor version')
     .option('--strict', 'Treat bundle validation warnings as errors')
     .addHelpText('after', `
+What gets built depends on the workspace:
+  - Deployed workspace: runs serve the canvas's active runtime build, so the whole canvas is built
+    (every code actor, react apps included) and the per-actor outcome is reported.
+  - Not deployed: runs use the current code, so only the bundle's react app(s) are compiled, through
+    the same build the editor's "Build app" runs.
+
 Examples:
   $ borgiq bundle build ./my-app.borgiq-canvas
   $ borgiq bundle build ./my-app.borgiq-canvas --actor ACTR01abc...

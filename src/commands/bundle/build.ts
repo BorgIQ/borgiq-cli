@@ -1,10 +1,11 @@
 import { ApiError } from '../../client/errors.js';
-import type { ReactAppBuildResultPayload } from '../../client/types.js';
+import type { ReactAppBuildResultPayload, RuntimeBuildSummary } from '../../client/types.js';
 import { isReactAppActor } from '../../lib/bundle/reactApp.js';
 import { readBundleDirDetailed } from '../../lib/bundleFs.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { createClientWithContext } from '../../lib/context.js';
 import { CliUsageError, ExitCode, handleError } from '../../lib/errors.js';
+import { RUNTIME_BUILD_COLUMNS, partialBuildWarning, runtimeBuildActorRows } from '../../lib/runtimeBuildReport.js';
 import { output } from '../../output/index.js';
 import { assembleOrFail } from './shared.js';
 import { bundlePush } from './push.js';
@@ -39,17 +40,28 @@ interface BuildOutcome {
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const DEFAULT_TIMEOUT_SEC = 420;
+// A canvas build compiles every code actor of the canvas in one run, so its default wait matches
+// `canvases runtime-build`, not the per-app react build's.
+const RUNTIME_BUILD_TIMEOUT_SEC = 900;
 // The GET build endpoint long-polls up to ~25 s per request, so each poll blocks server-side and we
 // re-issue immediately on a 202 rather than sleeping between rounds.
 const POLL_WAIT_SEC = 25;
 
 /**
- * `borgiq bundle build <dir>` — build a bundle's ReactAppTriggerActor(s) without the web editor.
+ * `borgiq bundle build <dir>` — push the bundle and build it, however this workspace builds.
  *
- * A canvas can host several react-app actors, so by default this builds every one in the bundle
- * (pass `--actor` to build a subset). It auto-pushes the local bundle first (the CLI analogue of the
- * editor's save-then-build), then reuses the platform's existing build endpoints — `POST …/apps/:actorId/build`
- * to start and the `GET …/build?flowrunId=…&waitSeconds=…` long-poll to await each result — so no new API is needed.
+ * What "build" means depends on the workspace, so the command asks the API which one this is
+ * (the same deployment check that drives the web editor's Build button) rather than guessing:
+ *
+ * - **Deployed workspace** — runs serve the canvas's active runtime build, so the whole canvas is
+ *   built (`canvases runtime-build` semantics): one synchronous request, per-actor outcome table.
+ *   The editor's react-app build is refused on a deployed workspace, and `--actor` with it.
+ * - **Not deployed** — runs use the current code and only react apps need compiling, so this builds
+ *   the bundle's ReactAppTriggerActor(s) through the editor's build endpoints, every one by default
+ *   (`--actor` selects a subset).
+ *
+ * Both paths auto-push the local bundle first (the CLI analogue of save-then-build; `--no-push`
+ * builds the canvas as it is on the server).
  */
 export const bundleBuild = async (dir: string, options: BuildOptions, command: CommandCtx): Promise<void> => {
   try {
@@ -57,21 +69,28 @@ export const bundleBuild = async (dir: string, options: BuildOptions, command: C
     const { client, ctx } = createClientWithContext(globalOpts);
     const verbose = !globalOpts.json && process.stderr.isTTY;
 
-    // Resolve the react-app actor(s) + canvas from the local bundle before mutating anything.
+    // Resolve the canvas from the local bundle before mutating anything.
     const contents = readBundleDirDetailed(dir);
     const local = assembleOrFail(contents.files, options.strict ?? false);
     const { doc } = local;
 
-    const actorIds = resolveActorIds(doc, options.actor);
     const canvas = options.canvas ?? (typeof doc.metadata.slug === 'string' ? doc.metadata.slug : '');
     if (!canvas) {
       throw new CliUsageError('No canvas target - pass --canvas <canvas> or set canvas.slug in the bundle.');
     }
-    const timeoutSec = parseTimeout(options.timeout);
 
     if (options.push === false && options.forceLocal) {
       process.stderr.write('Note: --force-local has no effect with --no-push (nothing is pushed).\n');
     }
+
+    const deployment = await client.getWorkspaceDeployment(ctx.org, ctx.workspace);
+    if (deployment.isDeployed) {
+      await runCanvasRuntimeBuild(dir, canvas, options, command, { client, ctx, globalOpts, verbose });
+      return;
+    }
+
+    const actorIds = resolveActorIds(doc, options.actor);
+    const timeoutSec = parseTimeout(options.timeout, DEFAULT_TIMEOUT_SEC);
 
     // 1. Auto-push (unless --no-push) so the build reads the config we just synced. One push covers
     //    every actor in the bundle, so it runs once regardless of how many actors we then build.
@@ -104,9 +123,87 @@ export const bundleBuild = async (dir: string, options: BuildOptions, command: C
     // 3. Report. The command fails if any single actor's build failed.
     const anyFailed = builds.some((build) => build.status === 'error');
     if (anyFailed) process.exitCode = ExitCode.GENERAL;
-    output({ status: anyFailed ? 'error' : 'success', canvas, builds }, globalOpts);
+    output({ status: anyFailed ? 'error' : 'success', canvas, mode: 'react-app', builds }, globalOpts);
   } catch (error) {
     handleError(error);
+  }
+};
+
+/**
+ * The deployed-workspace path: push, then one synchronous canvas build. Reported the way
+ * `canvases runtime-build` reports — per-actor rows on a TTY, the full build under `--json`
+ * (wrapped in this command's `{ status, canvas, mode }` envelope) — with the same exit-code
+ * semantics: only a fully `ready` build serves runs, so anything less exits non-zero.
+ */
+const runCanvasRuntimeBuild = async (
+  dir: string,
+  canvas: string,
+  options: BuildOptions,
+  command: CommandCtx,
+  deps: {
+    client: ReturnType<typeof createClientWithContext>['client'];
+    ctx: ReturnType<typeof createClientWithContext>['ctx'];
+    globalOpts: GlobalOptions;
+    verbose: boolean;
+  },
+): Promise<void> => {
+  const { client, ctx, globalOpts, verbose } = deps;
+  if (options.actor && options.actor.length > 0) {
+    throw new CliUsageError('--actor selects react apps for the editor build, which a deployed workspace does not use — '
+      + 'the canvas build compiles every code actor, react apps included. Drop --actor.');
+  }
+  const timeoutSec = parseTimeout(options.timeout, RUNTIME_BUILD_TIMEOUT_SEC);
+
+  if (verbose) {
+    process.stderr.write(`This workspace is deployed — building the whole canvas '${canvas}', react apps included.\n`);
+  }
+  if (options.push !== false) {
+    const pushed = await autoPush(dir, { canvas: options.canvas, forceLocal: options.forceLocal, strict: options.strict }, command);
+    if (!pushed) {
+      process.stderr.write('Aborting build: the push did not complete cleanly (see the errors above).\n');
+      return; // the push already set process.exitCode and reported the failure
+    }
+  }
+
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), timeoutSec * 1000);
+  timer.unref();
+  let build: RuntimeBuildSummary | null;
+  try {
+    ({ build } = await client.startRuntimeBuild(ctx.org, ctx.workspace, canvas, { signal: abort.signal }));
+  } catch (error) {
+    if (abort.signal.aborted) {
+      process.stderr.write(`Timed out after ${timeoutSec}s waiting for the build. The build itself keeps going on the server — `
+        + `check the outcome with 'borgiq canvases runtime-build-status ${canvas}'.\n`);
+      process.exitCode = ExitCode.GENERAL;
+      return;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!build) {
+    process.stderr.write('The build finished but the server returned no build record.\n');
+    process.exitCode = ExitCode.GENERAL;
+    return;
+  }
+
+  if (globalOpts.json) {
+    output({ status: build.status === 'ready' ? 'success' : 'error', canvas, mode: 'runtime-build', build }, globalOpts);
+  } else {
+    output(runtimeBuildActorRows(build), globalOpts, {
+      columns: RUNTIME_BUILD_COLUMNS,
+      title: `Build ${build.id} — ${build.status}`,
+    });
+    if (build.error) process.stderr.write(`\n${build.error}\n`);
+  }
+
+  if (build.status === 'failed') {
+    process.exitCode = ExitCode.GENERAL;
+  } else if (build.status === 'partially_ready') {
+    process.stderr.write(`\n${partialBuildWarning(build)}\n`);
+    process.exitCode = ExitCode.GENERAL;
   }
 };
 
@@ -171,8 +268,8 @@ const resolveActorIds = (doc: ReturnType<typeof assembleOrFail>['doc'], actorFla
   return reactAppActors.map((actor) => actor.id);
 };
 
-const parseTimeout = (raw: string | undefined): number => {
-  if (raw === undefined) return DEFAULT_TIMEOUT_SEC;
+const parseTimeout = (raw: string | undefined, fallback: number): number => {
+  if (raw === undefined) return fallback;
   const seconds = Number(raw);
   if (!Number.isFinite(seconds) || seconds <= 0) {
     throw new CliUsageError(`Invalid --timeout '${raw}' - use a positive number of seconds.`);

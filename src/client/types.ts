@@ -632,9 +632,3 @@ export interface CanvasRuntimeBuildState {
   latestBuild: RuntimeBuildSummary | null;
   outdated: boolean;
 }
-
-/** Builds run inside the request, so each entry carries its terminal status. */
-export interface BuildAllRuntimeBuildsResult {
-  builds: { canvasId: string; buildId: string; status: RuntimeBuildStatus }[];
-  skipped: { canvasId: string; reason: RuntimeBuildBlockedReason }[];
-}

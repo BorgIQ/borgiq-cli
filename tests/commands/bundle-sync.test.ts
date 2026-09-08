@@ -65,6 +65,8 @@ const makeClient = () => ({
   layoutCanvas: vi.fn(),
   importCanvasData: vi.fn(),
   createCanvasWithData: vi.fn(),
+  getWorkspaceDeployment: vi.fn(),
+  startRuntimeBuild: vi.fn(),
 });
 
 let root: string;
@@ -133,6 +135,42 @@ describe('bundle push sync orchestration', () => {
     expect(client.batchActorOperations).not.toHaveBeenCalled();
     expect(client.updateCanvas).not.toHaveBeenCalled();
     expect(client.exportCanvas).toHaveBeenCalledTimes(1);
+  });
+
+  it('--runtime-build on a deployed workspace builds the canvas after the push', async () => {
+    const doc = makeDoc([actor('Same')]);
+    writeLocal(doc, { [ACTOR_ID]: 1 });
+    client.exportCanvas.mockResolvedValue(envelope(doc));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 1 } });
+    client.getWorkspaceDeployment.mockResolvedValue({ isDeployed: true, canvases: [] });
+    client.startRuntimeBuild.mockResolvedValue({ build: { id: 'CRBD01a0000000000000000000000', canvasId: 'CANV01', status: 'ready', runtimeSlug: 'default', actors: {}, createdAt: '', isActive: true } });
+
+    await bundlePush(bundleDir, { refresh: false, runtimeBuild: true }, command);
+
+    expect(client.startRuntimeBuild).toHaveBeenCalledWith('test-org', 'test-workspace', 'test-canvas');
+    expect(mocks.output).toHaveBeenCalledWith(
+      expect.objectContaining({ runtimeBuild: expect.objectContaining({ status: 'ready', buildId: 'CRBD01a0000000000000000000000' }) }),
+      expect.anything(),
+    );
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('--runtime-build on a non-deployed workspace notifies and skips the build — nothing would run it', async () => {
+    const doc = makeDoc([actor('Same')]);
+    writeLocal(doc, { [ACTOR_ID]: 1 });
+    client.exportCanvas.mockResolvedValue(envelope(doc));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 1 } });
+    client.getWorkspaceDeployment.mockResolvedValue({ isDeployed: false, canvases: [] });
+
+    await bundlePush(bundleDir, { refresh: false, runtimeBuild: true }, command);
+
+    expect(client.startRuntimeBuild).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('cannot be built'));
+    expect(mocks.output).toHaveBeenCalledWith(
+      expect.objectContaining({ runtimeBuild: expect.objectContaining({ status: 'skipped' }) }),
+      expect.anything(),
+    );
+    expect(process.exitCode).toBeUndefined(); // the push itself succeeded
   });
 
   it('stops before metadata and refresh when the batch response does not confirm an operation', async () => {

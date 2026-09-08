@@ -112,18 +112,20 @@ Examples:
     .addHelpText(
       'after',
       `
-Building takes a snapshot of the canvas, compiles every code actor on it, and installs their
-dependencies. On a deployed workspace, triggers then run that build instead of the canvas's current
-code — so actors start fast and every run executes the same thing.
+Building takes a snapshot of the canvas, compiles every code actor on it (react apps included), and
+installs their dependencies. On a deployed workspace, every run then executes that build instead of
+the canvas's current code — so actors start fast and every run executes the same thing. Only a
+deployed workspace runs builds, so this command refuses on a non-deployed one.
 
 The command holds until the build finishes (typically a minute or two) and prints the per-actor
 outcome. --timeout bounds only the wait; the server finishes the build either way, and
 'runtime-build-status' shows the outcome.
 
 Exit codes:
-  0  the build completed. A partly-built canvas also exits 0: the actors that built run from the
-     build, and the ones that did not are listed with the reason.
-  1  the build failed outright, or the wait timed out (the build itself keeps going).
+  0  every actor built — runs now execute this build.
+  1  the build failed or only partly succeeded (a partial build serves nothing; the previous full
+     build keeps running), or the wait timed out (the build itself keeps going).
+  2  the workspace is not deployed, so the canvas cannot be built.
 
 Examples:
   $ borgiq canvases runtime-build my-canvas
@@ -140,6 +142,6 @@ Examples:
 
   canvases
     .command('runtime-build-activate <canvas> <buildId>')
-    .description('Make an earlier build the one this canvas\'s triggers run')
+    .description('Make an earlier build the one this canvas\'s runs execute')
     .action(canvasesRuntimeBuildActivate);
 };

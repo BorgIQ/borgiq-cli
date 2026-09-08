@@ -411,7 +411,9 @@ const reportPushConflicts = (conflicts: { actorId: string; name: string; verdict
 
 /**
  * Build the canvas just pushed. The build runs inside the request, so this resolves with the
- * finished build — nothing to poll.
+ * finished build — nothing to poll. A non-deployed workspace is notified and skipped instead of
+ * built: nothing there would run the build, so building would only spend minutes on an artifact
+ * no run consults.
  *
  * A build failure does NOT fail the push: the push itself succeeded and the canvas keeps running
  * whatever it was running before. The outcome is reported and carried in the JSON output so a script
@@ -424,6 +426,12 @@ async function runRuntimeBuildAfterPush(
   globalOpts: GlobalOptions,
 ): Promise<{ status: string; buildId?: string; error?: string }> {
   try {
+    const deployment = await client.getWorkspaceDeployment(ctx.org, ctx.workspace);
+    if (!deployment.isDeployed) {
+      process.stderr.write(`This workspace is not deployed, so '${target}' cannot be built — nothing would run the build. The push itself succeeded.\n`);
+      return { status: 'skipped', error: 'workspace is not deployed' };
+    }
+
     const { build } = await client.startRuntimeBuild(ctx.org, ctx.workspace, target);
     if (!build) return { status: 'unknown', error: 'the server returned no build record' };
 

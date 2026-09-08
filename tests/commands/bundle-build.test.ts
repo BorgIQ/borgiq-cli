@@ -51,6 +51,8 @@ const makeClient = () => ({
   startReactAppBuild: vi.fn(),
   getReactAppBuildResult: vi.fn(),
   getJobResultSummaries: vi.fn(),
+  getWorkspaceDeployment: vi.fn(),
+  startRuntimeBuild: vi.fn(),
 });
 
 let root: string;
@@ -65,6 +67,8 @@ beforeEach(() => {
 
   client = makeClient();
   mocks.createClientWithContext.mockReturnValue({ client, ctx: { org: 'test-org', workspace: 'test-workspace' } });
+  // The default suite exercises the react-app path, which is what a non-deployed workspace gets.
+  client.getWorkspaceDeployment.mockResolvedValue({ isDeployed: false, canvases: [] });
   mocks.output.mockReset();
   mocks.bundlePush.mockReset().mockResolvedValue(undefined);
   process.exitCode = undefined;
@@ -232,5 +236,97 @@ describe('bundle build', () => {
     } finally {
       exit.mockRestore();
     }
+  });
+});
+
+describe('bundle build on a deployed workspace', () => {
+  const runtimeBuild = (over: Record<string, unknown> = {}) => ({
+    id: 'CRBD01build0000000000000000000',
+    canvasId: 'CANV01test00000000000000000000',
+    status: 'ready',
+    runtimeSlug: 'default',
+    actors: { ACTR01coder0000000000000000000: { type: 'DenoActor', hash: 'sha256:x', status: 'ok' } },
+    createdAt: '2026-09-08T00:00:00.000Z',
+    isActive: true,
+    ...over,
+  });
+
+  beforeEach(() => {
+    client.getWorkspaceDeployment.mockResolvedValue({ isDeployed: true, canvases: [] });
+  });
+
+  it('pushes, then builds the whole canvas — the react-app endpoints are never touched', async () => {
+    client.startRuntimeBuild.mockResolvedValue({ build: runtimeBuild() });
+
+    await bundleBuild(bundleDir, {}, command);
+
+    expect(mocks.bundlePush).toHaveBeenCalledTimes(1);
+    expect(client.startRuntimeBuild).toHaveBeenCalledWith(
+      'test-org', 'test-workspace', CANVAS_SLUG,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(client.startReactAppBuild).not.toHaveBeenCalled();
+    expect(mocks.output).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'success', canvas: CANVAS_SLUG, mode: 'runtime-build', build: expect.objectContaining({ status: 'ready' }) }),
+      expect.anything(),
+    );
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('--no-push builds the canvas as it is on the server', async () => {
+    client.startRuntimeBuild.mockResolvedValue({ build: runtimeBuild() });
+
+    await bundleBuild(bundleDir, { push: false }, command);
+
+    expect(mocks.bundlePush).not.toHaveBeenCalled();
+    expect(client.startRuntimeBuild).toHaveBeenCalledTimes(1);
+  });
+
+  it('exits non-zero when the canvas build failed', async () => {
+    client.startRuntimeBuild.mockResolvedValue({ build: runtimeBuild({ status: 'failed', isActive: false, error: 'boom' }) });
+
+    await bundleBuild(bundleDir, {}, command);
+
+    expect(mocks.output).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }), expect.anything());
+    expect(process.exitCode).toBe(ExitCode.GENERAL);
+  });
+
+  it('exits non-zero on a partial build — it serves nothing, so the push is not live', async () => {
+    client.startRuntimeBuild.mockResolvedValue({
+      build: runtimeBuild({
+        status: 'partially_ready',
+        isActive: false,
+        actors: {
+          ACTR01coder0000000000000000000: { type: 'DenoActor', hash: 'sha256:x', status: 'ok' },
+          ACTR02broken000000000000000000: { type: 'DenoActor', hash: 'sha256:y', status: 'failed', error: 'nope' },
+        },
+      }),
+    });
+
+    await bundleBuild(bundleDir, {}, command);
+
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('previous full build'));
+    expect(process.exitCode).toBe(ExitCode.GENERAL);
+  });
+
+  it('refuses --actor: the canvas build compiles every code actor', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit'); }) as never);
+    try {
+      await expect(bundleBuild(bundleDir, { actor: [REACT_APP_ID] }, command)).rejects.toThrow('process.exit');
+      expect(exit).toHaveBeenCalledWith(ExitCode.USAGE);
+      expect(mocks.bundlePush).not.toHaveBeenCalled();
+      expect(client.startRuntimeBuild).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+    }
+  });
+
+  it('aborts without building when the auto-push fails', async () => {
+    mocks.bundlePush.mockImplementation(async () => { process.exitCode = ExitCode.CONFLICT; });
+
+    await bundleBuild(bundleDir, {}, command);
+
+    expect(client.startRuntimeBuild).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(ExitCode.CONFLICT);
   });
 });
