@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.10.0...cli-v0.11.0) (2026-09-09)
+
+
+### Features
+
+* **bundle:** expose appSessionId and userId on the react app session ([#63](https://github.com/BorgIQ/borgiq-cli/issues/63)) ([e572950](https://github.com/BorgIQ/borgiq-cli/commit/e572950c88b0075e9b4a930b55dda6c8a41ebc8e))
+* workspace deployment and canvas runtime-build commands ([#61](https://github.com/BorgIQ/borgiq-cli/issues/61)) ([2935b2d](https://github.com/BorgIQ/borgiq-cli/commit/2935b2de0b385e034ab4d80efe8669fc623234fe))
+
 ## [0.10.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.9.0...cli-v0.10.0) (2026-09-01)
 
 
