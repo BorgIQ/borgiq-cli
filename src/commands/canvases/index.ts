@@ -13,6 +13,7 @@ import { canvasesExport } from './export.js';
 import { canvasesValidate } from './validate.js';
 import { canvasesLayout } from './layout.js';
 import { canvasesVerifyImport } from './verify-import.js';
+import { canvasesRuntimeBuild, canvasesRuntimeBuildStatus, canvasesRuntimeBuildActivate } from './runtime-build.js';
 
 export const registerCanvasesCommands = (program: Command): void => {
   const canvases = program.command('canvases').description('Manage canvases');
@@ -103,4 +104,44 @@ Examples:
     .description('Verify canvas import data before creating')
     .option('--file <path>', 'Path to JSON or YAML file (or pipe via stdin)')
     .action(canvasesVerifyImport);
+
+  canvases
+    .command('runtime-build <canvas>')
+    .description('Build this canvas: compile its code actors and install their dependencies ahead of time')
+    .option('--timeout <seconds>', 'How long to wait for the build before giving up on the answer', '900')
+    .addHelpText(
+      'after',
+      `
+Building takes a snapshot of the canvas, compiles every code actor on it (react apps included), and
+installs their dependencies. On a deployed workspace, every run then executes that build instead of
+the canvas's current code — so actors start fast and every run executes the same thing. Only a
+deployed workspace runs builds, so this command refuses on a non-deployed one.
+
+The command holds until the build finishes (typically a minute or two) and prints the per-actor
+outcome. --timeout bounds only the wait; the server finishes the build either way, and
+'runtime-build-status' shows the outcome.
+
+Exit codes:
+  0  every actor built — runs now execute this build.
+  1  the build failed or only partly succeeded (a partial build serves nothing; the previous full
+     build keeps running), or the wait timed out (the build itself keeps going).
+  2  the workspace is not deployed, so the canvas cannot be built.
+
+Examples:
+  $ borgiq canvases runtime-build my-canvas
+  $ borgiq canvases runtime-build my-canvas --json
+`,
+    )
+    .action(canvasesRuntimeBuild);
+
+  canvases
+    .command('runtime-build-status <canvas>')
+    .description('Show which build this canvas runs, and whether it has been edited since')
+    .option('--history', 'List this canvas\'s builds instead')
+    .action(canvasesRuntimeBuildStatus);
+
+  canvases
+    .command('runtime-build-activate <canvas> <buildId>')
+    .description('Make an earlier build the one this canvas\'s runs execute')
+    .action(canvasesRuntimeBuildActivate);
 };
