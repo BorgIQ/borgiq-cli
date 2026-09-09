@@ -49,6 +49,9 @@ const documents: [string, () => CanvasExportDocument][] = [
     }),
   ])],
   ['unknown future actor field passes through', () => makeDoc([makeActor({ id: TASK_ID, type: 'EchoActor', futureField: { nested: [1, 2] } })])],
+  ['canvas readme', () => makeDoc([makeActor({ id: TASK_ID, type: 'EchoActor' })], { readme: '# Test Canvas\n\n## Contents\n- [Purpose](#purpose)\n\n## Purpose\nRoutes things.\n' })],
+  ['canvas readme without a trailing newline', () => makeDoc([], { readme: '# Bare' })],
+  ['empty canvas readme, as the API exports an unset one', () => makeDoc([], { readme: '' })],
   ['react app project tree', () => makeDoc([makeReactAppActor()])],
   ['react app with asset overlays', () => makeDoc([makeReactAppActor({
     configuration: {
@@ -86,6 +89,12 @@ describe('round-trip guarantees', () => {
     expect(Object.keys(doc.data.actors[TRIGGER_ID].edges ?? {})).toEqual([EDGE_ID]);
     expect(doc.data.actors[TASK_ID].edges).toEqual({});
     expect(doc.data.actors[TASK_ID].position).toEqual({ x: 320, y: 0 });
+  });
+
+  it('packs a bundle without README.md as an empty readme, matching what the API exports for an unset one', () => {
+    const { files } = disassemble(makeDoc([]));
+    expect(files['README.md']).toBeUndefined();
+    expect(assembleBundle(files).doc.metadata.readme).toBe('');
   });
 
   it('maps canvas.schemaVersion back to data.schemaVersion and strips it from metadata', () => {

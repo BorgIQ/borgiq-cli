@@ -39,6 +39,21 @@ describe('disassemble', () => {
     ]);
   });
 
+  it('externalizes a non-empty readme to README.md, byte-verbatim, and keeps it out of canvas.yaml', () => {
+    const readme = '# Test Canvas\r\n\r\nNo trailing newline, CRLF kept';
+    const { files } = disassemble(makeDoc([], { readme }));
+    expect(files['README.md']).toBe(readme);
+    expect(files['canvas.yaml']).not.toContain('readme');
+    expect((root(files).canvas as Record<string, unknown>).readme).toBeUndefined();
+  });
+
+  it('writes no README.md for an empty or absent readme', () => {
+    expect(disassemble(makeDoc([], { readme: '' })).files['README.md']).toBeUndefined();
+    const withoutField = makeDoc([]);
+    delete withoutField.metadata.readme;
+    expect(disassemble(withoutField).files['README.md']).toBeUndefined();
+  });
+
   it('lifts edges and positions into the root graph and strips them from actor.yaml', () => {
     const { files } = disassemble(makeWiredDoc());
     const doc = root(files);

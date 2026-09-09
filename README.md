@@ -476,9 +476,15 @@ borgiq bundle push ./my-flow.borgiq-canvas --runtime-build
 | `borgiq bundle pull <canvas> [dir]` | Sync by slug or ID from the API. Existing bundles fast-forward server-only changes, preserve local edits/deletions, and abort on genuine concurrent or unknown-baseline conflicts; `--replace` explicitly accepts the server state with a full managed-path rewrite. |
 | `borgiq bundle push <dir>` | Validate and sync only changed actors by default. A server-side change blocks push until it is pulled, unless `--force-local` explicitly selects local wins. `--strict` also enables strict actor batch validation on the API. Structured output is compact; use `--raw` for generated operation payloads and raw API responses. Use `--mode merge\|insert\|replace` for the legacy whole-document import path. Use `--auto-layout` or `--layout-source-actor-id` to run layout after a successful push. Use `--runtime-build` to build the canvas after pushing and wait for it — on a deployed workspace a push alone does not change what runs until the canvas is built again (on a non-deployed workspace the build is skipped with a notice: nothing there would run it). |
 
-`pull --replace` and `unpack` rewrite only managed paths: `canvas.yaml` and `actors/`.
-Files such as `.git/`, `AGENTS.md`, `.gitignore`, and notes are preserved.
-`AGENTS.md` and `.gitignore` are created only when missing.
+`pull --replace` and `unpack` rewrite only managed paths: `canvas.yaml`, `README.md`,
+and `actors/`. Files such as `.git/`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`, and notes
+are preserved. `AGENTS.md`, `CLAUDE.md`, and `.gitignore` are created only when missing.
+
+`README.md` at the bundle root is the canvas's own README — the `readme` field of the
+canvas metadata, edited in the canvas editor's README tab. `pull` writes it from the
+server and deletes it when the canvas has none; `push` uploads it with the rest of the
+metadata. It is therefore not a free file: keep unrelated notes elsewhere (for example
+`NOTES.md`). `bundle init` seeds one with a heading and a table of contents.
 Push refuses exports with actor errors, verifies that the batch API confirmed every requested actor operation, and skips local refresh after any incomplete response. Bundles without `sync.actors` fail closed when an existing local actor differs from the server. Run `bundle pull` to establish the visible sync baseline, or choose `--replace`/`--force-local` explicitly.
 
 #### Code actors

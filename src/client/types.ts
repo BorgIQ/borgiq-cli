@@ -44,6 +44,8 @@ export interface BIQCanvasMetadata {
   slug: string;
   messageTTLInDays: number;
   description: string | null;
+  /** the canvas's markdown README; present on single-canvas payloads, omitted on list payloads */
+  readme?: string | null;
   tags: string | null;
   imagePath: string | null;
   runtimeSlug: string | null;

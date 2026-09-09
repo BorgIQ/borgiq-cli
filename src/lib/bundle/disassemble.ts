@@ -13,6 +13,7 @@ import {
   EDGE_KEY_ORDER,
   FORMAT_NAME,
   FORMAT_VERSION,
+  README_FILE,
   ROOT_FILE,
   ROOT_KEY_ORDER,
   BundleError,
@@ -111,7 +112,12 @@ export const disassemble = (doc: CanvasExportDocument, opts: DisassembleOptions 
   edges.sort((a, b) => compareStrings(a.id, b.id));
   index.sort((a, b) => compareStrings(a.path, b.path));
 
-  const canvas = orderKeys({ ...doc.metadata, schemaVersion: doc.data.schemaVersion }, CANVAS_KEY_ORDER);
+  // The README is externalized: a markdown document folded into a YAML block scalar is neither
+  // readable nor diffable. It is user content, so the bytes are written verbatim - no newline
+  // normalization - and an empty one writes no file at all.
+  const { readme, ...metadataRest } = doc.metadata;
+  if (typeof readme === 'string' && readme !== '') files[README_FILE] = readme;
+  const canvas = orderKeys({ ...metadataRest, schemaVersion: doc.data.schemaVersion }, CANVAS_KEY_ORDER);
   const rootDoc = orderKeys(
     {
       format: FORMAT_NAME,

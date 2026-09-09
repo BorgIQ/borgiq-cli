@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { ROOT_FILE } from './bundle/types.js';
+import { README_FILE, ROOT_FILE } from './bundle/types.js';
 import type { BundleFileMap } from './bundle/types.js';
 import { isSafeBundlePath } from './bundle/path.js';
 import { binaryFileWarning, isIgnoredProjectDirFor, isIgnoredProjectPathFor, splitProjectCodePath } from './bundle/projectDir.js';
@@ -66,6 +66,12 @@ export const readBundleDirDetailed = (dir: string): BundleDirContents => {
     assets: [],
     skipped: [],
   };
+  // The root README is the canvas's own README (metadata.readme), the one root path besides
+  // canvas.yaml the CLI manages. Every other root file is left alone.
+  const readmePath = path.join(dir, README_FILE);
+  if (fs.existsSync(readmePath) && fs.statSync(readmePath).isFile()) {
+    contents.files[README_FILE] = fs.readFileSync(readmePath, 'utf-8');
+  }
   const actorsDir = path.join(dir, MANAGED_DIR);
   if (fs.existsSync(actorsDir)) {
     readFilesRecursive(dir, actorsDir, contents);
@@ -255,11 +261,14 @@ const ensureWritableBundleDir = (dir: string, opts: WriteBundleOptions): void =>
  * "delete managed files absent from the new map" rule, and survives every write.
  */
 const existingManagedFiles = (dir: string): string[] => {
+  const managed: string[] = [];
+  const readmePath = path.join(dir, README_FILE);
+  if (fs.existsSync(readmePath) && fs.statSync(readmePath).isFile()) managed.push(README_FILE);
   const actorsDir = path.join(dir, MANAGED_DIR);
-  if (!fs.existsSync(actorsDir)) return [];
+  if (!fs.existsSync(actorsDir)) return managed;
   const contents: BundleDirContents = { files: {}, assets: [], skipped: [] };
   readFilesRecursive(dir, actorsDir, contents);
-  return Object.keys(contents.files);
+  return [...managed, ...Object.keys(contents.files)];
 };
 
 /**

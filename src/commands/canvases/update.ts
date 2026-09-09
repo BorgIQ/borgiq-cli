@@ -1,20 +1,24 @@
+import fs from 'node:fs';
+
 import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
 
-export const canvasesUpdate = async (id: string, options: { name?: string; slug?: string; description?: string; tags?: string; messageTtl?: string; runtimeSlug?: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+export const canvasesUpdate = async (id: string, options: { name?: string; slug?: string; description?: string; tags?: string; messageTtl?: string; runtimeSlug?: string; readmeFile?: string }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
 
-    const body: { name?: string; slug?: string; description?: string; tags?: string; messageTTLInDays?: number; runtimeSlug?: string } = {};
+    const body: { name?: string; slug?: string; description?: string; tags?: string; messageTTLInDays?: number; runtimeSlug?: string; readme?: string } = {};
     if (options.name) body.name = options.name;
     if (options.slug) body.slug = options.slug;
     if (options.description) body.description = options.description;
     if (options.tags) body.tags = options.tags;
     if (options.messageTtl) body.messageTTLInDays = parseInt(options.messageTtl, 10);
     if (options.runtimeSlug) body.runtimeSlug = options.runtimeSlug;
+    // a markdown document is a file, not a flag value; an empty file clears the README
+    if (options.readmeFile !== undefined) body.readme = fs.readFileSync(options.readmeFile, 'utf-8');
 
     const canvas = await client.updateCanvas(ctx.org, ctx.workspace, id, body);
 

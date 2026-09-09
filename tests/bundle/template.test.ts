@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { assembleBundle } from '../../src/lib/bundle/assemble.js';
-import { BUNDLE_AGENTS_MD, BUNDLE_GITIGNORE, buildStarterBundle } from '../../src/lib/bundle/template.js';
+import { BUNDLE_AGENTS_MD, BUNDLE_CLAUDE_MD, BUNDLE_GITIGNORE, buildStarterBundle, canvasReadmeTemplate } from '../../src/lib/bundle/template.js';
 import { validateBundle } from '../../src/lib/bundle/validate.js';
 
 describe('buildStarterBundle', () => {
@@ -12,6 +12,24 @@ describe('buildStarterBundle', () => {
     expect(doc.metadata.slug).toBe('my-flow');
     expect(doc.metadata.name).toBe('My Flow');
     expect(Object.keys(doc.data.actors)).toHaveLength(3);
+  });
+
+  it('seeds README.md with the canvas name and a table of contents that matches the sections', () => {
+    const files = buildStarterBundle({ name: 'My Flow', slug: 'my-flow' });
+    const readme = files['README.md'];
+    expect(readme.startsWith('# My Flow\n')).toBe(true);
+    expect(readme).toBe(canvasReadmeTemplate('My Flow'));
+    expect(files['canvas.yaml']).not.toContain('readme');
+
+    const contents = readme.slice(readme.indexOf('## Contents'), readme.indexOf('## Purpose'));
+    const anchors = [...contents.matchAll(/\]\(#([a-z-]+)\)/g)].map((match) => match[1]);
+    const headings = [...readme.matchAll(/^## (.+)$/gm)]
+      .map((match) => match[1].toLowerCase().replace(/\s+/g, '-'))
+      .filter((heading) => heading !== 'contents');
+    expect(anchors.length).toBeGreaterThan(0);
+    expect(anchors).toEqual(headings);
+
+    expect(assembleBundle(files).doc.metadata.readme).toBe(readme);
   });
 
   it('creates a webhook trigger, a test sender, and a deno task with external code', () => {
@@ -173,5 +191,21 @@ describe('bundle companion files', () => {
     ]) {
       expect(BUNDLE_GITIGNORE).toContain(needle);
     }
+  });
+});
+
+describe('bundle companions', () => {
+  it('AGENTS.md points agents at README.md before describing the format', () => {
+    expect(BUNDLE_AGENTS_MD.indexOf('./README.md')).toBeGreaterThan(-1);
+    expect(BUNDLE_AGENTS_MD.indexOf('./README.md')).toBeLessThan(BUNDLE_AGENTS_MD.indexOf('## Layout'));
+    expect(BUNDLE_AGENTS_MD).toContain('README.md: the canvas README');
+  });
+
+  it('CLAUDE.md is the one-line include of AGENTS.md', () => {
+    expect(BUNDLE_CLAUDE_MD).toBe('@AGENTS.md\n');
+  });
+
+  it('.gitignore is unchanged by the README', () => {
+    expect(BUNDLE_GITIGNORE).not.toContain('README');
   });
 });

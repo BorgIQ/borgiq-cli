@@ -1,6 +1,6 @@
 import { BUNDLE_PATH_REGISTRY } from './registry.js';
 import type { BundleActorType } from './registry.js';
-import { ACTOR_FILE, CANVAS_KEY_ORDER, CODE_DIR, ROOT_FILE } from './types.js';
+import { ACTOR_FILE, CANVAS_KEY_ORDER, CODE_DIR, README_FILE, ROOT_FILE } from './types.js';
 import type {
   BundleFileMap,
   BundleIssue,
@@ -68,7 +68,10 @@ export const assembleBundle = (files: BundleFileMap): AssembleResult => {
   }
 
   const { schemaVersion, ...metadataRest } = (isPlainObject(root.canvas) ? root.canvas : {}) as Record<string, unknown>;
-  const metadata = orderKeys(metadataRest, CANVAS_KEY_ORDER);
+  // Always a string: the API exports an unset README as '', so pack(unpack(doc)) stays deeply
+  // equal to the exported document. A bundle without README.md therefore pushes '' - the same
+  // last-writer-wins metadata semantics description and tags already have.
+  const metadata = { ...orderKeys(metadataRest, CANVAS_KEY_ORDER), readme: files[README_FILE] ?? '' };
 
   return {
     doc: {

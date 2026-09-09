@@ -111,6 +111,8 @@ export class BundleError extends Error {
 export const FORMAT_NAME = 'borgiq.canvas.bundle';
 export const FORMAT_VERSION = 1;
 export const ROOT_FILE = 'canvas.yaml';
+/** The canvas's own README, externalized from `metadata.readme` to the bundle root. A managed path, like canvas.yaml. */
+export const README_FILE = 'README.md';
 export const ACTOR_FILE = 'actor.yaml';
 export const CODE_DIR = 'code';
 
