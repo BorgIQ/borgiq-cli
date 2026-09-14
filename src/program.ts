@@ -14,6 +14,7 @@ import { registerFlowrunResultsCommands } from './commands/flowrun-results/index
 import { registerFlowrunMessagesCommands } from './commands/flowrun-messages/index.js';
 import { registerTriggersCommands } from './commands/triggers/index.js';
 import { registerConnectionsCommands } from './commands/connections/index.js';
+import { registerAiProvidersCommands } from './commands/ai-providers/index.js';
 import { registerSecretsCommands } from './commands/secrets/index.js';
 import { registerAssetsCommands } from './commands/assets/index.js';
 import { registerTokensCommands } from './commands/tokens/index.js';
@@ -81,6 +82,7 @@ Exit codes:
   registerFlowrunMessagesCommands(program);
   registerTriggersCommands(program);
   registerConnectionsCommands(program);
+  registerAiProvidersCommands(program);
   registerSecretsCommands(program);
   registerAssetsCommands(program);
   registerTokensCommands(program);

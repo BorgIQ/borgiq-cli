@@ -46,6 +46,8 @@ import type {
   RuntimeBuildSummary,
   CanvasRuntimeBuildState,
   ReactAppBuildResultPayload,
+  BIQAiSettingMetadata,
+  BIQAiModelListResponse,
 } from './types.js';
 
 export class BorgIQClient {
@@ -390,6 +392,28 @@ export class BorgIQClient {
     qs.set('page', '1');
     qs.set('pageSize', '20');
     return this.request('GET', `${this.wkspPath(org, workspace)}/connectionsKeys?${qs.toString()}`);
+  }
+
+  // ── AI Providers (aiSettings) ─────────────────────────
+
+  async listAiSettings(org: string, workspace: string): Promise<BIQAiSettingMetadata[]> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/aiSettings`);
+  }
+
+  async createAiSettingMultipart(org: string, workspace: string, form: FormData): Promise<BIQAiSettingMetadata> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/aiSettings`, form);
+  }
+
+  async updateAiSettingMultipart(org: string, workspace: string, id: string, form: FormData): Promise<BIQAiSettingMetadata> {
+    return this.request('PUT', `${this.wkspPath(org, workspace)}/aiSettings/${id}`, form);
+  }
+
+  async deleteAiSetting(org: string, workspace: string, id: string): Promise<void> {
+    return this.request('DELETE', `${this.wkspPath(org, workspace)}/aiSettings/${id}`);
+  }
+
+  async listAiModels(org: string, workspace: string): Promise<BIQAiModelListResponse> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/aiModels`);
   }
 
   // ── Secrets ───────────────────────────────────────────

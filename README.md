@@ -155,6 +155,16 @@ Values are resolved in this order (highest priority first):
 | `borgiq connections list` | List connections |
 | `borgiq connections delete <id>` | Delete a connection |
 
+### AI Providers
+
+| Command | Description |
+|---------|-------------|
+| `borgiq ai-providers list` | List the workspace AI providers |
+| `borgiq ai-providers models` | List the model references usable in actors |
+| `borgiq ai-providers create` | Add an AI provider (built-in credential link or custom provider) |
+| `borgiq ai-providers edit <id-or-name>` | Rename, re-link or edit the model catalog of an AI provider |
+| `borgiq ai-providers delete <id-or-name>` | Delete an AI provider |
+
 ### Secrets
 
 | Command | Description |
@@ -788,6 +798,45 @@ rewrites line endings will make every file look locally edited.
 | `--page-size <number>` | Items per page |
 
 ---
+
+### AI Providers
+
+Workspace AI providers are what the AI, AI Agent and AI Router actors draw their credentials from. Built-in providers (`openai`, `anthropic`, `google`, `xai`, `claude-code`, `codex`) have one setting each, linked to a connection. **Custom providers** (`--provider custom`) cover any provider, gateway or self-hosted server that is OpenAI-compatible or uses the OpenAI schema — Fireworks, Groq, Together, DeepInfra, OpenRouter, LiteLLM, Ollama, vLLM, LM Studio, llama.cpp. A custom provider has a slug (its `--name`), a `custom-provider-apikey` connection (base URL, optional key) and a model catalog; actors reference its models as `<slug>/<model-id>`.
+
+```bash
+# Built-in provider: link the workspace's OpenAI key
+borgiq ai-providers create --provider openai --connection openai-main
+
+# Custom provider: Fireworks, with two catalog models
+borgiq connections create --key fireworks --type custom-provider-apikey --inputs-file inputs.json --secret-inputs-file secret.json
+borgiq ai-providers create --provider custom --name fireworks --connection fireworks \
+  --models accounts/fireworks/models/llama-v3p1-70b-instruct,accounts/fireworks/models/qwen2p5-coder-32b-instruct
+
+# Catalog entries with labels, limits and pricing (USD per million tokens)
+borgiq ai-providers create --provider custom --name groq --connection groq --models-file groq-models.json
+#   [{ "id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B", "maxTokens": 32768,
+#      "costPerMTokens": { "input": 0.59, "output": 0.79 } }]
+
+borgiq ai-providers edit fireworks --add-model accounts/fireworks/models/deepseek-v3
+borgiq ai-providers edit fireworks --remove-model accounts/fireworks/models/qwen2p5-coder-32b-instruct
+borgiq ai-providers edit fireworks --name fireworks-eu --connection fireworks-eu
+borgiq ai-providers models --custom          # the <slug>/<model-id> references to put in actor options
+borgiq ai-providers delete fireworks -y
+```
+
+| Option | Command | Description |
+|--------|---------|-------------|
+| `--provider <id>` | create | `custom`, or a built-in provider id |
+| `--name <slug>` | create, edit | Custom provider slug (kebab-case); defaults to the provider id |
+| `--connection <key-or-id>` | create, edit | Connection providing the credential (a key is resolved to its id) |
+| `--no-connection` | edit | Remove the connection |
+| `--models <ids>` | create, edit | Comma-separated model ids (edit: replaces the catalog) |
+| `--models-file <path>` | create, edit | JSON/YAML catalog: `[{ id, label?, contextWindow?, maxTokens?, reasoning?, supportsImages?, structuredOutputs?, costPerMTokens?, compat? }]` or `{ models: [...] }` |
+| `--add-model <id>` / `--remove-model <id>` | edit | Adjust the catalog (repeatable, comma-separated allowed) |
+| `--data-file <path>` | create, edit | Replace the whole non-secret data object |
+| `--custom` / `--provider <id-or-slug>` | models | Filter the model list |
+
+Token scopes: `workspace:read` for `list` and `models`, `workspace:write` for `create`, `edit` and `delete`; resolving a connection key additionally needs `connection:read` (pass a connection id to avoid it).
 
 ### Secrets
 

@@ -71,6 +71,45 @@ export interface BIQConnectionMetadata {
   metadata?: { type: string; value: string }[];
 }
 
+/** AI setting metadata — a built-in provider's credential link (one per provider) or a custom
+ * provider (provider `custom`, one per slug: `name` is the slug, `data.models` its model catalog) */
+export interface BIQAiSettingMetadata {
+  id: string;
+  name: string;
+  provider: string;
+  hasAuthenticationData?: boolean;
+  data?: unknown;
+  connectionId?: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+/** One model of a custom provider's catalog; only `id` is required */
+export interface BIQAiModelCatalogEntry {
+  id: string;
+  label?: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  reasoning?: boolean;
+  supportsImages?: boolean;
+  structuredOutputs?: boolean;
+  costPerMTokens?: { input: number; output: number };
+  compat?: Record<string, unknown>;
+}
+
+/** A model reference usable in a workspace (GET .../aiModels) */
+export interface BIQAiModelListItem {
+  ref: string;
+  label: string;
+  provider: string;
+  group: string;
+  custom: boolean;
+}
+
+export interface BIQAiModelListResponse {
+  models: BIQAiModelListItem[];
+}
+
 /** Secret metadata */
 export interface BIQSecretMetadata {
   id: string;
