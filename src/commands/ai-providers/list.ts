@@ -24,6 +24,7 @@ export const aiProvidersList = async (options: ListOptions, command: { parent: {
         { key: 'name', header: 'NAME' },
         { key: 'provider', header: 'PROVIDER' },
         { key: 'connectionId', header: 'CONNECTION' },
+        { key: 'effectiveBaseUrl', header: 'BASE URL' },
         { key: 'models', header: 'MODELS' },
         { key: 'updatedAt', header: 'UPDATED' },
       ],

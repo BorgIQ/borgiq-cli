@@ -118,6 +118,18 @@ describe('ai-providers create', () => {
     expect(JSON.parse(String(form.get('data')))).toEqual({});
   });
 
+  it('stores --base-url as the data.baseURL override alongside the catalog, normalized', async () => {
+    await aiProvidersCreate({ provider: 'custom', name: 'groq', connection: 'CONN09', baseUrl: ' https://gateway.example/groq/v1/ ', models: 'llama' }, command);
+    const form = client.createAiSettingMultipart.mock.calls[0][2] as FormData;
+    expect(JSON.parse(String(form.get('data')))).toEqual({ baseURL: 'https://gateway.example/groq/v1', models: [{ id: 'llama' }] });
+  });
+
+  it('rejects a --base-url that is not an absolute http(s) URL', async () => {
+    await aiProvidersCreate({ provider: 'custom', name: 'groq', baseUrl: 'api.groq.com/openai/v1' }, command);
+    expect(client.createAiSettingMultipart).not.toHaveBeenCalled();
+    expect(lastStderr()).toMatch(/--base-url must be an absolute http/);
+  });
+
   it('fails with a usage error when --provider is missing and not interactive', async () => {
     await aiProvidersCreate({}, command);
     expect(client.createAiSettingMultipart).not.toHaveBeenCalled();
@@ -141,6 +153,21 @@ describe('ai-providers edit', () => {
     expect(form.get('name')).toBe('fireworks-eu');
     expect(form.get('connectionId')).toBe('');
     expect(JSON.parse(String(form.get('data')))).toEqual({ models: [{ id: 'a' }] });
+  });
+
+  it('sets the base URL override and keeps the catalog, and --no-base-url clears it', async () => {
+    await aiProvidersEdit('fireworks', { baseUrl: 'https://gateway.example/fw/v1' }, command);
+    let form = client.updateAiSettingMultipart.mock.calls[0][3] as FormData;
+    expect(JSON.parse(String(form.get('data')))).toEqual({ baseURL: 'https://gateway.example/fw/v1', models: [{ id: 'accounts/fireworks/models/llama-v3p1-70b-instruct', label: 'Llama 70B' }] });
+    await aiProvidersEdit('fireworks', { baseUrl: false }, command);
+    form = client.updateAiSettingMultipart.mock.calls[1][3] as FormData;
+    expect(JSON.parse(String(form.get('data')))).toEqual({ baseURL: '', models: [{ id: 'accounts/fireworks/models/llama-v3p1-70b-instruct', label: 'Llama 70B' }] });
+  });
+
+  it('refuses --data-file together with --base-url', async () => {
+    await aiProvidersEdit('fireworks', { dataFile: 'x.json', baseUrl: 'https://x/v1' }, command);
+    expect(client.updateAiSettingMultipart).not.toHaveBeenCalled();
+    expect(lastStderr()).toMatch(/--data-file replaces the whole data object/);
   });
 
   it('reports an unknown provider', async () => {

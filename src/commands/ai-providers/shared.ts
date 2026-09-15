@@ -74,3 +74,18 @@ export const mergeCatalog = (
   }
   return next;
 };
+
+/** Reject a base URL that is not an absolute http(s) URL before the API does, with a usage error. */
+export const validateBaseUrl = (value: string): string => {
+  const trimmed = value.trim();
+  let url: URL | undefined;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    url = undefined;
+  }
+  if (!url || (url.protocol !== 'http:' && url.protocol !== 'https:')) {
+    throw new CliUsageError(`--base-url must be an absolute http:// or https:// URL, e.g. https://api.groq.com/openai/v1 (got "${value}").`);
+  }
+  return trimmed.replace(/\/+$/, '');
+};

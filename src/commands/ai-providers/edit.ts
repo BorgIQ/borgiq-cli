@@ -3,11 +3,13 @@ import type { GlobalOptions } from '../../lib/context.js';
 import { output } from '../../output/index.js';
 import { handleError, CliUsageError } from '../../lib/errors.js';
 import { readInput } from '../../lib/input.js';
-import { catalogOf, mergeCatalog, parseCatalogFlags, resolveAiProvider, resolveConnectionId, splitIds } from './shared.js';
+import { catalogOf, mergeCatalog, parseCatalogFlags, resolveAiProvider, resolveConnectionId, splitIds, validateBaseUrl } from './shared.js';
 
 interface EditOptions {
   name?: string;
   connection?: string | false;
+  /** a URL sets the override; `false` (--no-base-url) removes it */
+  baseUrl?: string | false;
   models?: string;
   modelsFile?: string;
   addModel?: string[];
@@ -32,20 +34,29 @@ export const aiProvidersEdit = async (idOrName: string, options: EditOptions, co
     }
 
     const catalogEdit = options.models !== undefined || options.modelsFile || options.addModel?.length || options.removeModel?.length;
-    if (options.dataFile && catalogEdit) {
-      throw new CliUsageError('--data-file replaces the whole data object; do not combine it with the model flags.');
+    const baseUrlEdit = options.baseUrl !== undefined;
+    if (options.dataFile && (catalogEdit || baseUrlEdit)) {
+      throw new CliUsageError('--data-file replaces the whole data object; do not combine it with the model flags or --base-url.');
     }
 
+    // `data` is stored whole, so an edit of one part resends the rest unchanged.
     let data: unknown | undefined;
     if (options.dataFile) {
       data = await readInput(options.dataFile);
-    } else if (catalogEdit) {
-      const replace = await parseCatalogFlags(options);
+    } else if (catalogEdit || baseUrlEdit) {
       const currentData = (current.data && typeof current.data === 'object' && !Array.isArray(current.data)) ? current.data as Record<string, unknown> : {};
-      data = {
-        ...currentData,
-        models: mergeCatalog(catalogOf(current), { replace, add: splitIds(options.addModel), remove: splitIds(options.removeModel) }),
-      };
+      const next: Record<string, unknown> = { ...currentData };
+      if (catalogEdit) {
+        const replace = await parseCatalogFlags(options);
+        next.models = mergeCatalog(catalogOf(current), { replace, add: splitIds(options.addModel), remove: splitIds(options.removeModel) });
+      }
+      if (options.baseUrl === false) {
+        // an empty override is what the API treats as "none"
+        next.baseURL = '';
+      } else if (typeof options.baseUrl === 'string') {
+        next.baseURL = validateBaseUrl(options.baseUrl);
+      }
+      data = next;
     }
 
     const form = new FormData();

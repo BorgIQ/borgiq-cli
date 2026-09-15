@@ -162,7 +162,7 @@ Values are resolved in this order (highest priority first):
 | `borgiq ai-providers list` | List the workspace AI providers |
 | `borgiq ai-providers models` | List the model references usable in actors |
 | `borgiq ai-providers create` | Add an AI provider (built-in credential link or custom provider) |
-| `borgiq ai-providers edit <id-or-name>` | Rename, re-link or edit the model catalog of an AI provider |
+| `borgiq ai-providers edit <id-or-name>` | Rename, re-link, set the base URL or edit the model catalog of an AI provider |
 | `borgiq ai-providers delete <id-or-name>` | Delete an AI provider |
 
 ### Secrets
@@ -801,14 +801,23 @@ rewrites line endings will make every file look locally edited.
 
 ### AI Providers
 
-Workspace AI providers are what the AI, AI Agent and AI Router actors draw their credentials from. Built-in providers (`openai`, `anthropic`, `google`, `xai`, `claude-code`, `codex`) have one setting each, linked to a connection. **Custom providers** (`--provider custom`) cover any provider, gateway or self-hosted server that is OpenAI-compatible or uses the OpenAI schema — Fireworks, Groq, Together, DeepInfra, OpenRouter, LiteLLM, Ollama, vLLM, LM Studio, llama.cpp. A custom provider has a slug (its `--name`), a `custom-provider-apikey` connection (base URL, optional key) and a model catalog; actors reference its models as `<slug>/<model-id>`.
+Workspace AI providers are what the AI, AI Agent and AI Router actors draw their credentials from. Built-in providers (`openai`, `anthropic`, `google`, `xai`, `claude-code`, `codex`) have one setting each, linked to a connection. **Custom providers** (`--provider custom`) cover any provider, gateway or self-hosted server that is OpenAI-compatible or uses the OpenAI schema — Groq, Fireworks, Together, OpenRouter, Mistral, DeepSeek, Cerebras, DeepInfra, Perplexity, Cohere, Hugging Face, LiteLLM, Ollama, vLLM, LM Studio, llama.cpp. A custom provider has a slug (its `--name`), a connection for the key, a base URL and a model catalog; actors reference its models as `<slug>/<model-id>`.
+
+The connection is any of: a **vendor connection type** (`groq-bearer`, `fireworks-bearer`, `openrouter-bearer`, ... — these carry the vendor's base URL, so none needs to be given), a **generic bearer-token or API-key connection**, or a **`custom-provider-apikey`** connection (its own base URL input is the endpoint). The base URL a provider uses is, in order: its `--base-url` override, the connection's own base URL, the vendor default of the connection type. `list` shows the effective one.
 
 ```bash
 # Built-in provider: link the workspace's OpenAI key
 borgiq ai-providers create --provider openai --connection openai-main
 
+# Custom provider on a vendor connection: the base URL comes from the connection type
+borgiq connections create --key groq --type groq-bearer --secret-inputs-file secret.json
+borgiq ai-providers create --provider custom --name groq --connection groq --models llama-3.3-70b-versatile
+
+# Custom provider on a generic bearer connection: give the base URL yourself
+borgiq ai-providers create --provider custom --name local-vllm --connection vllm-key --base-url http://vllm.internal:8000/v1 --models qwen2.5-coder:7b
+
 # Custom provider: Fireworks, with two catalog models
-borgiq connections create --key fireworks --type custom-provider-apikey --inputs-file inputs.json --secret-inputs-file secret.json
+borgiq connections create --key fireworks --type fireworks-bearer --secret-inputs-file secret.json
 borgiq ai-providers create --provider custom --name fireworks --connection fireworks \
   --models accounts/fireworks/models/llama-v3p1-70b-instruct,accounts/fireworks/models/qwen2p5-coder-32b-instruct
 
@@ -820,6 +829,8 @@ borgiq ai-providers create --provider custom --name groq --connection groq --mod
 borgiq ai-providers edit fireworks --add-model accounts/fireworks/models/deepseek-v3
 borgiq ai-providers edit fireworks --remove-model accounts/fireworks/models/qwen2p5-coder-32b-instruct
 borgiq ai-providers edit fireworks --name fireworks-eu --connection fireworks-eu
+borgiq ai-providers edit fireworks --base-url https://gateway.example/fireworks/v1   # route through a gateway
+borgiq ai-providers edit fireworks --no-base-url                                     # back to the connection's / vendor default
 borgiq ai-providers models --custom          # the <slug>/<model-id> references to put in actor options
 borgiq ai-providers delete fireworks -y
 ```
@@ -830,6 +841,8 @@ borgiq ai-providers delete fireworks -y
 | `--name <slug>` | create, edit | Custom provider slug (kebab-case); defaults to the provider id |
 | `--connection <key-or-id>` | create, edit | Connection providing the credential (a key is resolved to its id) |
 | `--no-connection` | edit | Remove the connection |
+| `--base-url <url>` | create, edit | Custom providers: base URL override (absolute http(s) URL); otherwise the connection's base URL, else the connection type's vendor default |
+| `--no-base-url` | edit | Remove the base URL override |
 | `--models <ids>` | create, edit | Comma-separated model ids (edit: replaces the catalog) |
 | `--models-file <path>` | create, edit | JSON/YAML catalog: `[{ id, label?, contextWindow?, maxTokens?, reasoning?, supportsImages?, structuredOutputs?, costPerMTokens?, compat? }]` or `{ models: [...] }` |
 | `--add-model <id>` / `--remove-model <id>` | edit | Adjust the catalog (repeatable, comma-separated allowed) |

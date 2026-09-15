@@ -4,12 +4,13 @@ import { output } from '../../output/index.js';
 import { handleError, CliUsageError } from '../../lib/errors.js';
 import { prompt, promptRequired } from '../../lib/prompt.js';
 import { readInput } from '../../lib/input.js';
-import { parseCatalogFlags, resolveConnectionId } from './shared.js';
+import { parseCatalogFlags, resolveConnectionId, validateBaseUrl } from './shared.js';
 
 interface CreateOptions {
   provider?: string;
   name?: string;
   connection?: string;
+  baseUrl?: string;
   models?: string;
   modelsFile?: string;
   dataFile?: string;
@@ -36,8 +37,8 @@ export const aiProvidersCreate = async (options: CreateOptions, command: { paren
     const connectionKey = options.connection ?? (isTty ? await prompt('Connection key or id (optional)') : undefined);
     const connectionId = connectionKey ? await resolveConnectionId(client, ctx, connectionKey) : undefined;
 
-    if (options.dataFile && (options.models !== undefined || options.modelsFile)) {
-      throw new CliUsageError('--data-file replaces the whole data object; do not combine it with --models or --models-file.');
+    if (options.dataFile && (options.models !== undefined || options.modelsFile || options.baseUrl !== undefined)) {
+      throw new CliUsageError('--data-file replaces the whole data object; do not combine it with --models, --models-file or --base-url.');
     }
     let data: unknown = {};
     if (options.dataFile) {
@@ -45,7 +46,9 @@ export const aiProvidersCreate = async (options: CreateOptions, command: { paren
     } else {
       const models = await parseCatalogFlags(options)
         ?? (isTty && provider === 'custom' ? await promptModels() : undefined);
-      if (models) data = { models };
+      // the base URL override: the connection's own base URL or the vendor default applies without it
+      const baseURL = options.baseUrl !== undefined ? validateBaseUrl(options.baseUrl) : undefined;
+      data = { ...(baseURL ? { baseURL } : {}), ...(models ? { models } : {}) };
     }
 
     const form = new FormData();

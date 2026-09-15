@@ -72,7 +72,8 @@ export interface BIQConnectionMetadata {
 }
 
 /** AI setting metadata — a built-in provider's credential link (one per provider) or a custom
- * provider (provider `custom`, one per slug: `name` is the slug, `data.models` its model catalog) */
+ * provider (provider `custom`, one per slug: `name` is the slug, `data.baseURL` its base URL
+ * override, `data.models` its model catalog) */
 export interface BIQAiSettingMetadata {
   id: string;
   name: string;
@@ -80,6 +81,12 @@ export interface BIQAiSettingMetadata {
   hasAuthenticationData?: boolean;
   data?: unknown;
   connectionId?: string | null;
+  /** custom providers: the base URL LLM requests go to (the override, else `derivedBaseUrl`); absent when nothing supplies one */
+  effectiveBaseUrl?: string;
+  /** custom providers: the base URL the connection supplies without an override (its own input, else the connection type's vendor default) */
+  derivedBaseUrl?: string;
+  /** custom providers: where `effectiveBaseUrl` came from */
+  baseUrlSource?: 'setting' | 'connection' | 'connectionType';
   createdAt: string;
   updatedAt: string | null;
 }

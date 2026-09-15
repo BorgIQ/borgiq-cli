@@ -28,10 +28,11 @@ export const registerAiProvidersCommands = (program: Command): void => {
 
   aiProviders
     .command('create')
-    .description('Add an AI provider. A custom provider (--provider custom) needs a slug (--name) and an OpenAI-compatible connection; its models are referenced as <slug>/<model-id>.')
+    .description('Add an AI provider. A custom provider (--provider custom) needs a slug (--name), a connection for the key (a vendor type such as groq-bearer, a generic bearer/API-key connection, or custom-provider-apikey) and a base URL (--base-url, unless the connection supplies one); its models are referenced as <slug>/<model-id>.')
     .option('--provider <provider>', 'Provider id: custom, or a built-in provider (openai, anthropic, google, xai, ...)')
     .option('--name <name>', 'Custom provider slug (kebab-case, e.g. fireworks); defaults to the provider id')
-    .option('--connection <key-or-id>', 'Connection key or id providing the credential (custom-provider-apikey for custom providers)')
+    .option('--connection <key-or-id>', 'Connection key or id providing the credential (custom providers: an AI vendor connection type, a generic bearer/API-key connection, or custom-provider-apikey)')
+    .option('--base-url <url>', 'Custom providers: the OpenAI-compatible base URL, overriding the connection\'s and the vendor default')
     .option('--models <ids>', 'Comma-separated model ids for the catalog')
     .option('--models-file <path>', 'JSON/YAML file with catalog entries ([{ id, label?, costPerMTokens?, ... }] or { models: [...] })')
     .option('--data-file <path>', 'JSON/YAML file replacing the whole non-secret data object')
@@ -39,10 +40,12 @@ export const registerAiProvidersCommands = (program: Command): void => {
 
   aiProviders
     .command('edit <id-or-name>')
-    .description('Update an AI provider: rename a custom provider, change its connection, or edit its model catalog')
+    .description('Update an AI provider: rename a custom provider, change its connection or base URL, or edit its model catalog')
     .option('--name <name>', 'New slug (custom providers only)')
     .option('--connection <key-or-id>', 'Connection key or id')
     .option('--no-connection', 'Remove the connection')
+    .option('--base-url <url>', 'Custom providers: set the base URL override')
+    .option('--no-base-url', 'Custom providers: remove the base URL override (the connection\'s or the vendor default applies again)')
     .option('--models <ids>', 'Replace the catalog with these comma-separated model ids')
     .option('--models-file <path>', 'Replace the catalog with the entries in this JSON/YAML file')
     .option('--add-model <id>', 'Add a model id to the catalog (repeatable, comma-separated allowed)', collect)
