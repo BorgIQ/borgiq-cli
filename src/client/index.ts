@@ -47,6 +47,7 @@ import type {
   CanvasRuntimeBuildState,
   ReactAppBuildResultPayload,
   BIQAiSettingMetadata,
+  BIQAiSettingReferences,
   BIQAiModelListResponse,
 } from './types.js';
 
@@ -374,6 +375,11 @@ export class BorgIQClient {
     return { total: raw.total, data: raw.connections };
   }
 
+  /** Fetch one connection by id or key; a 404 ApiError when neither matches. */
+  async getConnection(org: string, workspace: string, idOrKey: string): Promise<BIQConnectionMetadata> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/connections/detail/${encodeURIComponent(idOrKey)}`);
+  }
+
   async deleteConnection(org: string, workspace: string, id: string): Promise<void> {
     return this.request('DELETE', `${this.wkspPath(org, workspace)}/connections/${id}`);
   }
@@ -410,6 +416,11 @@ export class BorgIQClient {
 
   async deleteAiSetting(org: string, workspace: string, id: string): Promise<void> {
     return this.request('DELETE', `${this.wkspPath(org, workspace)}/aiSettings/${id}`);
+  }
+
+  /** The canvases referencing an AI provider's models (rename/delete impact). */
+  async getAiSettingReferences(org: string, workspace: string, id: string): Promise<BIQAiSettingReferences> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/aiSettings/${id}/references`);
   }
 
   async listAiModels(org: string, workspace: string): Promise<BIQAiModelListResponse> {

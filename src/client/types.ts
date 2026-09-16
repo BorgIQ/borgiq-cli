@@ -87,6 +87,8 @@ export interface BIQAiSettingMetadata {
   derivedBaseUrl?: string;
   /** custom providers: where `effectiveBaseUrl` came from */
   baseUrlSource?: 'setting' | 'connection' | 'connectionType';
+  /** the setting points at a connection that no longer exists; its models cannot resolve until it is relinked */
+  connectionMissing?: boolean;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -111,10 +113,18 @@ export interface BIQAiModelListItem {
   provider: string;
   group: string;
   custom: boolean;
+  /** whether the model may drive an AI Agent actor */
+  agent: boolean;
 }
 
 export interface BIQAiModelListResponse {
   models: BIQAiModelListItem[];
+}
+
+/** The canvases whose actors reference an AI provider (GET .../aiSettings/:id/references) */
+export interface BIQAiSettingReferences {
+  count: number;
+  canvases: { id: string; name: string }[];
 }
 
 /** Secret metadata */

@@ -4,7 +4,7 @@ import { output } from '../../output/index.js';
 import { handleError, CliUsageError } from '../../lib/errors.js';
 import { prompt, promptRequired } from '../../lib/prompt.js';
 import { readInput } from '../../lib/input.js';
-import { parseCatalogFlags, resolveConnectionId, validateBaseUrl } from './shared.js';
+import { catalogOf, parseCatalogFlags, resolveConnectionId, validateBaseUrl } from './shared.js';
 
 interface CreateOptions {
   provider?: string;
@@ -26,26 +26,47 @@ export const aiProvidersCreate = async (options: CreateOptions, command: { paren
     if (!provider) {
       throw new CliUsageError('--provider is required when not running interactively.');
     }
+    const isCustom = provider === 'custom';
 
-    // A custom provider's name is its slug (actors reference its models as <slug>/<model-id>);
-    // a built-in provider's name is the provider id.
-    const name = options.name || (isTty ? await prompt(provider === 'custom' ? 'Name (slug, e.g. fireworks)' : 'Name', provider) : provider);
-    if (!name) {
-      throw new CliUsageError('--name is required for a custom provider when not running interactively.');
+    // The base URL and the model catalog are parts of a custom provider; a built-in provider's
+    // setting only links a connection, so these flags would be stored and ignored.
+    if (!isCustom) {
+      const customOnly: [unknown, string][] = [
+        [options.baseUrl, '--base-url'],
+        [options.models, '--models'],
+        [options.modelsFile, '--models-file'],
+      ];
+      const offending = customOnly.find(([value]) => value !== undefined)?.[1];
+      if (offending) {
+        throw new CliUsageError(`${offending} applies to custom providers only (--provider custom); a built-in provider '${provider}' has no base URL or model catalog of its own.`);
+      }
+    }
+    if (options.dataFile && (options.models !== undefined || options.modelsFile || options.baseUrl !== undefined)) {
+      throw new CliUsageError('--data-file replaces the whole data object; do not combine it with --models, --models-file or --base-url.');
+    }
+
+    // A custom provider's name is its slug (actors reference its models as <slug>/<model-id>), so it
+    // has no default; a built-in provider's name defaults to the provider id.
+    let name: string;
+    if (isCustom) {
+      const given = options.name || (isTty ? await promptRequired('Name (slug, e.g. fireworks)') : undefined);
+      if (!given) {
+        throw new CliUsageError('--name is required for a custom provider.');
+      }
+      name = given;
+    } else {
+      name = options.name || (isTty ? await prompt('Name', provider) : provider);
     }
 
     const connectionKey = options.connection ?? (isTty ? await prompt('Connection key or id (optional)') : undefined);
     const connectionId = connectionKey ? await resolveConnectionId(client, ctx, connectionKey) : undefined;
 
-    if (options.dataFile && (options.models !== undefined || options.modelsFile || options.baseUrl !== undefined)) {
-      throw new CliUsageError('--data-file replaces the whole data object; do not combine it with --models, --models-file or --base-url.');
-    }
     let data: unknown = {};
     if (options.dataFile) {
       data = await readInput(options.dataFile);
     } else {
       const models = await parseCatalogFlags(options)
-        ?? (isTty && provider === 'custom' ? await promptModels() : undefined);
+        ?? (isTty && isCustom ? await promptModels() : undefined);
       // the base URL override: the connection's own base URL or the vendor default applies without it
       const baseURL = options.baseUrl !== undefined ? validateBaseUrl(options.baseUrl) : undefined;
       data = { ...(baseURL ? { baseURL } : {}), ...(models ? { models } : {}) };
@@ -58,6 +79,11 @@ export const aiProvidersCreate = async (options: CreateOptions, command: { paren
     form.append('data', JSON.stringify(data ?? {}));
 
     const setting = await client.createAiSettingMultipart(ctx.org, ctx.workspace, form);
+
+    // Only once the provider exists: a rejected create should print the error alone
+    if (isCustom && !isTty && catalogOf({ data }).length === 0) {
+      process.stderr.write(`Warning: custom provider '${name}' has no models; actors cannot use it until its catalog is filled (\`borgiq ai-providers edit ${name} --add-model <model-id>\`).\n`);
+    }
 
     if (!globalOpts.json && process.stderr.isTTY) {
       process.stderr.write(`AI provider created: ${setting.name} (${setting.id})\n`);

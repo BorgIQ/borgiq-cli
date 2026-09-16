@@ -1,5 +1,6 @@
 import type { createClientWithContext } from '../../lib/context.js';
-import { CliUsageError } from '../../lib/errors.js';
+import { ApiError } from '../../client/errors.js';
+import { CliNotFoundError, CliUsageError } from '../../lib/errors.js';
 import { readInput } from '../../lib/input.js';
 import type { BIQAiModelCatalogEntry, BIQAiSettingMetadata } from '../../client/types.js';
 
@@ -11,15 +12,52 @@ export const resolveAiProvider = async (client: Client, ctx: Ctx, idOrName: stri
   const settings = await client.listAiSettings(ctx.org, ctx.workspace);
   const found = settings.find((s) => s.id === idOrName) ?? settings.find((s) => s.name === idOrName);
   if (!found) {
-    throw new CliUsageError(`AI provider '${idOrName}' not found in workspace. Run \`borgiq ai-providers list\` to see the configured providers.`);
+    throw new CliNotFoundError(`AI provider '${idOrName}' not found in workspace. Run \`borgiq ai-providers list\` to see the configured providers.`);
   }
   return found;
 };
 
-/** Resolve a connection key to its id; an unknown key is passed through as an id for the server to check. */
+/** Resolve a connection key or id to the connection's id. Only a 404 is relabelled as a usage error;
+ * anything else (auth, network, 5xx) surfaces as-is so the user sees the real cause. */
 export const resolveConnectionId = async (client: Client, ctx: Ctx, keyOrId: string): Promise<string> => {
-  const list = await client.listConnections(ctx.org, ctx.workspace, { search: keyOrId, pageSize: 20 });
-  return list.data.find((c) => c.key === keyOrId)?.id ?? keyOrId;
+  try {
+    const connection = await client.getConnection(ctx.org, ctx.workspace, keyOrId);
+    return connection.id;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      throw new CliUsageError(`Connection '${keyOrId}' not found. Run \`borgiq connections list\` to see available connections.`);
+    }
+    throw err;
+  }
+};
+
+const MAX_REFERENCE_NAMES = 5;
+
+/** Warn on stderr when canvases reference the provider's models, since a rename or delete orphans
+ * their `<slug>/<model-id>` references. An API without the references route (404) is tolerated silently. */
+export const warnAboutReferences = async (client: Client, ctx: Ctx, id: string, action: 'rename' | 'delete'): Promise<void> => {
+  let references: { count: number; canvases: { id: string; name: string }[] };
+  try {
+    references = await client.getAiSettingReferences(ctx.org, ctx.workspace, id);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return;
+    throw err;
+  }
+  if (!references || !(references.count > 0)) return;
+  const names = references.canvases.slice(0, MAX_REFERENCE_NAMES).map((c) => c.name);
+  const hidden = references.count - names.length;
+  const listed = `${names.join(', ')}${hidden > 0 ? `, +${hidden} more` : ''}`;
+  process.stderr.write(`Warning: ${references.count} canvas(es) reference this provider (${listed}) — their "<slug>/<model-id>" models will stop resolving after the ${action}.\n`);
+};
+
+/** Whether each of the given long flags (`--flag` or `--flag=value`) was passed on the command line.
+ * Commander folds `--x <v>` and `--no-x` into one option value (last wins), so a conflict between the two
+ * is only visible in argv — the same source handleError reads `--json` from. */
+export const flagsGiven = (...flags: string[]): boolean => {
+  const argv = process.argv;
+  const end = argv.indexOf('--');
+  const given = end === -1 ? argv : argv.slice(0, end);
+  return flags.every((flag) => given.some((arg) => arg === flag || arg.startsWith(`${flag}=`)));
 };
 
 /** The model catalog carried in a setting's `data` (empty when absent or not a list). */

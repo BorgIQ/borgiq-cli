@@ -18,6 +18,11 @@ export const aiProvidersModels = async (options: ModelsOptions, command: { paren
       .filter((m) => !options.custom || m.custom)
       .filter((m) => !options.provider || m.provider === options.provider);
 
+    // An empty result for a named provider is more often a typo than a provider without models.
+    if (options.provider && !models.some((m) => m.provider === options.provider)) {
+      process.stderr.write(`No provider named '${options.provider}'. Run \`borgiq ai-providers list\` to see the configured providers.\n`);
+    }
+
     output(rows, globalOpts, {
       columns: [
         { key: 'ref', header: 'REF' },
@@ -25,6 +30,7 @@ export const aiProvidersModels = async (options: ModelsOptions, command: { paren
         { key: 'provider', header: 'PROVIDER' },
         { key: 'group', header: 'GROUP' },
         { key: 'custom', header: 'CUSTOM' },
+        { key: 'agent', header: 'AGENT' },
       ],
       title: 'AI models',
     });

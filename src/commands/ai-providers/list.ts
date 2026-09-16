@@ -16,7 +16,7 @@ export const aiProvidersList = async (options: ListOptions, command: { parent: {
     const settings = await client.listAiSettings(ctx.org, ctx.workspace);
     const rows = settings
       .filter((s) => !options.provider || s.provider === options.provider)
-      .map((s) => ({ ...s, models: catalogOf(s).length }));
+      .map((s) => ({ ...s, modelCount: catalogOf(s).length }));
 
     output(rows, globalOpts, {
       columns: [
@@ -25,7 +25,7 @@ export const aiProvidersList = async (options: ListOptions, command: { parent: {
         { key: 'provider', header: 'PROVIDER' },
         { key: 'connectionId', header: 'CONNECTION' },
         { key: 'effectiveBaseUrl', header: 'BASE URL' },
-        { key: 'models', header: 'MODELS' },
+        { key: 'modelCount', header: 'MODELS' },
         { key: 'updatedAt', header: 'UPDATED' },
       ],
       title: 'AI providers',
