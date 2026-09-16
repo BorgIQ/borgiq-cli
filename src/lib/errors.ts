@@ -13,6 +13,19 @@ export class CliUsageError extends Error {
 }
 
 /**
+ * Thrown when the CLI itself establishes that a named resource does not
+ * exist (e.g. an AI provider looked up by name in the workspace list). Maps
+ * to the same `not_found` code and exit status as an HTTP 404, without the
+ * HTTP status suffix since no request returned 404.
+ */
+export class CliNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CliNotFoundError';
+  }
+}
+
+/**
  * Process exit codes, chosen so scripts and agents can branch on the
  * failure category without parsing stderr text. Documented in the README.
  */
@@ -128,6 +141,10 @@ export const handleError = (error: unknown, opts?: { json?: boolean }): never =>
 
   if (error instanceof CliUsageError) {
     return emit({ code: 'usage', status: null, exitCode: ExitCode.USAGE, message: error.message }, json);
+  }
+
+  if (error instanceof CliNotFoundError) {
+    return emit({ code: 'not_found', status: null, exitCode: ExitCode.NOT_FOUND, message: error.message }, json);
   }
 
   if (error instanceof ApiError) {

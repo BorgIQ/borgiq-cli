@@ -46,6 +46,9 @@ import type {
   RuntimeBuildSummary,
   CanvasRuntimeBuildState,
   ReactAppBuildResultPayload,
+  BIQAiSettingMetadata,
+  BIQAiSettingReferences,
+  BIQAiModelListResponse,
 } from './types.js';
 
 export class BorgIQClient {
@@ -372,6 +375,11 @@ export class BorgIQClient {
     return { total: raw.total, data: raw.connections };
   }
 
+  /** Fetch one connection by id or key; a 404 ApiError when neither matches. */
+  async getConnection(org: string, workspace: string, idOrKey: string): Promise<BIQConnectionMetadata> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/connections/detail/${encodeURIComponent(idOrKey)}`);
+  }
+
   async deleteConnection(org: string, workspace: string, id: string): Promise<void> {
     return this.request('DELETE', `${this.wkspPath(org, workspace)}/connections/${id}`);
   }
@@ -390,6 +398,33 @@ export class BorgIQClient {
     qs.set('page', '1');
     qs.set('pageSize', '20');
     return this.request('GET', `${this.wkspPath(org, workspace)}/connectionsKeys?${qs.toString()}`);
+  }
+
+  // ── AI Providers (aiSettings) ─────────────────────────
+
+  async listAiSettings(org: string, workspace: string): Promise<BIQAiSettingMetadata[]> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/aiSettings`);
+  }
+
+  async createAiSettingMultipart(org: string, workspace: string, form: FormData): Promise<BIQAiSettingMetadata> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/aiSettings`, form);
+  }
+
+  async updateAiSettingMultipart(org: string, workspace: string, id: string, form: FormData): Promise<BIQAiSettingMetadata> {
+    return this.request('PUT', `${this.wkspPath(org, workspace)}/aiSettings/${id}`, form);
+  }
+
+  async deleteAiSetting(org: string, workspace: string, id: string): Promise<void> {
+    return this.request('DELETE', `${this.wkspPath(org, workspace)}/aiSettings/${id}`);
+  }
+
+  /** The canvases referencing an AI provider's models (rename/delete impact). */
+  async getAiSettingReferences(org: string, workspace: string, id: string): Promise<BIQAiSettingReferences> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/aiSettings/${id}/references`);
+  }
+
+  async listAiModels(org: string, workspace: string): Promise<BIQAiModelListResponse> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/aiModels`);
   }
 
   // ── Secrets ───────────────────────────────────────────

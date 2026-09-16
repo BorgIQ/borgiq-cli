@@ -155,6 +155,16 @@ Values are resolved in this order (highest priority first):
 | `borgiq connections list` | List connections |
 | `borgiq connections delete <id>` | Delete a connection |
 
+### AI Providers
+
+| Command | Description |
+|---------|-------------|
+| `borgiq ai-providers list` | List the workspace AI providers with their effective base URL and model count |
+| `borgiq ai-providers models` | List the model references usable in actors, and whether each may drive an AI Agent |
+| `borgiq ai-providers create` | Add an AI provider (built-in credential link or custom provider) |
+| `borgiq ai-providers edit <id-or-name>` | Rename, re-link, set the base URL or edit the model catalog of an AI provider |
+| `borgiq ai-providers delete <id-or-name>` | Delete an AI provider (warns about the canvases that reference it) |
+
 ### Secrets
 
 | Command | Description |
@@ -788,6 +798,75 @@ rewrites line endings will make every file look locally edited.
 | `--page-size <number>` | Items per page |
 
 ---
+
+### AI Providers
+
+Workspace AI providers are what the AI, AI Agent and AI Router actors draw their credentials from. Built-in providers (`openai`, `anthropic`, `google`, `xai`, `claude-code`, `codex`) have one setting each, linked to a connection. **Custom providers** (`--provider custom`) cover any provider, gateway or self-hosted server that is OpenAI-compatible or uses the OpenAI schema — Groq, Fireworks, Together, OpenRouter, Mistral, DeepSeek, Cerebras, DeepInfra, Perplexity, Cohere, Hugging Face, LiteLLM, Ollama, vLLM, LM Studio, llama.cpp. A custom provider has a slug (its `--name`), a connection for the key, a base URL and a model catalog; actors reference its models as `<slug>/<model-id>`.
+
+**Model references.** An actor's `model` option takes one of three forms, all listed by `borgiq ai-providers models`:
+
+| Form | Example | Meaning |
+|------|---------|---------|
+| known model id | `gpt-4o-mini` | a built-in model from the platform's curated list |
+| `<provider>/<model-id>` | `openai/gpt-4.1-nano` | any model of a built-in provider, including ones not in the curated list |
+| `<slug>/<model-id>` | `fireworks/accounts/fireworks/models/llama-v3p1-70b-instruct` | a model from a custom provider's catalog |
+
+The `AGENT` column (`agent` in `--json`) says whether a model may drive an AI Agent actor; catalog entries set it with `agent: false` (default `true`). `list` shows each provider's `modelCount` and effective base URL.
+
+**Slug rule.** A custom provider's slug is validated by the API: lowercase letters, digits and dashes, starting with a letter or digit, at most 40 characters, and not a built-in provider id (`openai`, `anthropic`, ...). Renaming or deleting a custom provider orphans every `<slug>/<model-id>` reference in the workspace — `edit --name` and `delete` warn with the affected canvases before proceeding, but the references are not rewritten.
+
+`--base-url`/`--no-base-url` and the catalog flags (`--models`, `--models-file`, `--add-model`, `--remove-model`) apply to custom providers only; on a built-in provider they are rejected with a usage error. `edit` with no flags changes nothing and sends no request.
+
+The connection is any of: a **vendor connection type** (`groq-bearer`, `fireworks-bearer`, `openrouter-bearer`, ... — these carry the vendor's base URL, so none needs to be given), a **generic bearer-token or API-key connection**, or a **`custom-provider-apikey`** connection (its own base URL input is the endpoint). The base URL a provider uses is, in order: its `--base-url` override, the connection's own base URL, the vendor default of the connection type. `list` shows the effective one.
+
+```bash
+# Built-in provider: link the workspace's OpenAI key
+borgiq ai-providers create --provider openai --connection openai-main
+
+# Custom provider on a vendor connection: the base URL comes from the connection type
+borgiq connections create --key groq --type groq-bearer --secret-inputs-file secret.json
+borgiq ai-providers create --provider custom --name groq --connection groq --models llama-3.3-70b-versatile
+
+# Custom provider on a generic bearer connection: give the base URL yourself
+borgiq ai-providers create --provider custom --name local-vllm --connection vllm-key --base-url http://vllm.internal:8000/v1 --models qwen2.5-coder:7b
+
+# Custom provider: Fireworks, with two catalog models
+borgiq connections create --key fireworks --type fireworks-bearer --secret-inputs-file secret.json
+borgiq ai-providers create --provider custom --name fireworks --connection fireworks \
+  --models accounts/fireworks/models/llama-v3p1-70b-instruct,accounts/fireworks/models/qwen2p5-coder-32b-instruct
+
+# Catalog entries with labels, limits and pricing (USD per million tokens)
+borgiq ai-providers create --provider custom --name groq --connection groq --models-file groq-models.json
+#   [{ "id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B", "maxTokens": 32768,
+#      "costPerMTokens": { "input": 0.59, "output": 0.79 } },
+#    { "id": "whisper-large-v3", "agent": false }]      # listed, but not offered to AI Agent actors
+
+borgiq ai-providers edit fireworks --add-model accounts/fireworks/models/deepseek-v3
+borgiq ai-providers edit fireworks --remove-model accounts/fireworks/models/qwen2p5-coder-32b-instruct
+borgiq ai-providers edit fireworks --name fireworks-eu --connection fireworks-eu
+borgiq ai-providers edit fireworks --base-url https://gateway.example/fireworks/v1   # route through a gateway
+borgiq ai-providers edit fireworks --no-base-url                                     # back to the connection's / vendor default
+borgiq ai-providers models                   # every usable reference: known ids, <provider>/<model-id>, <slug>/<model-id>
+borgiq ai-providers models --custom          # only the <slug>/<model-id> references of custom providers
+borgiq ai-providers models --provider groq   # one provider's models (a hint is printed when no provider has that name)
+borgiq ai-providers delete fireworks -y
+```
+
+| Option | Command | Description |
+|--------|---------|-------------|
+| `--provider <id>` | create | `custom`, or a built-in provider id |
+| `--name <slug>` | create, edit | Custom provider slug (required for `--provider custom`; see the slug rule above). Built-in providers default to the provider id |
+| `--connection <key-or-id>` | create, edit | Connection providing the credential (a key is resolved to its id; an unknown key is a usage error) |
+| `--no-connection` | edit | Remove the connection |
+| `--base-url <url>` | create, edit | Custom providers only: base URL override (absolute http(s) URL); otherwise the connection's base URL, else the connection type's vendor default |
+| `--no-base-url` | edit | Custom providers only: remove the base URL override |
+| `--models <ids>` | create, edit | Custom providers only: comma-separated model ids (edit: replaces the catalog) |
+| `--models-file <path>` | create, edit | Custom providers only. JSON/YAML catalog: `[{ id, label?, agent?, contextWindow?, maxTokens?, reasoning?, supportsImages?, structuredOutputs?, costPerMTokens?, compat? }]` or `{ models: [...] }` |
+| `--add-model <id>` / `--remove-model <id>` | edit | Custom providers only: adjust the catalog (repeatable, comma-separated allowed) |
+| `--data-file <path>` | create, edit | Replace the whole non-secret data object |
+| `--custom` / `--provider <id-or-slug>` | models | Filter the model list |
+
+Token scopes: `workspace:read` for `list` and `models`, `workspace:write` for `create`, `edit` and `delete`; resolving a connection key additionally needs `connection:read` (pass a connection id to avoid it).
 
 ### Secrets
 

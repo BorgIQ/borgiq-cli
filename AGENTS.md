@@ -79,9 +79,10 @@ src/
 │   ├── flowrun-results/  # summaries, data
 │   ├── flowrun-messages/ # list, data
 │   ├── triggers/         # run
-│   ├── connections/      # list, types, delete
+│   ├── connections/      # list, types, create, delete
+│   ├── ai-providers/     # list, models, create, edit, delete (workspace AI providers incl. custom OpenAI-compatible ones)
 │   ├── secrets/          # list, delete
-│   ├── assets/           # list, delete
+│   ├── assets/           # list, create, edit, delete
 │   └── tokens/           # list, create, revoke
 ├── config/
 │   └── index.ts          # Config file management (~/.config/borgiq/config.json)

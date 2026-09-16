@@ -71,6 +71,62 @@ export interface BIQConnectionMetadata {
   metadata?: { type: string; value: string }[];
 }
 
+/** AI setting metadata — a built-in provider's credential link (one per provider) or a custom
+ * provider (provider `custom`, one per slug: `name` is the slug, `data.baseURL` its base URL
+ * override, `data.models` its model catalog) */
+export interface BIQAiSettingMetadata {
+  id: string;
+  name: string;
+  provider: string;
+  hasAuthenticationData?: boolean;
+  data?: unknown;
+  connectionId?: string | null;
+  /** custom providers: the base URL LLM requests go to (the override, else `derivedBaseUrl`); absent when nothing supplies one */
+  effectiveBaseUrl?: string;
+  /** custom providers: the base URL the connection supplies without an override (its own input, else the connection type's vendor default) */
+  derivedBaseUrl?: string;
+  /** custom providers: where `effectiveBaseUrl` came from */
+  baseUrlSource?: 'setting' | 'connection' | 'connectionType';
+  /** the setting points at a connection that no longer exists; its models cannot resolve until it is relinked */
+  connectionMissing?: boolean;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+/** One model of a custom provider's catalog; only `id` is required */
+export interface BIQAiModelCatalogEntry {
+  id: string;
+  label?: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  reasoning?: boolean;
+  supportsImages?: boolean;
+  structuredOutputs?: boolean;
+  costPerMTokens?: { input: number; output: number };
+  compat?: Record<string, unknown>;
+}
+
+/** A model reference usable in a workspace (GET .../aiModels) */
+export interface BIQAiModelListItem {
+  ref: string;
+  label: string;
+  provider: string;
+  group: string;
+  custom: boolean;
+  /** whether the model may drive an AI Agent actor */
+  agent: boolean;
+}
+
+export interface BIQAiModelListResponse {
+  models: BIQAiModelListItem[];
+}
+
+/** The canvases whose actors reference an AI provider (GET .../aiSettings/:id/references) */
+export interface BIQAiSettingReferences {
+  count: number;
+  canvases: { id: string; name: string }[];
+}
+
 /** Secret metadata */
 export interface BIQSecretMetadata {
   id: string;
