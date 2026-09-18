@@ -227,6 +227,9 @@ canvas export format. Format: borgiq.canvas.bundle v1.
 - actors/triggers/react-app/<ACTOR_ID>/code/: a whole Vite project, which the
   platform builds. Push publishes its source; borgiq bundle build (or Build
   in the web editor) compiles and serves it. See "React App actors" below.
+- actors/.../<ACTOR_ID>/thumbnail.<png|jpg|webp|gif>: an app actor's
+  thumbnail, the image shown on its canvas node and the workspace apps page.
+  actor.yaml names it with thumbnail: thumbnail.png. See "App thumbnails".
 
 ## Editing Rules
 
@@ -417,6 +420,31 @@ there is no trigger(). getSession() is the promise form. Outside the BorgIQ
 iframe there is no viewer to report, so under npm run dev it settles right away
 with a SessionUnavailableError rather than hanging - gate any identity UI on
 session being present, and it will simply render nothing locally.
+
+### App thumbnails
+
+An App or React App actor can carry a thumbnail: a PNG, JPEG, WebP, or GIF of
+at most 2 MiB (about 1280px wide is plenty; SVG is not accepted). Pull writes
+it beside actor.yaml as thumbnail.<ext> and leaves the file name in actor.yaml:
+
+\`\`\`
+actors/triggers/react-app/<ACTOR_ID>/
+  actor.yaml            # thumbnail: thumbnail.png (marker)
+  thumbnail.png
+\`\`\`
+
+To set or refresh one, screenshot the built app and push:
+
+\`\`\`bash
+SRC=$(borgiq canvas-actors app-url <canvas> <ACTOR_ID>)   # expires within minutes
+npx playwright screenshot --viewport-size=1280,800 --wait-for-timeout=3000 "$SRC" actors/triggers/react-app/<ACTOR_ID>/thumbnail.png
+# set thumbnail: thumbnail.png in actor.yaml, then
+borgiq bundle push .
+\`\`\`
+
+A thumbnail.<ext> that actor.yaml does not name is not pushed (validate warns).
+To remove the thumbnail, delete the file and the thumbnail: line, then push.
+borgiq canvas-actors thumbnail set|get|rm does the same without a bundle.
 
 ### What the CLI never touches
 

@@ -439,6 +439,22 @@ export interface BIQCanvasActor {
   runtimeSlug?: string;
   icon?: Record<string, unknown>;
   template?: Record<string, unknown>;
+  /** Workspace-app thumbnail. Stored as `{ fileId }`; `{ dataUrl }` is accepted on writes only. */
+  thumbnail?: ActorThumbnail | null;
+}
+
+export type ActorThumbnail = { fileId: string } | { dataUrl: string };
+
+/** `GET .../actor-thumbnails/:fileId/data` */
+export interface ActorThumbnailDataResponse {
+  dataUrl: string;
+}
+
+/** `GET .../apps/:actorId/trigger` - what the web app loads into its sandboxed iframe. */
+export interface AppTriggerResponse {
+  /** Serving URL with a short-lived content token in its path. */
+  src: string;
+  allowedPermissions?: string[];
 }
 
 /** Canvas actor flow response */

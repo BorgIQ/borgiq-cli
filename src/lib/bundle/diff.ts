@@ -293,11 +293,26 @@ export const summarizeDiff = (diff: CanvasDiff, options: DiffSummaryOptions = {}
   return summary;
 };
 
+/**
+ * An update leaves every field the operation omits as it is on the server. That is right for
+ * nearly everything the bundle carries, but a thumbnail is removed by deleting it from the bundle,
+ * so its absence has to be spelled out as `null` - only when the server has one, so a push to an
+ * API that predates thumbnails never sees the field.
+ */
+const toUpdateData = (localActor: Record<string, unknown>, serverActor: ExportedActor | undefined): Record<string, unknown> => {
+  const data = toCanvasActorMutationData(localActor);
+  if (localActor.thumbnail === undefined && serverActor?.thumbnail !== undefined && serverActor.thumbnail !== null) {
+    data.thumbnail = null;
+  }
+  return data;
+};
+
 export const toBatchOperations = (
   diff: CanvasDiff,
   local: CanvasExportDocument,
   forceLocal: boolean,
   timestamp: number,
+  server?: CanvasExportDocument,
 ): BatchActorOperation[] => {
   const adds: BatchActorOperation[] = [];
   const updates: BatchActorOperation[] = [];
@@ -305,19 +320,20 @@ export const toBatchOperations = (
 
   for (const entry of diff.entries) {
     const localActor = local.data.actors[entry.actorId] as Record<string, unknown> | undefined;
+    const serverActor = server?.data.actors[entry.actorId];
     switch (entry.verdict) {
       case 'new-local':
         if (localActor) adds.push({ type: 'add', actorId: entry.actorId, timestamp, data: toCanvasActorMutationData(localActor) });
         break;
       case 'local-edit':
-        if (localActor) updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toCanvasActorMutationData(localActor) });
+        if (localActor) updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toUpdateData(localActor, serverActor) });
         break;
       case 'server-edit':
       case 'concurrent-edit':
       case 'baseline-missing':
         if (!forceLocal) break;
         if (localActor) {
-          updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toCanvasActorMutationData(localActor) });
+          updates.push({ type: 'update', actorId: entry.actorId, timestamp, editVersion: entry.serverVersion, data: toUpdateData(localActor, serverActor) });
         }
         break;
       case 'local-edit-server-delete':

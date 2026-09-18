@@ -73,7 +73,7 @@ src/
 │   ├── actors/           # list, schema
 │   ├── canvases/         # list, get, create, update, delete, export, validate, layout, etc.
 │   ├── bundle/           # init, unpack, pack, validate, pull, push - canvas bundle folders
-│   ├── canvas-actors/    # list, get, flow, verify, create, update, delete, batch
+│   ├── canvas-actors/    # list, get, flow, verify, create, update, delete, batch, app-url, thumbnail set|get|rm
 │   ├── flowruns/         # list, get, status, summary, interrupt
 │   ├── flowrun-jobs/     # list, test-run, re-run, runtime-data, ai-timeline, source-message
 │   ├── flowrun-results/  # summaries, data

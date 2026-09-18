@@ -170,7 +170,7 @@ export const bundlePush = async (
       serverActorVersions: actorVersions,
     });
     const summary = summarizeDiff(diff, { direction: 'push', forceLocal: Boolean(options.forceLocal) });
-    const operations = toBatchOperations(diff, doc, Boolean(options.forceLocal), Date.now());
+    const operations = toBatchOperations(diff, doc, Boolean(options.forceLocal), Date.now(), server.document);
     const compactOps = compactOperations(operations);
 
     if (diff.pushConflicts.length > 0 && !options.forceLocal) {
