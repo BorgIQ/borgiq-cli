@@ -133,6 +133,11 @@ const rehydrateActorCode = (
   files: BundleFileMap,
 ): Record<string, unknown> => {
   const actor = { ...actorDoc };
+  // `thumbnail: thumbnail.png` names the image beside actor.yaml; validate has checked it exists and
+  // is an image. The reader already holds it as a data URL, the form the API takes.
+  if (typeof actor.thumbnail === 'string') {
+    actor.thumbnail = { dataUrl: files[`${actorPath}/${actor.thumbnail}`] };
+  }
   if (!isPlainObject(actor.configuration)) return actor;
 
   const configuration = { ...actor.configuration };

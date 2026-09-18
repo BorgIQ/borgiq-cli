@@ -6,6 +6,7 @@ import type { BundleFileMap } from './bundle/types.js';
 import { isSafeBundlePath } from './bundle/path.js';
 import { binaryFileWarning, isIgnoredProjectDirFor, isIgnoredProjectPathFor, splitProjectCodePath } from './bundle/projectDir.js';
 import { REACT_APP_TYPE, isReactAppAssetPath } from './bundle/reactApp.js';
+import { anyBytesDataUrl, decodeDataUrl, isThumbnailBundlePath } from './bundle/thumbnail.js';
 import { CliUsageError } from './errors.js';
 
 const MANAGED_DIR = 'actors';
@@ -39,7 +40,10 @@ export interface BundleSkippedFile {
 }
 
 export interface BundleDirContents {
-  /** UTF-8 text the compiler owns. Never contains asset, ignored, or binary content. */
+  /**
+   * UTF-8 text the compiler owns. Never contains asset, ignored, or binary content - except an
+   * actor's `thumbnail.<ext>`, which enters as its `data:` URL (see `diskBytes`).
+   */
   files: BundleFileMap;
   assets: BundleLocalAsset[];
   skipped: BundleSkippedFile[];
@@ -122,7 +126,7 @@ export const planBundleDirIncrementalWrite = (dir: string, files: BundleFileMap)
   const write = Object.entries(files)
     .filter(([rel, content]) => {
       const abs = resolveInside(dir, rel);
-      return !fs.existsSync(abs) || fs.readFileSync(abs, 'utf-8') !== content;
+      return !fs.existsSync(abs) || !fs.readFileSync(abs).equals(diskBytes(rel, content));
     })
     .map(([rel]) => rel)
     .sort(compareStrings);
@@ -177,7 +181,7 @@ const readFilesRecursive = (baseDir: string, currentDir: string, contents: Bundl
 const collectFile = (abs: string, rel: string, contents: BundleDirContents): void => {
   const inProject = splitProjectCodePath(rel);
   if (!inProject) {
-    contents.files[rel] = fs.readFileSync(abs, 'utf-8');
+    contents.files[rel] = isThumbnailBundlePath(rel) ? anyBytesDataUrl(fs.readFileSync(abs)) : fs.readFileSync(abs, 'utf-8');
     return;
   }
 
@@ -223,18 +227,31 @@ const decodeUtf8 = (buffer: Buffer): string | undefined => {
 const bundleRelative = (baseDir: string, abs: string): string =>
   path.relative(baseDir, abs).split(path.sep).join('/');
 
+/**
+ * The bytes a file-map entry stands for on disk. Every entry is UTF-8 text except an actor's
+ * thumbnail image, which the map carries as its `data:` URL so the compiler stays text-only.
+ */
+const diskBytes = (rel: string, content: string): Buffer => {
+  if (isThumbnailBundlePath(rel)) {
+    const decoded = decodeDataUrl(content);
+    if (decoded) return decoded.bytes;
+  }
+  return Buffer.from(content, 'utf-8');
+};
+
 const writeFileInside = (dir: string, rel: string, content: string, overwrite: boolean): void => {
   const abs = resolveInside(dir, rel);
   if (!overwrite && fs.existsSync(abs)) return;
   fs.mkdirSync(path.dirname(abs), { recursive: true });
-  fs.writeFileSync(abs, content, 'utf-8');
+  fs.writeFileSync(abs, diskBytes(rel, content));
 };
 
 const writeFileInsideIfChanged = (dir: string, rel: string, content: string): void => {
   const abs = resolveInside(dir, rel);
-  if (fs.existsSync(abs) && fs.readFileSync(abs, 'utf-8') === content) return;
+  const bytes = diskBytes(rel, content);
+  if (fs.existsSync(abs) && fs.readFileSync(abs).equals(bytes)) return;
   fs.mkdirSync(path.dirname(abs), { recursive: true });
-  fs.writeFileSync(abs, content, 'utf-8');
+  fs.writeFileSync(abs, bytes);
 };
 
 const ensureWritableBundleDir = (dir: string, opts: WriteBundleOptions): void => {

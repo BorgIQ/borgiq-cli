@@ -12,6 +12,7 @@ import { ACTOR_FILE, CODE_DIR, FORMAT_NAME, FORMAT_VERSION, README_FILE, ROOT_FI
 import type { BundleFileMap, BundleIssue } from './types.js';
 import { parseYamlDoc } from './yaml.js';
 import { isSafeBundlePath } from './path.js';
+import { decodeDataUrl, isThumbnailBundlePath, isThumbnailFileName, thumbnailBytesProblem } from './thumbnail.js';
 
 export interface ValidateBundleResult {
   errors: BundleIssue[];
@@ -234,6 +235,42 @@ const validateActorIndexEntry = (
 
   actorDocs.set(entry.id, actorDoc);
   validateCodeDir(entry, actorDoc, run, referenced);
+  validateThumbnail(entry, actorDoc, run, referenced);
+};
+
+/**
+ * `thumbnail: thumbnail.<ext>` names an image beside actor.yaml - a layout rule, so a broken
+ * reference is an error. Whether the image itself is acceptable is the API's call: size and type
+ * are only warned about here. The inline object forms (`{ dataUrl }`, `{ fileId }`) and `null`
+ * pass through untouched.
+ */
+const validateThumbnail = (
+  entry: ActorIndexEntry,
+  actorDoc: Record<string, unknown>,
+  run: ValidationRun,
+  referenced: Set<string>,
+): void => {
+  const { files, errors, warnings } = run;
+  const actorFile = `${entry.path}/${ACTOR_FILE}`;
+  const thumbnail = actorDoc.thumbnail;
+  if (typeof thumbnail !== 'string') return;
+
+  if (!isThumbnailFileName(thumbnail)) {
+    errors.push({ path: actorFile, message: `thumbnail '${thumbnail}' must name an image beside actor.yaml: thumbnail.png, thumbnail.jpg, thumbnail.webp, or thumbnail.gif.` });
+    return;
+  }
+
+  const imagePath = `${entry.path}/${thumbnail}`;
+  referenced.add(imagePath);
+  const content = files[imagePath];
+  if (content === undefined) {
+    errors.push({ path: actorFile, message: `thumbnail names ${thumbnail}, but there is no such file beside actor.yaml.` });
+    return;
+  }
+
+  const decoded = decodeDataUrl(content);
+  const problem = decoded ? thumbnailBytesProblem(decoded.bytes, thumbnail) : `${thumbnail} could not be read as an image.`;
+  if (problem) warnings.push({ path: imagePath, message: `${problem} The push will likely be refused.` });
 };
 
 const parseActorDoc = (path: string, text: string, errors: BundleIssue[]): Record<string, unknown> | undefined => {
@@ -787,8 +824,12 @@ const validateEdge = (
 const validateUnreferencedFiles = (files: BundleFileMap, referenced: Set<string>, warnings: BundleIssue[]): void => {
   for (const path of Object.keys(files)) {
     if (!path.startsWith('actors/')) continue;
-    if (!referenced.has(path)) {
-      warnings.push({ path, message: 'File is not referenced by canvas.yaml - it will be ignored.' });
+    if (referenced.has(path)) continue;
+    if (isThumbnailBundlePath(path)) {
+      const name = path.slice(path.lastIndexOf('/') + 1);
+      warnings.push({ path, message: `Thumbnail image is not used - set \`thumbnail: ${name}\` in this actor's actor.yaml to push it.` });
+      continue;
     }
+    warnings.push({ path, message: 'File is not referenced by canvas.yaml - it will be ignored.' });
   }
 };

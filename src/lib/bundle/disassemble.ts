@@ -4,6 +4,7 @@ import { actorContentHashes } from './diff.js';
 import { isSafeBundlePath } from './path.js';
 import { isIgnoredProjectPathFor } from './projectDir.js';
 import { REACT_APP_ASSETS_DIR, isReactAppAssetPath } from './reactApp.js';
+import { anyBytesDataUrl, decodeDataUrl, isThumbnailMimeType, thumbnailFileName } from './thumbnail.js';
 import {
   ACTOR_FILE,
   ACTOR_KEY_ORDER,
@@ -209,7 +210,41 @@ const externalizeActorCode = (
     delete out.configuration;
   }
 
+  externalizeThumbnail(out, actorId, dir, files, warnings);
+
   return orderKeys(out, ACTOR_KEY_ORDER);
+};
+
+/**
+ * The export inlines an app actor's thumbnail as `{ dataUrl }` - a base64 line of up to ~2.7 MB in
+ * actor.yaml. It is written out as a real image, `thumbnail.<ext>`, with the file name left behind
+ * as the marker (as `codeDir: code` is), so the image can be viewed, and replaced by dropping in a
+ * new one.
+ *
+ * The file map stays text: the entry holds the data URL itself, and only the filesystem layer turns
+ * it into bytes. The reader rebuilds the URL from the bytes, so an image is only externalized when
+ * that rebuild reproduces the exported string exactly - otherwise pull-then-push would read as an
+ * edit. Anything else stays inline, which still pushes fine.
+ */
+const externalizeThumbnail = (
+  out: Record<string, unknown>,
+  actorId: string,
+  dir: string,
+  files: BundleFileMap,
+  warnings: string[],
+): void => {
+  const thumbnail = out.thumbnail;
+  if (!isPlainObject(thumbnail) || typeof thumbnail.dataUrl !== 'string' || Object.keys(thumbnail).length !== 1) return;
+
+  const decoded = decodeDataUrl(thumbnail.dataUrl);
+  if (!decoded || !isThumbnailMimeType(decoded.mimeType) || anyBytesDataUrl(decoded.bytes) !== thumbnail.dataUrl) {
+    warnings.push(`Actor ${actorId}: its thumbnail was left inline in actor.yaml because it is not a PNG, JPEG, WebP, or GIF image that round-trips byte for byte.`);
+    return;
+  }
+
+  const fileName = thumbnailFileName(decoded.mimeType);
+  files[`${dir}/${fileName}`] = thumbnail.dataUrl;
+  out.thumbnail = fileName;
 };
 
 /**

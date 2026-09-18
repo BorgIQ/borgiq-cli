@@ -1,5 +1,7 @@
 import { ApiError } from './errors.js';
 import type {
+  ActorThumbnailDataResponse,
+  AppTriggerResponse,
   BIQUser,
   BIQUserAccessibleWorkspaceInfo,
   BIQCanvasMetadata,
@@ -51,6 +53,25 @@ import type {
   BIQAiModelListResponse,
 } from './types.js';
 
+interface ApiErrorBody {
+  message?: string;
+  details?: { path: (string | number)[]; message: string }[];
+  /** Actor-write refusals (e.g. an unacceptable thumbnail) carry their reason here instead of `message`. */
+  warnings?: { actorId?: string; field?: string; message?: string }[];
+}
+
+const apiErrorFrom = (status: number, statusText: string, raw: unknown): ApiError => {
+  const body = (typeof raw === 'object' && raw !== null ? raw : {}) as ApiErrorBody;
+  const warnings = (Array.isArray(body.warnings) ? body.warnings : [])
+    .filter((warning) => typeof warning?.message === 'string' && warning.message.length > 0)
+    .map((warning) => ({ path: [warning.actorId, warning.field].filter((part): part is string => Boolean(part)), message: warning.message as string }));
+  return new ApiError(
+    status,
+    body.message || warnings[0]?.message || statusText,
+    body.details || (body.message ? [] : warnings),
+  );
+};
+
 export class BorgIQClient {
   constructor(
     private readonly baseUrl: string,
@@ -80,12 +101,7 @@ export class BorgIQClient {
     });
 
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => null) as { message?: string; details?: { path: (string | number)[]; message: string }[] } | null;
-      throw new ApiError(
-        response.status,
-        errorBody?.message || response.statusText,
-        errorBody?.details || [],
-      );
+      throw apiErrorFrom(response.status, response.statusText, await response.json().catch(() => null));
     }
 
     if (response.status === 204) {
@@ -661,6 +677,16 @@ export class BorgIQClient {
   async deleteCanvasActor(org: string, workspace: string, canvasSlugOrId: string, actorId: string, editVersion?: number): Promise<BatchActorOperationsResponse> {
     const qs = editVersion !== undefined ? `?editVersion=${editVersion}` : '';
     return this.request('DELETE', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/actors/${actorId}${qs}`);
+  }
+
+  /** An uploaded actor thumbnail's image, inlined as a data URL. */
+  async getActorThumbnailData(org: string, workspace: string, canvasSlugOrId: string, fileId: string): Promise<ActorThumbnailDataResponse> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/actor-thumbnails/${fileId}/data`);
+  }
+
+  /** The app's serving URL, as the web app's iframe gets it. Needs the `app:use` scope; 409 until a React app is built. */
+  async getAppTrigger(org: string, workspace: string, canvasSlugOrId: string, actorId: string): Promise<AppTriggerResponse> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/canvases/${canvasSlugOrId}/apps/${actorId}/trigger`);
   }
 
   // ── Templates ─────────────────────────────────────────

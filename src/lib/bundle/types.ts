@@ -133,6 +133,7 @@ export const ACTOR_KEY_ORDER = [
   'enableLTM',
   'enableSTM',
   'showInWorkspaceApps',
+  'thumbnail',
   'runtimeSlug',
   'webhookTriggerKey',
   'configuration',
