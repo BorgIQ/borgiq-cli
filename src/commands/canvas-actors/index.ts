@@ -9,6 +9,8 @@ import { canvasActorsCreate } from './create.js';
 import { canvasActorsUpdate } from './update.js';
 import { canvasActorsDelete } from './delete.js';
 import { canvasActorsBatch } from './batch.js';
+import { canvasActorsAppUrl } from './appUrl.js';
+import { canvasActorsThumbnailGet, canvasActorsThumbnailRemove, canvasActorsThumbnailSet } from './thumbnail.js';
 
 export const registerCanvasActorsCommands = (program: Command): void => {
   const canvasActors = program.command('canvas-actors').description('Manage individual actors within a canvas');
@@ -69,4 +71,39 @@ Example:
   $ cat ops.json | borgiq canvas-actors batch <canvas> --file -`,
     )
     .action(canvasActorsBatch);
+
+  canvasActors
+    .command('app-url <canvas> <actorId>')
+    .description("Print an app actor's serving URL (short-lived) - e.g. to screenshot it with a headless browser")
+    .addHelpText(
+      'after',
+      `
+Example:
+  $ SRC=$(borgiq canvas-actors app-url my-canvas <actorId>)
+  $ npx playwright screenshot --viewport-size=1280,800 --wait-for-timeout=3000 "$SRC" thumbnail.png
+  $ borgiq canvas-actors thumbnail set my-canvas <actorId> thumbnail.png`,
+    )
+    .action(canvasActorsAppUrl);
+
+  const thumbnail = canvasActors
+    .command('thumbnail')
+    .description("Manage an app actor's thumbnail (the image shown on the canvas node and the apps page)");
+
+  thumbnail
+    .command('set <canvas> <actorId> <image>')
+    .description('Set the thumbnail from a PNG, JPEG, WebP, or GIF file (at most 2 MiB; about 1280px wide is plenty)')
+    .option('--edit-version <version>', 'Edit version for conflict detection')
+    .action(canvasActorsThumbnailSet);
+
+  thumbnail
+    .command('get <canvas> <actorId>')
+    .description("Show the actor's thumbnail type and size, optionally saving the image")
+    .option('--out <path>', 'Write the image to this file')
+    .action(canvasActorsThumbnailGet);
+
+  thumbnail
+    .command('rm <canvas> <actorId>')
+    .description("Remove the actor's thumbnail")
+    .option('--edit-version <version>', 'Edit version for conflict detection')
+    .action(canvasActorsThumbnailRemove);
 };

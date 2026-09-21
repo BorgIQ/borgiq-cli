@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { README_FILE, ROOT_FILE } from './bundle/types.js';
+import { ACTOR_FILE, README_FILE, ROOT_FILE } from './bundle/types.js';
 import type { BundleFileMap } from './bundle/types.js';
 import { isSafeBundlePath } from './bundle/path.js';
 import { binaryFileWarning, isIgnoredProjectDirFor, isIgnoredProjectPathFor, splitProjectCodePath } from './bundle/projectDir.js';
 import { REACT_APP_TYPE, isReactAppAssetPath } from './bundle/reactApp.js';
+import { anyBytesDataUrl, decodeDataUrl, isThumbnailBundlePath } from './bundle/thumbnail.js';
+import { parseYamlDoc } from './bundle/yaml.js';
 import { CliUsageError } from './errors.js';
 
 const MANAGED_DIR = 'actors';
@@ -39,7 +41,10 @@ export interface BundleSkippedFile {
 }
 
 export interface BundleDirContents {
-  /** UTF-8 text the compiler owns. Never contains asset, ignored, or binary content. */
+  /**
+   * UTF-8 text the compiler owns. Never contains asset, ignored, or binary content - except an
+   * actor's `thumbnail.<ext>`, which enters as its `data:` URL (see `diskBytes`).
+   */
   files: BundleFileMap;
   assets: BundleLocalAsset[];
   skipped: BundleSkippedFile[];
@@ -122,7 +127,7 @@ export const planBundleDirIncrementalWrite = (dir: string, files: BundleFileMap)
   const write = Object.entries(files)
     .filter(([rel, content]) => {
       const abs = resolveInside(dir, rel);
-      return !fs.existsSync(abs) || fs.readFileSync(abs, 'utf-8') !== content;
+      return !fs.existsSync(abs) || !fs.readFileSync(abs).equals(diskBytes(rel, content));
     })
     .map(([rel]) => rel)
     .sort(compareStrings);
@@ -177,7 +182,7 @@ const readFilesRecursive = (baseDir: string, currentDir: string, contents: Bundl
 const collectFile = (abs: string, rel: string, contents: BundleDirContents): void => {
   const inProject = splitProjectCodePath(rel);
   if (!inProject) {
-    contents.files[rel] = fs.readFileSync(abs, 'utf-8');
+    contents.files[rel] = isThumbnailBundlePath(rel) ? anyBytesDataUrl(fs.readFileSync(abs)) : fs.readFileSync(abs, 'utf-8');
     return;
   }
 
@@ -223,18 +228,31 @@ const decodeUtf8 = (buffer: Buffer): string | undefined => {
 const bundleRelative = (baseDir: string, abs: string): string =>
   path.relative(baseDir, abs).split(path.sep).join('/');
 
+/**
+ * The bytes a file-map entry stands for on disk. Every entry is UTF-8 text except an actor's
+ * thumbnail image, which the map carries as its `data:` URL so the compiler stays text-only.
+ */
+const diskBytes = (rel: string, content: string): Buffer => {
+  if (isThumbnailBundlePath(rel)) {
+    const decoded = decodeDataUrl(content);
+    if (decoded) return decoded.bytes;
+  }
+  return Buffer.from(content, 'utf-8');
+};
+
 const writeFileInside = (dir: string, rel: string, content: string, overwrite: boolean): void => {
   const abs = resolveInside(dir, rel);
   if (!overwrite && fs.existsSync(abs)) return;
   fs.mkdirSync(path.dirname(abs), { recursive: true });
-  fs.writeFileSync(abs, content, 'utf-8');
+  fs.writeFileSync(abs, diskBytes(rel, content));
 };
 
 const writeFileInsideIfChanged = (dir: string, rel: string, content: string): void => {
   const abs = resolveInside(dir, rel);
-  if (fs.existsSync(abs) && fs.readFileSync(abs, 'utf-8') === content) return;
+  const bytes = diskBytes(rel, content);
+  if (fs.existsSync(abs) && fs.readFileSync(abs).equals(bytes)) return;
   fs.mkdirSync(path.dirname(abs), { recursive: true });
-  fs.writeFileSync(abs, content, 'utf-8');
+  fs.writeFileSync(abs, bytes);
 };
 
 const ensureWritableBundleDir = (dir: string, opts: WriteBundleOptions): void => {
@@ -254,7 +272,7 @@ const ensureWritableBundleDir = (dir: string, opts: WriteBundleOptions): void =>
 };
 
 /**
- * The managed text files on disk - the only files the CLI may delete.
+ * The managed files on disk - the only files the CLI may delete.
  *
  * This uses the same classifier as the reader on purpose. Everything it omits (asset bytes,
  * node_modules, build output, lockfiles, the SDK placeholder) is therefore invisible to the
@@ -268,7 +286,26 @@ const existingManagedFiles = (dir: string): string[] => {
   if (!fs.existsSync(actorsDir)) return managed;
   const contents: BundleDirContents = { files: {}, assets: [], skipped: [] };
   readFilesRecursive(dir, actorsDir, contents);
-  return [...managed, ...Object.keys(contents.files)];
+  return [...managed, ...Object.keys(contents.files).filter((rel) => !isUnclaimedThumbnail(dir, rel))];
+};
+
+/**
+ * A `thumbnail.<ext>` that the actor.yaml beside it does not name: a screenshot the user has dropped in but not
+ * claimed with the `thumbnail:` marker yet. It is the user's file, not one the CLI wrote, and unlike every other
+ * managed file it cannot be regenerated from the server - so a pull or a post-push refresh must never delete it.
+ * Once the marker names it, it is the CLI's to replace or remove as the server says.
+ */
+const isUnclaimedThumbnail = (dir: string, rel: string): boolean => {
+  if (!isThumbnailBundlePath(rel)) return false;
+  const actorFile = path.join(dir, path.posix.dirname(rel), ACTOR_FILE);
+  try {
+    const actor = parseYamlDoc(fs.readFileSync(actorFile, 'utf-8'));
+    const marker = typeof actor === 'object' && actor !== null ? (actor as { thumbnail?: unknown }).thumbnail : undefined;
+    return marker !== path.posix.basename(rel);
+  } catch {
+    // no actor.yaml, or one that does not parse: nothing claims the image, so leave it alone
+    return true;
+  }
 };
 
 /**

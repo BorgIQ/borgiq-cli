@@ -131,6 +131,10 @@ Values are resolved in this order (highest priority first):
 | `borgiq canvas-actors update <canvas> <actorId>` | Update a single actor in a canvas by slug or ID |
 | `borgiq canvas-actors delete <canvas> <actorId>` | Delete a single actor from a canvas by slug or ID |
 | `borgiq canvas-actors batch <canvas>` | Apply batch actor operations to a canvas by slug or ID |
+| `borgiq canvas-actors app-url <canvas> <actorId>` | Print an app actor's short-lived serving URL (e.g. to screenshot it) |
+| `borgiq canvas-actors thumbnail set <canvas> <actorId> <image>` | Set an app actor's thumbnail from a PNG, JPEG, WebP, or GIF file |
+| `borgiq canvas-actors thumbnail get <canvas> <actorId>` | Show an app actor's thumbnail; `--out <path>` saves the image |
+| `borgiq canvas-actors thumbnail rm <canvas> <actorId>` | Remove an app actor's thumbnail |
 
 ### Flow Runs
 
@@ -495,6 +499,12 @@ canvas metadata, edited in the canvas editor's README tab. `pull` writes it from
 server and deletes it when the canvas has none; `push` uploads it with the rest of the
 metadata. It is therefore not a free file: keep unrelated notes elsewhere (for example
 `NOTES.md`). `bundle init` seeds one with a heading and a table of contents.
+
+An App or React App actor's thumbnail — the image on its canvas node and the apps page —
+is written beside its `actor.yaml` as `thumbnail.<png|jpg|webp|gif>`, and `actor.yaml`
+keeps the file name (`thumbnail: thumbnail.png`). Replace the file (and the name, if the
+type changes) to push a new one; delete both to remove it. A `thumbnail.*` file that
+`actor.yaml` does not name is not pushed, and `bundle validate` says so.
 Push refuses exports with actor errors, verifies that the batch API confirmed every requested actor operation, and skips local refresh after any incomplete response. Bundles without `sync.actors` fail closed when an existing local actor differs from the server. Run `bundle pull` to establish the visible sync baseline, or choose `--replace`/`--force-local` explicitly.
 
 #### Code actors
@@ -628,6 +638,10 @@ rewrites line endings will make every file look locally edited.
 | `borgiq canvas-actors update <canvas> <actorId>` | Update a single actor in a canvas by slug or ID |
 | `borgiq canvas-actors delete <canvas> <actorId>` | Delete a single actor from a canvas by slug or ID |
 | `borgiq canvas-actors batch <canvas>` | Apply batch actor operations to a canvas by slug or ID |
+| `borgiq canvas-actors app-url <canvas> <actorId>` | Print an app actor's short-lived serving URL (e.g. to screenshot it) |
+| `borgiq canvas-actors thumbnail set <canvas> <actorId> <image>` | Set an app actor's thumbnail from a PNG, JPEG, WebP, or GIF file |
+| `borgiq canvas-actors thumbnail get <canvas> <actorId>` | Show an app actor's thumbnail; `--out <path>` saves the image |
+| `borgiq canvas-actors thumbnail rm <canvas> <actorId>` | Remove an app actor's thumbnail |
 
 **`borgiq canvas-actors list`**
 
@@ -669,6 +683,25 @@ rewrites line endings will make every file look locally edited.
 | Option | Description |
 |--------|-------------|
 | `--file <path>` | Path to JSON/YAML file with batch operations (or pipe YAML/JSON via stdin) |
+
+**`borgiq canvas-actors app-url`**
+
+Prints the URL an App or React App actor is served from — the page the web app frames —
+with a content token that expires within minutes. Needs a token with the `app:use` scope;
+a React app answers 409 until it has been built. The CLI does not run a browser; pair it
+with your own:
+
+```bash
+SRC=$(borgiq canvas-actors app-url my-canvas <actorId>)
+npx playwright screenshot --viewport-size=1280,800 --wait-for-timeout=3000 "$SRC" thumbnail.png
+borgiq canvas-actors thumbnail set my-canvas <actorId> thumbnail.png
+```
+
+**`borgiq canvas-actors thumbnail set|get|rm`**
+
+`set` sends the image inline; the API stores it (PNG, JPEG, WebP, or GIF, at most 2 MiB —
+about 1280px wide is plenty; SVG is refused). `get` prints the type and size, never the
+image; `--out <path>` writes it. `set` and `rm` take `--edit-version`.
 
 ---
 
