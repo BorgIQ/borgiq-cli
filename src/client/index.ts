@@ -68,7 +68,7 @@ const apiErrorFrom = (status: number, statusText: string, raw: unknown): ApiErro
   return new ApiError(
     status,
     body.message || warnings[0]?.message || statusText,
-    body.details || (body.message ? [] : warnings),
+    body.details || warnings,
   );
 };
 
