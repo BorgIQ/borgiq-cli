@@ -138,6 +138,26 @@ describe('bundle companion files', () => {
     }
   });
 
+  it('AGENTS.md documents app thumbnails: the file, its marker, the limits, and the commands', () => {
+    for (const needle of [
+      '### App thumbnails',
+      'actors/.../<ACTOR_ID>/thumbnail.<png|jpg|webp|gif>',
+      'thumbnail.<ext>',
+      'thumbnail: thumbnail.png',
+      'at most 2 MiB',
+      'SVG is not accepted',
+      'borgiq canvas-actors app-url <canvas> <ACTOR_ID>',
+      'borgiq canvas-actors thumbnail set|get|rm',
+      'is not pushed (validate warns)',
+      'delete the file and the thumbnail: line',
+    ]) {
+      expect(BUNDLE_AGENTS_MD).toContain(needle);
+    }
+    // the Layout entry points at the section that explains it
+    expect(BUNDLE_AGENTS_MD.indexOf('See "App thumbnails"')).toBeLessThan(BUNDLE_AGENTS_MD.indexOf('### App thumbnails'));
+    expect(BUNDLE_AGENTS_MD.indexOf('See "App thumbnails"')).toBeGreaterThan(-1);
+  });
+
   it('AGENTS.md documents third-party dependencies and the build step', () => {
     for (const needle of [
       'Third-party dependencies',

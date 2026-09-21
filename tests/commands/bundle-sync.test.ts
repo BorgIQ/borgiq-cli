@@ -305,6 +305,22 @@ describe('bundle push sync orchestration', () => {
     );
   });
 
+  it('clears a thumbnail the server has and the bundle no longer does', async () => {
+    const app = (over: Record<string, unknown> = {}) => makeActor({ id: ACTOR_ID, type: 'AppTriggerActor', name: 'App', sourcePorts: [], ...over });
+    const server = makeDoc([app({ thumbnail: { dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' } })]);
+    const local = makeDoc([app()]);
+    writeLocal(local, { [ACTOR_ID]: 1 }, server);
+    client.exportCanvas.mockResolvedValue(envelope(server));
+    client.getCanvas.mockResolvedValue({ actorVersions: { [ACTOR_ID]: 1 } });
+    client.batchActorOperations.mockResolvedValue(successfulBatch());
+
+    await bundlePush(bundleDir, { refresh: false }, command);
+
+    const [, , , body] = client.batchActorOperations.mock.calls[0] as [string, string, string, { operations: Record<string, unknown>[] }];
+    expect(body.operations).toEqual([expect.objectContaining({ type: 'update', actorId: ACTOR_ID, editVersion: 1 })]);
+    expect(body.operations[0].data).toHaveProperty('thumbnail', null);
+  });
+
   it('treats a server deletion as a push conflict instead of resurrecting it', async () => {
     const local = makeDoc([actor('Deleted remotely')]);
     const server = makeDoc([]);
