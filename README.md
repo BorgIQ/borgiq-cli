@@ -574,7 +574,10 @@ build must produce a single JS file and at most one CSS file — avoid route-lev
 needing a postinstall step are not supported, and a version published in the last few
 days may be rejected by the minimum dependency age in `deno.json`. Build-time CSS
 (Tailwind, CSS Modules, shadcn/ui) works as-is; CSS-in-JS libraries need the actor's
-`allowInlineStyling` option. The generated `AGENTS.md` carries the full contract.
+`allowInlineStyling` option. WebAssembly needs the actor's `allowWebAssembly` option and
+workers need `allowBlobWorkers`: inline them with `?worker&inline` (a separate worker file
+would be a second JS file), and turn both on for a worker that compiles WebAssembly. Both
+take effect on the next build. The generated `AGENTS.md` carries the full contract.
 
 **Assets.** `code/src/assets/` is the only auto-synced asset directory. Its files are
 workspace assets, not actor source: `pull` downloads each one, and `push` uploads new

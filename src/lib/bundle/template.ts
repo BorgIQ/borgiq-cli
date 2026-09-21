@@ -342,6 +342,15 @@ package.json by hand. What differs from an ordinary Vite app:
 - Styling: build-time CSS (plain CSS, CSS Modules, Tailwind, shadcn/ui) is the
   smooth path. Libraries that inject <style> tags at runtime - the CSS-in-JS
   family - render unstyled unless the actor's allowInlineStyling option is on.
+- WebAssembly and workers are off by default. Turn on the actor's
+  allowWebAssembly option to compile .wasm (it allows WebAssembly only, never
+  JavaScript eval) and allowBlobWorkers to start workers. A worker must be
+  inlined (import MyWorker from './worker?worker&inline'), because a separate
+  worker file would break the one-JS-file rule; an inlined worker runs from a
+  blob: URL under the app's policy, so a worker that compiles WebAssembly needs
+  both options. Inside it, fetch same-origin files with absolute URLs, such as
+  new URL('assets/sqlite.wasm', document.baseURI).href passed in from the page.
+  Either option takes effect only after a rebuild.
 - Network: the served app cannot call third-party APIs from the browser. Reach
   BorgIQ through a declared endpoint (below) and anything else through a
   canvas actor.

@@ -146,6 +146,9 @@ describe('bundle companion files', () => {
       'postinstall',
       'one JS file and at most one CSS file',
       'allowInlineStyling',
+      'allowWebAssembly',
+      'allowBlobWorkers',
+      '?worker&inline',
       'resolve.dedupe',
       'borgiq bundle build',
     ]) {
