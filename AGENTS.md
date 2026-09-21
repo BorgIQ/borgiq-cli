@@ -49,6 +49,7 @@ npm run clean    # Removes dist/
 npm run build         # TypeScript compilation (tsc) to dist/
 npm run dev           # Run CLI via tsx (no build step needed)
 npm test              # Run Vitest tests
+npm run test:coverage # Run Vitest tests with a v8 coverage report
 npm run clean         # Remove dist/ directory
 ```
 
