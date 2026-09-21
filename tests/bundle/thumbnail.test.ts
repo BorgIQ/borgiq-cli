@@ -321,6 +321,32 @@ describe('bundle thumbnail on disk', () => {
     expect(fs.existsSync(path.join(dir, THUMBNAIL_PATH))).toBe(false);
   });
 
+  it('never deletes a screenshot the bundle has not claimed yet — a refresh must not cost the user their image', () => {
+    // The documented workflow is "screenshot to thumbnail.png, THEN set the marker, then push". Between those steps
+    // the file is on disk with no `thumbnail:` line naming it, and every pull or post-push refresh used to delete
+    // it as a managed file absent from the server's map — by which time the app-url token has expired.
+    const pulled = disassemble(makeDoc([makeReactAppActor()])).files;
+    writeBundleDir(dir, pulled);
+    fs.writeFileSync(path.join(dir, THUMBNAIL_PATH), PNG);
+
+    const plan = writeBundleDirIncremental(dir, pulled);
+    expect(plan.delete).toEqual([]);
+    expect(fs.readFileSync(path.join(dir, THUMBNAIL_PATH)).equals(PNG)).toBe(true);
+
+    // a forced full rewrite replaces what the CLI manages, and this file is not yet one of those
+    writeBundleDir(dir, pulled, { force: true });
+    expect(fs.readFileSync(path.join(dir, THUMBNAIL_PATH)).equals(PNG)).toBe(true);
+  });
+
+  it('still deletes a thumbnail actor.yaml names when the server no longer has one, and a stale one of another type', () => {
+    // claimed = the marker on disk names it; that is the CLI's own file, and the server is the source of truth for it
+    writeBundleDir(dir, disassemble(appWithThumbnail()).files);
+    fs.writeFileSync(path.join(dir, REACT_APP_DIR, 'thumbnail.webp'), PNG); // unclaimed: the marker says thumbnail.png
+    const plan = writeBundleDirIncremental(dir, disassemble(makeDoc([makeReactAppActor()])).files);
+    expect(plan.delete).toEqual([THUMBNAIL_PATH]);
+    expect(fs.existsSync(path.join(dir, REACT_APP_DIR, 'thumbnail.webp'))).toBe(true);
+  });
+
   it('swaps the file when the server image changes type, leaving no stale thumbnail.png', () => {
     writeBundleDir(dir, disassemble(appWithThumbnail()).files);
 
