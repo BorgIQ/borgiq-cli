@@ -19,6 +19,7 @@ import { registerSecretsCommands } from './commands/secrets/index.js';
 import { registerAssetsCommands } from './commands/assets/index.js';
 import { registerTokensCommands } from './commands/tokens/index.js';
 import { registerTemplatesCommands } from './commands/templates/index.js';
+import { registerRecipesCommands } from './commands/recipes/index.js';
 import { registerScaffoldCommands } from './commands/scaffold/index.js';
 import { registerGenerateCommands } from './commands/generate/index.js';
 import { registerValidateCommands } from './commands/validate/index.js';
@@ -87,6 +88,7 @@ Exit codes:
   registerAssetsCommands(program);
   registerTokensCommands(program);
   registerTemplatesCommands(program);
+  registerRecipesCommands(program);
   registerScaffoldCommands(program);
   registerGenerateCommands(program);
   registerValidateCommands(program);

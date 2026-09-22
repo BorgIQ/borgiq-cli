@@ -43,6 +43,11 @@ import type {
   BIQActorTemplateDetail,
   BIQTemplateApp,
   TemplateListFilters,
+  BIQRecipeMetadata,
+  BIQRecipeDetail,
+  RecipeListFilters,
+  RecipeInstantiateBody,
+  RecipeInstantiateResponse,
   ReactAppBuildStartResponse,
   WorkspaceDeploymentStatus,
   RuntimeBuildSummary,
@@ -725,6 +730,46 @@ export class BorgIQClient {
     const qs = searchParams.toString();
     const raw = await this.request<{ total: number; templateApps: BIQTemplateApp[] }>('GET', `${this.wkspPath(org, workspace)}/template/apps${qs ? `?${qs}` : ''}`);
     return { total: raw.total, data: raw.templateApps };
+  }
+
+  // ── Recipes ───────────────────────────────────────────
+
+  async listRecipes(org: string, workspace: string, params?: ListFilterParams & RecipeListFilters): Promise<PaginatedResponse<BIQRecipeMetadata>> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    // array notation so one value still arrives as an array (see listTemplates)
+    for (const kind of params?.kinds ?? []) searchParams.append('kinds[]', kind);
+    if (params?.appId) searchParams.set('appId', params.appId);
+    const qs = searchParams.toString();
+    const raw = await this.request<{ total: number; recipes: BIQRecipeMetadata[] }>('GET', `${this.wkspPath(org, workspace)}/recipes${qs ? `?${qs}` : ''}`);
+    return { total: raw.total, data: raw.recipes };
+  }
+
+  async getRecipe(org: string, workspace: string, id: string): Promise<BIQRecipeDetail> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/recipes/${id}`);
+  }
+
+  /** the template apps that hold at least one recipe (an app that only holds recipes is listed here, not under templates) */
+  async listRecipeApps(org: string, workspace: string, params?: ListFilterParams & { categoryId?: string }): Promise<PaginatedResponse<BIQTemplateApp>> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    if (params?.categoryId) searchParams.set('categoryId', params.categoryId);
+    searchParams.set('for', 'recipes');
+    const raw = await this.request<{ total: number; templateApps: BIQTemplateApp[] }>('GET', `${this.wkspPath(org, workspace)}/template/apps?${searchParams.toString()}`);
+    return { total: raw.total, data: raw.templateApps };
+  }
+
+  /** add a recipe to a canvas — the server instantiates it (fresh ids, settings applied, wired at its entry/exit) */
+  async instantiateRecipe(org: string, workspace: string, canvas: string, recipeId: string, body: RecipeInstantiateBody): Promise<RecipeInstantiateResponse> {
+    return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/${canvas}/recipes/${recipeId}/instantiate`, body);
   }
 }
 

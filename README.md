@@ -136,6 +136,15 @@ Values are resolved in this order (highest priority first):
 | `borgiq canvas-actors thumbnail get <canvas> <actorId>` | Show an app actor's thumbnail; `--out <path>` saves the image |
 | `borgiq canvas-actors thumbnail rm <canvas> <actorId>` | Remove an app actor's thumbnail |
 
+### Recipes
+
+| Command | Description |
+|---------|-------------|
+| `borgiq recipes list` | List or search recipes (`--kind ACTOR\|FLOW\|SEGMENT`, `--app-id`) |
+| `borgiq recipes get <id>` | Get a recipe: its actors, entry/exit and the settings it asks for |
+| `borgiq recipes apps` | List the template apps that hold recipes |
+| `borgiq recipes add <id> --canvas <canvas>` | Add a recipe to a canvas, optionally wired `--after <actorId[:port]>` or `--into-edge <edgeId>`, with `--settings <file>` |
+
 ### Flow Runs
 
 | Command | Description |
@@ -704,6 +713,46 @@ about 1280px wide is plenty; SVG is refused). `get` prints the type and size, ne
 image; `--out <path>` writes it. `set` and `rm` take `--edit-version`.
 
 ---
+
+### Recipes
+
+A **recipe** is a saved starting point BorgIQ publishes: a single actor, a whole flow, or a flow segment.
+Unlike a template it is not versioned and not linked back — once added, the actors are yours and nothing
+updates them. Every recipe declares an **entry** actor (what an incoming edge attaches to) and an **exit**
+actor and port (what an outgoing edge leaves from), so `add` can wire the whole recipe in after an actor or
+into an existing edge. Adding is a BorgIQ API call: the API mints fresh ids, applies your settings, gives
+webhook triggers fresh keys and wires the recipe in; the CLI never instantiates a recipe itself.
+
+```bash
+# Browse
+borgiq recipes list --kind SEGMENT --json
+borgiq recipes apps
+borgiq recipes get RCPE01... --json           # actors, entry/exit and the settings groups
+
+# Add one to a canvas
+borgiq recipes add RCPE01... --canvas my-canvas                          # lands below everything on the canvas
+borgiq recipes add RCPE01... --canvas my-canvas --x 0 --y 800            # at a position
+borgiq recipes add RCPE01... --canvas my-canvas --after ACTR01...        # wired after that actor's default port
+borgiq recipes add RCPE01... --canvas my-canvas --after ACTR01...:SPRTdone000
+borgiq recipes add RCPE01... --canvas my-canvas --into-edge EDGE01...    # spliced into an edge
+borgiq recipes add RCPE01... --canvas my-canvas --settings settings.yaml
+```
+
+**Settings.** `recipes get` lists what a recipe asks for: connection groups (by connection type),
+credential groups (by credential key, type and source) and declared inputs. `--settings` takes a JSON or
+YAML object keyed the same way — a connection group by its type (several types joined with `|`, sorted), a
+credential group by `key|type|source`, inputs by key. A group takes one key for every actor in it, or a map
+of recipe-local actor id → key to choose per actor. Keys must exist in the workspace; the API rejects the
+call otherwise. Anything left out stays unset, to be configured on the actors afterwards.
+
+```yaml
+connections:
+  openai-bearer: openai-main
+  slack-bearer|slack-oauth2: team-slack
+inputs:
+  channel: '#triage'
+  model: gpt-4o
+```
 
 ### Flow Runs
 
