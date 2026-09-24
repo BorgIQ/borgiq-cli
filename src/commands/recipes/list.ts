@@ -10,7 +10,7 @@ interface RecipesListOptions extends ListOptionFlags {
   appId?: string;
 }
 
-const KINDS: BIQRecipeKind[] = ['ACTOR', 'FLOW', 'SEGMENT'];
+const KINDS: BIQRecipeKind[] = ['TASK', 'TRIGGER', 'FLOW', 'SEGMENT'];
 
 /** the table row: apps flattened to their names, settings summarised as counts */
 const toRow = (recipe: BIQRecipeMetadata) => ({

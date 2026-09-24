@@ -16,7 +16,7 @@ export const registerRecipesCommands = (program: Command): void => {
   withListOptions(recipes.command('list').description('List or search recipes in a workspace'), {
     sort: { fields: ['name', 'createdAt', 'updatedAt'], defaultBy: 'name', defaultOrder: 'asc' },
   })
-    .option('--kind <kind...>', 'Filter by kind: ACTOR, FLOW or SEGMENT (repeatable)')
+    .option('--kind <kind...>', 'Filter by kind: TASK, TRIGGER, FLOW or SEGMENT (repeatable)')
     .option('--app-id <id>', 'Filter by template app id')
     .action(recipesList);
 

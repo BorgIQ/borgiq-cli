@@ -621,11 +621,12 @@ export interface TemplateListFilters {
 
 // ── Recipes ───────────────────────────────────────────
 //
-// A recipe is a saved, unversioned starting point — an actor, a flow or a flow segment — dropped onto a
+// A recipe is a saved, unversioned starting point — a task actor, a trigger, a flow or a flow segment — dropped onto a
 // canvas. Instances are never linked back. These mirror the server's response shapes; instantiation is a
 // server-side call (`instantiateRecipe`), never reimplemented here.
 
-export type BIQRecipeKind = 'ACTOR' | 'FLOW' | 'SEGMENT';
+/** TASK and SEGMENT can be wired in after an actor or into an edge; FLOW and TRIGGER start a flow and land unwired */
+export type BIQRecipeKind = 'TASK' | 'TRIGGER' | 'FLOW' | 'SEGMENT';
 
 /** a group of actors sharing one connection type; the user supplies one key for the group or one per actor */
 export interface RecipeConnectionSetting {

@@ -140,7 +140,7 @@ Values are resolved in this order (highest priority first):
 
 | Command | Description |
 |---------|-------------|
-| `borgiq recipes list` | List or search recipes (`--kind ACTOR\|FLOW\|SEGMENT`, `--app-id`) |
+| `borgiq recipes list` | List or search recipes (`--kind TASK\|TRIGGER\|FLOW\|SEGMENT`, `--app-id`) |
 | `borgiq recipes get <id>` | Get a recipe: its actors, entry/exit and the settings it asks for |
 | `borgiq recipes apps` | List the template apps that hold recipes |
 | `borgiq recipes add <id> --canvas <canvas>` | Add a recipe to a canvas, optionally wired `--after <actorId[:port]>` or `--into-edge <edgeId>`, with `--settings <file>` |
