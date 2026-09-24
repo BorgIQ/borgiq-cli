@@ -747,11 +747,10 @@ call otherwise. Anything left out stays unset, to be configured on the actors af
 
 ```yaml
 connections:
-  openai-bearer: openai-main
   slack-bearer|slack-oauth2: team-slack
 inputs:
   channel: '#triage'
-  model: gpt-4o
+  model: claude-haiku-4-5
 ```
 
 ### Flow Runs
