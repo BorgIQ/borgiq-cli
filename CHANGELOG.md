@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.11.0...cli-v0.12.0) (2026-09-21)
+
+
+### Features
+
+* **ai-providers:** manage workspace AI providers and list usable models ([#68](https://github.com/BorgIQ/borgiq-cli/issues/68)) ([c326870](https://github.com/BorgIQ/borgiq-cli/commit/c326870ef83c2b486ae9e10482701b9e7e88456d))
+* **canvas-actors:** app screenshots and thumbnails from the CLI and bundles ([#72](https://github.com/BorgIQ/borgiq-cli/issues/72)) ([2a73e0d](https://github.com/BorgIQ/borgiq-cli/commit/2a73e0d8e0c95b25beb37724f835a0a24dcdeb0a))
+
 ## [0.11.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.10.0...cli-v0.11.0) (2026-09-09)
 
 
