@@ -19,7 +19,7 @@ export const registerSecretsCommands = (program: Command): void => {
     .option('--key <key>', 'Secret key (unique within workspace)')
     .option('--type <type>', 'Secret type: plainText | jwt')
     .option('--description <desc>', 'Secret description')
-    .option('--exposure-mode <mode>', 'Exposure mode: httpOnly or exposed', 'httpOnly')
+    .option('--exposure-mode <mode>', 'Exposure mode: httpOnly (Server-side in the UI) or exposed (Sent to runtime)', 'httpOnly')
     .option('--data <data>', 'Inline secret data (for single-string types)')
     .option('--data-file <path>', 'Path to JSON/YAML file with secret data')
     .action(secretsCreate);

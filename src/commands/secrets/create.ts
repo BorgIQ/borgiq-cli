@@ -54,7 +54,7 @@ export const secretsCreate = async (options: CreateOptions, command: { parent: {
     const description = options.description ?? (isTty ? await prompt('Description (optional)') : undefined);
     const exposureMode = options.exposureMode || 'httpOnly';
     if (exposureMode !== 'httpOnly' && exposureMode !== 'exposed') {
-      throw new CliUsageError(`--exposure-mode must be 'httpOnly' or 'exposed', got '${exposureMode}'.`);
+      throw new CliUsageError(`--exposure-mode must be 'httpOnly' (Server-side) or 'exposed' (Sent to runtime), got '${exposureMode}'.`);
     }
 
     const plaintext = await buildPlaintext(type, options, isTty);
