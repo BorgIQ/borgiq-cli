@@ -14,13 +14,11 @@ interface RecipesAddOptions {
   settings?: string;
 }
 
-const DEFAULT_SOURCE_PORT_ID = 'SPRTdefault';
-
-/** `ACTR…` or `ACTR…:SPRTxyz` → the source to wire from */
-export const parseAfter = (value: string): { actorId: string; portId: string } => {
+/** `ACTR…` or `ACTR…:SPRTxyz` → the source to wire from; with no port named the API picks the actor's first source port */
+export const parseAfter = (value: string): { actorId: string; portId?: string } => {
   const [actorId, portId, ...rest] = value.split(':');
-  if (!actorId || rest.length > 0) throw new CliUsageError('--after expects <actorId> or <actorId>:<portId>');
-  return { actorId, portId: portId || DEFAULT_SOURCE_PORT_ID };
+  if (!actorId || portId === '' || rest.length > 0) throw new CliUsageError('--after expects <actorId> or <actorId>:<portId>');
+  return portId === undefined ? { actorId } : { actorId, portId };
 };
 
 /** the request body from the flags — format only; what the flags mean is the API's to decide */

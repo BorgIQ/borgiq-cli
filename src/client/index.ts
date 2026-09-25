@@ -744,6 +744,8 @@ export class BorgIQClient {
     // array notation so one value still arrives as an array (see listTemplates)
     for (const kind of params?.kinds ?? []) searchParams.append('kinds[]', kind);
     if (params?.appId) searchParams.set('appId', params.appId);
+    if (params?.hasEntry !== undefined) searchParams.set('hasEntry', String(params.hasEntry));
+    if (params?.hasExit !== undefined) searchParams.set('hasExit', String(params.hasExit));
     const qs = searchParams.toString();
     const raw = await this.request<{ total: number; recipes: BIQRecipeMetadata[] }>('GET', `${this.wkspPath(org, workspace)}/recipes${qs ? `?${qs}` : ''}`);
     return { total: raw.total, data: raw.recipes };
@@ -767,7 +769,7 @@ export class BorgIQClient {
     return { total: raw.total, data: raw.templateApps };
   }
 
-  /** add a recipe to a canvas — the server instantiates it (fresh ids, settings applied, wired at its entry/exit) */
+  /** add a recipe to a canvas — the server instantiates it (fresh ids, settings checked and applied, wired at its entry/exit) */
   async instantiateRecipe(org: string, workspace: string, canvas: string, recipeId: string, body: RecipeInstantiateBody): Promise<RecipeInstantiateResponse> {
     return this.request('POST', `${this.wkspPath(org, workspace)}/canvases/${canvas}/recipes/${recipeId}/instantiate`, body);
   }
