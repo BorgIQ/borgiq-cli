@@ -136,6 +136,15 @@ Values are resolved in this order (highest priority first):
 | `borgiq canvas-actors thumbnail get <canvas> <actorId>` | Show an app actor's thumbnail; `--out <path>` saves the image |
 | `borgiq canvas-actors thumbnail rm <canvas> <actorId>` | Remove an app actor's thumbnail |
 
+### Recipes
+
+| Command | Description |
+|---------|-------------|
+| `borgiq recipes list` | List or search recipes (`--kind TASK\|TRIGGER\|FLOW\|SEGMENT`, `--app-id`, `--[no-]has-entry`, `--[no-]has-exit`) |
+| `borgiq recipes get <id>` | Get a recipe: its actors, entry/exit and the settings it asks for, each with the key `--settings` takes |
+| `borgiq recipes apps` | List the template apps that hold recipes |
+| `borgiq recipes add <id> --canvas <canvas>` | Add a recipe to a canvas, optionally wired `--after <actorId[:port]>` or `--into-edge <edgeId>`, with `--settings <file>` |
+
 ### Flow Runs
 
 | Command | Description |
@@ -704,6 +713,56 @@ about 1280px wide is plenty; SVG is refused). `get` prints the type and size, ne
 image; `--out <path>` writes it. `set` and `rm` take `--edit-version`.
 
 ---
+
+### Recipes
+
+A **recipe** is a saved starting point BorgIQ publishes: a task actor, a trigger, a flow or a flow segment
+(`--kind TASK|TRIGGER|FLOW|SEGMENT`). Unlike a template it is not versioned and not linked back — once added,
+the actors are yours and nothing updates them. A recipe may declare an **entry** actor (what an incoming edge
+attaches to) and an **exit** actor and port (what an outgoing edge leaves from): a flow or a segment always has
+both, a task actor or a trigger only when it has them (an MCP server has neither, a webhook trigger only an exit).
+`recipes list` shows this as its WIRING column (`in→out`, `in`, `out` or `—`) and `--json` as `entry` / `exit`
+(`null` when absent). Adding is a BorgIQ API call: the API mints fresh ids, applies your settings, gives webhook
+triggers fresh keys and wires the recipe in; the CLI never instantiates a recipe itself.
+
+```bash
+# Browse
+borgiq recipes list --kind SEGMENT --json
+borgiq recipes list --kind task --has-entry    # kinds are case-insensitive; the API says which exist
+borgiq recipes apps
+borgiq recipes get RCPE01...                  # actors, entry/exit, and each setting's key for --settings
+
+# Add one to a canvas
+borgiq recipes add RCPE01... --canvas my-canvas                          # lands below everything on the canvas
+borgiq recipes add RCPE01... --canvas my-canvas --x 0 --y 800            # at a position
+borgiq recipes add RCPE01... --canvas my-canvas --after ACTR01...        # wired after that actor's first source port
+borgiq recipes add RCPE01... --canvas my-canvas --after ACTR01...:SPRTdone000
+borgiq recipes add RCPE01... --canvas my-canvas --into-edge EDGE01...    # spliced into an edge
+borgiq recipes add RCPE01... --canvas my-canvas --settings settings.yaml
+```
+
+**Wiring.** Only a TASK or SEGMENT recipe with an entry can be added `--after` an actor; splicing it
+`--into-edge` also needs an exit. A FLOW or TRIGGER recipe starts a flow, so it is never wired in: add it on its
+own. Without `--x`/`--y` the recipe lands below everything on the canvas. The API answers 400 when a wiring
+does not fit, and the CLI prints its reasons.
+
+**Settings.** `recipes get` lists what a recipe asks for: connection groups, credential groups and declared
+inputs. Each connection and credential group carries a `groupKey`; `--settings` takes a JSON or YAML object
+whose `connections` and `credentials` are keyed by those `groupKey` values, exactly as `recipes get` prints
+them (on a terminal it ends with a summary of the wiring and these keys), and whose `inputs` are keyed by each input's `key`. A group takes one key for every actor in it, or a
+map of recipe-local actor id → key to choose per actor. Inputs left out take their default; a required input
+without a default must be given. Connection and secret keys must exist in the workspace and connections must be
+of the group's type; the API rejects the call otherwise, as it does unknown group or input keys and values that
+do not read as the input's type. Connections and credentials left out stay unset, to be configured on the actors
+afterwards.
+
+```yaml
+connections:
+  slack-bearer|slack-oauth2: team-slack
+inputs:
+  channel: '#triage'
+  model: claude-haiku-4-5
+```
 
 ### Flow Runs
 

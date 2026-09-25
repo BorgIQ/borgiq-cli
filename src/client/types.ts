@@ -580,7 +580,7 @@ export interface BIQKeysListResponse {
 export type BIQActorTemplateType = 'TASK' | 'TRIGGER';
 
 /** Template access level — mirrors `TemplateAccessLevel` in `@borgiq/db`. */
-export type BIQTemplateAccessLevel = 'PUBLIC' | 'ORG' | 'WORKSPACE';
+export type BIQTemplateAccessLevel = 'PUBLIC' | 'ORG_ONLY' | 'WORKSPACE_ONLY';
 
 /** Template app (e.g. Slack, GitHub) used to group templates. */
 export interface BIQTemplateApp {
@@ -617,6 +617,131 @@ export interface BIQActorTemplateDetail extends BIQActorTemplateMetadata {
 export interface TemplateListFilters {
   types?: BIQActorTemplateType[];
   appId?: string;
+}
+
+// ── Recipes ───────────────────────────────────────────
+//
+// A recipe is a saved, unversioned starting point — a task actor, a trigger, a flow or a flow segment — dropped onto a
+// canvas. Instances are never linked back. These mirror the server's response shapes; instantiation is a
+// server-side call (`instantiateRecipe`), never reimplemented here.
+
+/**
+ * What a recipe is: a task actor, a trigger, a flow or a flow segment. Which kinds can be wired in after an actor or
+ * into an edge is the API's rule (it answers 400 otherwise); the CLI only passes the request on.
+ */
+export type BIQRecipeKind = 'TASK' | 'TRIGGER' | 'FLOW' | 'SEGMENT';
+
+/** a group of actors sharing one connection type; the user supplies one key for the group or one per actor */
+export interface RecipeConnectionSetting {
+  /** the key this group's value goes under in `RecipeSettingsValues.connections` */
+  groupKey: string;
+  type: string | string[];
+  label?: string;
+  actorIds: string[];
+}
+
+/** a group of actors sharing one credential; the user supplies one workspace key for the group or one per actor */
+export interface RecipeCredentialSetting {
+  /** the key this group's value goes under in `RecipeSettingsValues.credentials` */
+  groupKey: string;
+  key: string;
+  type?: string;
+  source: 'secret' | 'connection';
+  label?: string;
+  actorIds: string[];
+}
+
+export interface RecipeInputSetting {
+  /** the key this input's value goes under in `RecipeSettingsValues.inputs` */
+  key: string;
+  label: string;
+  description?: string;
+  type: 'string' | 'number' | 'boolean' | 'json';
+  required?: boolean;
+  default?: unknown;
+  targets: { actorId: string; path: string }[];
+}
+
+/** the recipe's adjustable values, as the detail endpoint returns them */
+export interface RecipeSettings {
+  connections: RecipeConnectionSetting[];
+  credentials: RecipeCredentialSetting[];
+  inputs: RecipeInputSetting[];
+}
+
+/**
+ * The values supplied for a recipe's settings. Connections and credentials are keyed by each group's `groupKey`, as
+ * `recipes get` prints it, and hold one key for the whole group or a map of recipe-local actor id → key; inputs are
+ * keyed by the input's `key`.
+ */
+export interface RecipeSettingsValues {
+  connections?: Record<string, string | Record<string, string>>;
+  credentials?: Record<string, string | Record<string, string>>;
+  inputs?: Record<string, unknown>;
+}
+
+/** where an incoming edge attaches to a recipe */
+export interface RecipeEntry { actorId: string }
+/** where an outgoing edge leaves a recipe */
+export interface RecipeExit { actorId: string; portId: string }
+
+/** Lightweight recipe metadata returned by the list endpoint. */
+export interface BIQRecipeMetadata {
+  id: string;
+  kind: BIQRecipeKind;
+  accessLevel: BIQTemplateAccessLevel;
+  isBorgiqRecipe: boolean;
+  name: string;
+  description: string;
+  color: string;
+  tags: string;
+  schemaVersion: number;
+  actorCount: number;
+  apps: BIQTemplateApp[];
+  settingsCount: { connections: number; credentials: number; inputs: number };
+  /** null when nothing can feed the recipe (a trigger, an MCP server) */
+  entry: RecipeEntry | null;
+  /** null when the recipe feeds nothing onward */
+  exit: RecipeExit | null;
+  orgName?: string;
+  workspaceName?: string;
+}
+
+/** Full recipe as returned by `GET .../recipes/:id`: the actors, where it wires in, and what it asks for. */
+export interface BIQRecipeDetail extends BIQRecipeMetadata {
+  data: { schemaVersion: string; actors: Record<string, unknown> };
+  settings: RecipeSettings;
+}
+
+/** Extra filters supported by the recipes list endpoint. */
+export interface RecipeListFilters {
+  /** passed through as given; the API validates them */
+  kinds?: string[];
+  appId?: string;
+  /** only recipes with (true) or without (false) an entry */
+  hasEntry?: boolean;
+  /** only recipes with (true) or without (false) an exit */
+  hasExit?: boolean;
+}
+
+/** Body of `POST .../canvases/:canvas/recipes/:id/instantiate`. */
+export interface RecipeInstantiateBody {
+  /** where the recipe lands, in flow coordinates; default: below the canvas's lowest actor */
+  position?: { x: number; y: number };
+  /** wire this actor's source port to the recipe's entry; without a portId the API picks the actor's first */
+  source?: { actorId: string; portId?: string };
+  /** splice the recipe into this edge: its source → entry, exit → the edge's old target */
+  edgeId?: string;
+  settings?: RecipeSettingsValues;
+}
+
+export interface RecipeInstantiateResponse {
+  actorIds: string[];
+  /** null when the recipe has no entry */
+  entryActorId: string | null;
+  /** null when the recipe has no exit */
+  exitActorId: string | null;
+  edgeIds: string[];
 }
 
 // ── Workspace deployment and runtime builds ─────────────
