@@ -72,7 +72,7 @@ export const connectionsCreate = async (options: CreateOptions, command: { paren
       : await collectFields(formData.userManagedOptionsJsonSchema, options.userManagedOptionsFile, isTty, true);
 
     const publicData = JSON.stringify({ inputs });
-    const secretPayload = JSON.stringify({ secretInputs, userManagedOptionsInputs, auth: {} });
+    const secretPayload = JSON.stringify(buildConnectionSecretData(secretInputs, userManagedOptionsInputs));
 
     if (!globalOpts.json && process.stderr.isTTY) {
       process.stderr.write('Encrypting connection secrets with workspace public key...\n');
@@ -101,6 +101,20 @@ export const connectionsCreate = async (options: CreateOptions, command: { paren
     handleError(error);
   }
 };
+
+/**
+ * The encrypted half of a non-OAuth2 connection, in the shape the web app sends. The BorgIQ API
+ * stores it as an opaque blob and renders the connection type's result template from it merged
+ * over the public data, so secret inputs must sit under `inputs` next to the public ones: templates
+ * read every input, secret or not, as `{{inputs.<name>}}`.
+ */
+export const buildConnectionSecretData = (
+  secretInputs: Record<string, unknown>,
+  userManagedOptionsInputs: Record<string, unknown>,
+): Record<string, unknown> => ({
+  inputs: secretInputs,
+  ...(Object.keys(userManagedOptionsInputs).length > 0 ? { userManagedOptionsInputs } : {}),
+});
 
 const collectFields = async (
   schema: BIQConnectionFormData['inputsJsonSchema'] | undefined,
