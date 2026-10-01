@@ -256,5 +256,11 @@ describe('SDK placeholder', () => {
     expect(REACT_APP_SDK_FILES['index.d.ts']).toContain('export declare function useEndpoint');
     expect(REACT_APP_SDK_FILES['index.js']).toContain('export function useGetSession');
     expect(REACT_APP_SDK_FILES['index.d.ts']).toContain('useGetSession');
+    for (const name of ['setTitle', 'useTitle']) {
+      expect(REACT_APP_SDK_FILES['index.js']).toContain(`export function ${name}`);
+      expect(REACT_APP_SDK_FILES['index.d.ts']).toContain(`export declare function ${name}`);
+    }
+    // package.json and the module agree on the version
+    expect(REACT_APP_SDK_FILES['index.js']).toContain(`export const version = '${manifest.version}';`);
   });
 });

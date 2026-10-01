@@ -598,6 +598,13 @@ workers need `allowBlobWorkers`: inline them with `?worker&inline` (a separate w
 would be a second JS file), and turn both on for a worker that compiles WebAssembly. Both
 take effect on the next build. The generated `AGENTS.md` carries the full contract.
 
+**Tab title.** An app names its browser tab with `useTitle(title)` (or `setTitle(title)`
+outside a component) from `@borgiq/actors`, per page or route; the text is shown as
+written, and only the app's own page honours it, not a page that embeds the app. For
+a fixed title set `configuration.options.title` on the actor, which applies whenever the
+app's code sets none and takes effect on the next build. Under `npm run dev` the stub SDK
+sets the local page's `document.title` instead.
+
 **Assets.** `code/src/assets/` is the only auto-synced asset directory. Its files are
 workspace assets, not actor source: `pull` downloads each one, and `push` uploads new
 and changed ones and maintains the matching `options.files` entry

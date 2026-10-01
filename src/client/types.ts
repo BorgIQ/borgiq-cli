@@ -455,6 +455,8 @@ export interface AppTriggerResponse {
   /** Serving URL with a short-lived content token in its path. */
   src: string;
   allowedPermissions?: string[];
+  /** A React App's static tab title (its `title` option, frozen at build); absent when unset. */
+  title?: string;
 }
 
 /** Canvas actor flow response */
