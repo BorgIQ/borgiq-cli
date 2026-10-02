@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.13.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.12.0...cli-v0.13.0) (2026-10-02)
+
+
+### Features
+
+* **bundle:** add useTitle and setTitle to the react-app SDK stub ([#83](https://github.com/BorgIQ/borgiq-cli/issues/83)) ([fd0f658](https://github.com/BorgIQ/borgiq-cli/commit/fd0f658c501c4f26687da1523ba2610f1245f6a0))
+* **recipes:** browse recipes and add one to a canvas ([#75](https://github.com/BorgIQ/borgiq-cli/issues/75)) ([fd6e250](https://github.com/BorgIQ/borgiq-cli/commit/fd6e2509aff02a68f6db30d59296bcebd711dff3))
+
+
+### Bug Fixes
+
+* **connections:** encrypt secret inputs under `inputs`, as the web app does ([#81](https://github.com/BorgIQ/borgiq-cli/issues/81)) ([a4a9ba1](https://github.com/BorgIQ/borgiq-cli/commit/a4a9ba1719d3beb9b91984d369cb75c4411e96a5))
+* **exposure-mode:** name the modes as the UI does in help and errors ([#78](https://github.com/BorgIQ/borgiq-cli/issues/78)) ([1b36995](https://github.com/BorgIQ/borgiq-cli/commit/1b36995d294abffa561b2f12c7dffb86a15bf7fb))
+
 ## [0.12.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.11.0...cli-v0.12.0) (2026-09-21)
 
 
