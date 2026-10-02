@@ -430,6 +430,26 @@ iframe there is no viewer to report, so under npm run dev it settles right away
 with a SessionUnavailableError rather than hanging - gate any identity UI on
 session being present, and it will simply render nothing locally.
 
+useTitle() names the browser tab from the app's own code:
+
+    import { useTitle } from '@borgiq/actors';
+    useTitle(order ? 'Order ' + order.number : null);
+
+The app runs in an iframe and cannot write the tab's title itself, so the SDK
+asks the BorgIQ page that hosts it. The title holds while the component is
+mounted and is given back on unmount; when a layout and a page inside it both
+call it, the page wins. Pass null while data is loading. setTitle(title) is
+the non-hook form, for event handlers and code outside a component: it is one
+slot for the whole app, and setTitle(null) withdraws it, so clear a transient
+one rather than leaving it. The text is shown with nothing appended; BorgIQ
+removes control and invisible formatting characters and cuts it at 150
+characters. Only the app's own page honours it - a page that embeds the app,
+such as an interface page, keeps its own tab title - and under npm run dev it
+sets the local page's document.title instead.
+For a title that needs no code, set configuration.options.title on the actor;
+it applies whenever the app's code has set none, and takes effect on the next
+Build. Inside BorgIQ the <title> in index.html is not used for the tab.
+
 ### App thumbnails
 
 An App or React App actor can carry a thumbnail: a PNG, JPEG, WebP, or GIF of

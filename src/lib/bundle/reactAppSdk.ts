@@ -9,6 +9,9 @@
  * This copy must stay in step with the SDK the platform's React App template expects: local
  * type-checking and `npm run dev` are only as accurate as it is. A build never uses this copy -
  * the platform always supplies its own.
+ *
+ * Not vendored: the workspace-stream surface (`useStreamTail`, `tailStream`, `readStream`). Importing
+ * those type-checks only against the platform's own SDK.
  */
 
 import { REACT_APP_TYPE, reactAppCodePrefix } from './reactApp.js';
@@ -19,7 +22,7 @@ export const SDK_PLACEHOLDER_DIR = '__borgiq_sdk_placeholder__';
 
 const PACKAGE_JSON = `{
   "name": "@borgiq/actors",
-  "version": "2.2.0",
+  "version": "2.4.0",
   "type": "module",
   "main": "./index.js",
   "types": "./index.d.ts",
@@ -42,6 +45,8 @@ const INDEX_JS = `// @borgiq/actors — the browser-side SDK for React App actor
 //   useGetSession()                    — React hook: { data, loading, error }; auto-resolves the viewer on mount
 //   getSession()                       — non-hook: Promise resolving to the viewer { id, userId, email, name, appSessionId }
 //   getBasename()                      — router basename for the token path (from document.baseURI)
+//   useTitle(title)                    — React hook: the browser tab's title while the component is mounted
+//   setTitle(title)                    — non-hook: set the tab title; null withdraws it
 //
 // Endpoints + token-bridge constants are BAKED into \`./generated.js\` when the platform builds the app.
 // The parent⇄iframe token bridge lives HERE as an origin-checked module singleton: it attaches
@@ -443,7 +448,240 @@ export function getBasename() {
   return '/';
 }
 
-export const version = '2.2.0';
+// ── Browser tab title ────────────────────────────────────────────────────────────────────────────
+// The app runs in a cross-origin iframe, so it cannot write the tab's title itself. Inside BorgIQ it
+// asks the hosting page, with the same origin-pinned post to the parent that the token bridge's
+// request uses: { type: 'SET_APP_ACTOR_TITLE', title } posted to \`trustedParentOrigin\`. It is
+// fire-and-forget — there is no reply, so a BorgIQ that predates the message never answers and
+// nothing here waits. Outside BorgIQ (local \`npm run dev\`) there is no parent to ask, so the same
+// calls write this document's own \`document.title\`, and clearing restores what it was.
+
+/** The app → host message type; the host page listens for exactly this string. */
+const TITLE_MESSAGE_TYPE = 'SET_APP_ACTOR_TITLE';
+const IMPERATIVE_TITLE = 'imperative';
+
+/** How many times a title whose delivery threw is tried again before it is given up on. */
+const MAX_TITLE_RETRIES = 3;
+
+/** The wait before retry number n is n times this. */
+const TITLE_RETRY_DELAY_MS = 500;
+
+/** A usable title is a non-blank string; everything else (null, undefined, '', numbers…) clears. */
+function normalizeTitle(title) {
+  return typeof title === 'string' && title.trim() !== '' ? title : null;
+}
+
+/** Run \`fn\` once the current synchronous work is done. */
+function deferTitle(fn) {
+  if (typeof queueMicrotask === 'function') queueMicrotask(fn);
+  else Promise.resolve().then(fn);
+}
+
+/**
+ * The page-wide title state. Several parts of an app can want the title at once — a layout and the
+ * page inside it. Each claim carries a sequence number and the HIGHEST one wins; releasing it hands
+ * the title back to the next one down. Hook claims take their number at first render, so a page
+ * outranks its layout; \`setTitle()\` takes a fresh number on every call, so it outranks every hook
+ * mounted at that moment — and a hook that mounts afterwards outranks it in turn.
+ *
+ * Changes are delivered once per tick, not once per call: a route change releases one page's claim
+ * and makes the next page's in the same commit, and only the title left standing is sent.
+ */
+function createTitleController() {
+  const win = typeof window !== 'undefined' ? window : undefined;
+  const entries = new Map(); // key → { seq, title }
+  let seq = 0;
+  let lastApplied; // undefined = nothing delivered yet; else the last title delivered (string | null)
+  let originalDocumentTitle; // local fallback only
+  let flushQueued = false;
+  let failing = null; // { title, retries } while the title to deliver keeps throwing
+  let retryTimer = null;
+
+  const embedded = Boolean(win && trustedParentOrigin && win.parent && win.parent !== win);
+
+  function effectiveTitle() {
+    let top = null;
+    for (const entry of entries.values()) {
+      if (entry.title !== null && (!top || entry.seq > top.seq)) top = entry;
+    }
+    return top ? top.title : null;
+  }
+
+  /** Deliver a title: ask the host when embedded, else write this document's own. May throw. */
+  function send(title) {
+    if (embedded) {
+      win.parent.postMessage({ type: TITLE_MESSAGE_TYPE, title }, trustedParentOrigin);
+      return;
+    }
+    const doc = win && win.document;
+    if (!doc) return;
+    if (originalDocumentTitle === undefined) originalDocumentTitle = doc.title;
+    doc.title = title === null ? originalDocumentTitle : title;
+  }
+
+  function settle() {
+    failing = null;
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+  }
+
+  function apply() {
+    const title = effectiveTitle();
+    // Never announce "no title" before any title was delivered.
+    if (title === lastApplied || (lastApplied === undefined && title === null)) {
+      settle();
+      return;
+    }
+    try {
+      send(title);
+      lastApplied = title; // only once it is actually out, so a failed send is not mistaken for a delivered one
+      settle();
+    } catch {
+      // Cosmetic — never throw into the app. Try this title again shortly, a bounded number of
+      // times; then treat it as delivered, so a parent that always throws is not asked forever.
+      const retries = failing && failing.title === title ? failing.retries : 0;
+      settle();
+      if (retries >= MAX_TITLE_RETRIES) {
+        lastApplied = title;
+        return;
+      }
+      failing = { title, retries: retries + 1 };
+      if (typeof setTimeout !== 'function') return;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        flush();
+      }, TITLE_RETRY_DELAY_MS * failing.retries);
+      // Under Node (tests, SSR) a pending retry must not hold the process open.
+      if (retryTimer && typeof retryTimer.unref === 'function') retryTimer.unref();
+    }
+  }
+
+  /** \`apply()\` from a microtask or a timer, where an error would surface as an uncaught one. */
+  function flush() {
+    try {
+      apply();
+    } catch {
+      /* cosmetic */
+    }
+  }
+
+  /** Deliver whatever title is left standing once the current synchronous work is done. */
+  function schedule() {
+    if (flushQueued) return;
+    flushQueued = true;
+    deferTitle(() => {
+      flushQueued = false;
+      flush();
+    });
+  }
+
+  return {
+    reserve() {
+      seq += 1;
+      return { seq };
+    },
+    claim(handle, title) {
+      entries.set(handle, { seq: handle.seq, title: normalizeTitle(title) });
+      schedule();
+    },
+    release(handle) {
+      if (entries.delete(handle)) schedule();
+    },
+    set(title) {
+      const normalized = normalizeTitle(title);
+      if (normalized === null) {
+        if (entries.delete(IMPERATIVE_TITLE)) schedule();
+        return;
+      }
+      seq += 1;
+      entries.set(IMPERATIVE_TITLE, { seq, title: normalized });
+      schedule();
+    },
+  };
+}
+
+let titleController = null;
+
+function getTitleController() {
+  if (!titleController) titleController = createTitleController();
+  return titleController;
+}
+
+/**
+ * Set the browser tab's title. Call it from event handlers, effects or non-component code — not
+ * during render.
+ *
+ * Inside BorgIQ this asks the hosting page to retitle the tab. Only the app's own page honours it;
+ * a page that embeds the app some other way (an interface page, for instance) keeps its own title.
+ * The page shows the text with no \` | BorgIQ\` suffix, after removing control and invisible
+ * formatting characters and cutting it at 150 characters. Outside BorgIQ (local \`npm run dev\`) it
+ * writes this document's own \`document.title\`.
+ *
+ * There is ONE \`setTitle\` slot for the whole app: each call replaces the last. It outranks every
+ * \`useTitle\` mounted at that moment; a \`useTitle\` that mounts afterwards outranks it in turn.
+ * \`null\` (or a blank string) withdraws it, and the tab goes back to whatever a mounted \`useTitle\`
+ * claims, else the app's \`title\` option, else BorgIQ's default (locally: the document's original
+ * title). So clear a transient \`setTitle\` rather than leaving it, and prefer the hook for per-route
+ * titles, so that leaving a route gives the title back.
+ *
+ * Fire-and-forget: it returns nothing, never throws, and does nothing visible on a BorgIQ page that
+ * predates it.
+ */
+export function setTitle(title) {
+  try {
+    getTitleController().set(title);
+  } catch {
+    /* cosmetic — never throw into the app */
+  }
+}
+
+/**
+ * React hook — the browser tab's title for as long as the component is mounted; see \`setTitle\` for
+ * where it applies. Updates when \`title\` changes, and gives the title back on unmount. When several
+ * mounted components call it, the one that first rendered last wins — a page over its layout, a
+ * newly mounted route over what was there — so a layout can set a general title and each route a
+ * specific one. \`null\`, \`undefined\` or a blank string claims nothing (handy while data is loading),
+ * and the title falls to the next claim down.
+ *
+ *   function OrderPage({ order }) {
+ *     useTitle(order ? 'Order ' + order.number : null);
+ *     …
+ *   }
+ */
+export function useTitle(title) {
+  // Reserved at first render (parents render before children), so nesting order — not effect order,
+  // which runs children first — decides which claim wins.
+  const handleRef = useRef(null);
+  if (handleRef.current === null) {
+    try {
+      handleRef.current = getTitleController().reserve();
+    } catch {
+      handleRef.current = { seq: 0 }; // ranks below every real claim
+    }
+  }
+
+  // Two effects on purpose: a title change must re-claim in place. One effect with a cleanup would
+  // release first, handing the title to the claim underneath on every change.
+  useEffect(() => {
+    try {
+      getTitleController().claim(handleRef.current, title);
+    } catch {
+      /* cosmetic */
+    }
+  }, [title]);
+
+  useEffect(() => () => {
+    try {
+      getTitleController().release(handleRef.current);
+    } catch {
+      /* cosmetic */
+    }
+  }, []);
+}
+
+export const version = '2.4.0';
 `;
 
 const INDEX_D_TS = `// Hand-maintained type declarations for @borgiq/actors (no build step). Fetch-protocol surface.
@@ -558,6 +796,28 @@ export declare function getSession(): Promise<SessionUser>;
 
 /** Router basename for the token path (from \`document.baseURI\`, i.e. the injected \`<base>\` tag). */
 export declare function getBasename(): string;
+
+/**
+ * Set the browser tab's title — from handlers, effects or non-component code, not during render.
+ * One slot for the whole app: each call replaces the last. It outranks the \`useTitle\` calls mounted
+ * at that moment; a \`useTitle\` that mounts later outranks it. \`null\`, \`undefined\` or a blank string
+ * withdraws it, and the tab goes back to a mounted \`useTitle\`, else the app's \`title\` option, else
+ * BorgIQ's default.
+ *
+ * Inside BorgIQ this asks the hosting page (only the app's own page honours it, not a page that
+ * embeds the app), which shows the text with no suffix, removes control and invisible formatting
+ * characters and cuts it at 150 characters; outside BorgIQ (local dev) it writes \`document.title\`.
+ * Never throws; a no-op on a BorgIQ page that predates it.
+ */
+export declare function setTitle(title: string | null | undefined): void;
+
+/**
+ * React hook — the tab title while the component is mounted; updates with \`title\`, gives the title
+ * back on unmount. With several mounted callers the one that first rendered last wins: a page over
+ * its layout, a newly mounted route over what was there. \`null\`, \`undefined\` or a blank string
+ * claims nothing, and the title falls to the next claim down.
+ */
+export declare function useTitle(title: string | null | undefined): void;
 
 export declare const version: string;
 `;

@@ -191,6 +191,18 @@ describe('bundle companion files', () => {
     }
   });
 
+  it('AGENTS.md shows how to set the browser tab title, at runtime and statically', () => {
+    for (const needle of [
+      'useTitle()',
+      "import { useTitle } from '@borgiq/actors'",
+      'setTitle(null)',
+      'configuration.options.title',
+      'Inside BorgIQ the <title> in index.html is not used for the tab',
+    ]) {
+      expect(BUNDLE_AGENTS_MD).toContain(needle);
+    }
+  });
+
   it('.gitignore reserves the local dev artifacts dir', () => {
     expect(BUNDLE_GITIGNORE).toContain('.borgiq/');
   });
