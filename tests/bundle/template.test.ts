@@ -197,7 +197,7 @@ describe('bundle companion files', () => {
       "import { useTitle } from '@borgiq/actors'",
       'setTitle(null)',
       'configuration.options.title',
-      'The <title> in index.html is not used for the tab',
+      'Inside BorgIQ the <title> in index.html is not used for the tab',
     ]) {
       expect(BUNDLE_AGENTS_MD).toContain(needle);
     }
