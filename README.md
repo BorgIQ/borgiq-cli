@@ -835,7 +835,7 @@ inputs:
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--root-path <path>` | Yes | Data root path: `ctx`, `request`, `inputs`, or `user` |
+| `--root-path <path>` | Yes | Data root path: `ctx`, `trigger`, or `inputs`. `trigger` is only available for trigger actors, and `inputs` only for a job that ran as an AI agent, agent harness or MCP tool call |
 
 ---
 
@@ -844,13 +844,19 @@ inputs:
 | Command | Description |
 |---------|-------------|
 | `borgiq flowrun-results summaries` | Get result summaries for a job |
-| `borgiq flowrun-results data <resultId>` | Get full result data |
+| `borgiq flowrun-results data <resultId>` | Get one root of a job result: its memory or its emitted messages |
 
 **`borgiq flowrun-results summaries`**
 
 | Option | Required | Description |
 |--------|----------|-------------|
 | `--job-id <id>` | Yes | Flow run job ID |
+
+**`borgiq flowrun-results data`**
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--root-path <path>` | Yes | Result root: `memory` (the actor's memory) or `messages` (the messages it emitted, by output port) |
 
 ---
 
@@ -1158,7 +1164,7 @@ borgiq flowruns list --canvas cnv_abc123
 borgiq flowruns summary <flowrun-id>
 
 # Inspect a specific job's runtime data
-borgiq flowrun-jobs runtime-data <job-id> --root-path request
+borgiq flowrun-jobs runtime-data <job-id> --root-path ctx
 
 # View AI agent tool-use timeline
 borgiq flowrun-jobs ai-timeline <job-id>

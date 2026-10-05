@@ -238,7 +238,10 @@ export interface ManualTriggerRequest {
 }
 
 /** Valid root paths for job runtime data */
-export type RuntimeDataRootPath = 'ctx' | 'request' | 'inputs' | 'user';
+export type RuntimeDataRootPath = 'ctx' | 'trigger' | 'inputs';
+
+/** Valid root paths for job result data: the actor's memory or the messages it emitted */
+export type JobResultDataRootPath = 'memory' | 'messages';
 
 /** Actor type definition */
 export interface BIQActorType {
