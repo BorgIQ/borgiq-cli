@@ -29,6 +29,7 @@ import type {
   BIQAssetMetadata,
   BIQConnectionType,
   RuntimeDataRootPath,
+  JobResultDataRootPath,
   BIQCanvasActor,
   BIQCanvasActorFlow,
   BIQActorVerification,
@@ -586,8 +587,8 @@ export class BorgIQClient {
     return raw.summary;
   }
 
-  async getJobResultData(org: string, workspace: string, resultId: string): Promise<unknown> {
-    return this.request('GET', `${this.wkspPath(org, workspace)}/flowrunJobResults/${resultId}/data`);
+  async getJobResultData(org: string, workspace: string, resultId: string, rootPath: JobResultDataRootPath): Promise<unknown> {
+    return this.request('GET', `${this.wkspPath(org, workspace)}/flowrunJobResults/${resultId}/data?rootPath=${encodeURIComponent(rootPath)}`);
   }
 
   // ── Flowrun Messages ──────────────────────────────────

@@ -1,5 +1,6 @@
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 
+import type { RuntimeDataRootPath } from '../../client/types.js';
 import { withListOptions } from '../../lib/listOptions.js';
 import { withCanvasOption } from '../../lib/canvasFlag.js';
 import { flowrunJobsList } from './list.js';
@@ -8,6 +9,8 @@ import { flowrunJobsReRun } from './re-run.js';
 import { flowrunJobsRuntimeData } from './runtime-data.js';
 import { flowrunJobsAiTimeline } from './ai-timeline.js';
 import { flowrunJobsSourceMessage } from './source-message.js';
+
+const RUNTIME_DATA_ROOT_PATHS = ['ctx', 'trigger', 'inputs'] satisfies RuntimeDataRootPath[];
 
 export const registerFlowrunJobsCommands = (program: Command): void => {
   const jobs = program.command('flowrun-jobs').description('Manage flow run jobs');
@@ -32,7 +35,7 @@ export const registerFlowrunJobsCommands = (program: Command): void => {
   jobs
     .command('runtime-data <jobId>')
     .description('Get runtime data for a job (what the actor received)')
-    .requiredOption('--root-path <path>', 'Data root path: ctx, request, inputs, or user')
+    .addOption(new Option('--root-path <path>', 'Data root path').choices(RUNTIME_DATA_ROOT_PATHS).makeOptionMandatory())
     .action(flowrunJobsRuntimeData);
 
   jobs

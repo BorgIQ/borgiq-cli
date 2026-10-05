@@ -1,9 +1,10 @@
 import { createClientWithContext } from '../../lib/context.js';
 import type { GlobalOptions } from '../../lib/context.js';
+import type { RuntimeDataRootPath } from '../../client/types.js';
 import { output } from '../../output/index.js';
 import { handleError } from '../../lib/errors.js';
 
-export const flowrunJobsRuntimeData = async (jobId: string, options: { rootPath: 'ctx' | 'request' | 'inputs' | 'user' }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
+export const flowrunJobsRuntimeData = async (jobId: string, options: { rootPath: RuntimeDataRootPath }, command: { parent: { parent: { opts: () => GlobalOptions } } }): Promise<void> => {
   try {
     const globalOpts = command.parent.parent.opts();
     const { client, ctx } = createClientWithContext(globalOpts);
