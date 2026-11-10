@@ -25,6 +25,7 @@ export const BIQ_ACTOR_TYPES = [
   'InterfaceActor',
   'InterfaceStatusActor',
   'InterfaceTriggerActor',
+  'JavaScriptActor',
   'McpServerActor',
   'MessageProcessorActor',
   'PythonActor',
@@ -105,6 +106,8 @@ export const DENO_ACTOR_ENTRYPOINT = 'main.ts';
 export const DENO_TEST_ACTOR_ENTRYPOINT = 'main.ts';
 export const UNIVERSAL_TRIGGER_ACTOR_ENTRYPOINT = 'main.ts';
 export const PYTHON_ACTOR_ENTRYPOINT = 'main.py';
+/** The JavaScript actor runs DenoActor code unchanged on another engine, so it keeps `main.ts`. */
+export const JS_ACTOR_ENTRYPOINT = 'main.ts';
 
 /**
  * Reserved by the BorgIQ runtime for Deno, Deno Test, and Universal Trigger actors.
@@ -124,6 +127,15 @@ export const DENO_RESERVED_PATHS: ReservedPathSet = {
     'package.json',
   ],
   prefixes: ['shared/', 'node_modules/'],
+};
+
+/**
+ * Reserved by the BorgIQ runtime for JavaScript actors: the names that would change how their code is
+ * bundled. Nothing of the runtime's sits beside the user's files, so the Deno bootstrap's names are free.
+ */
+export const JS_ACTOR_RESERVED_PATHS: ReservedPathSet = {
+  exact: ['package.json', 'tsconfig.json', 'jsconfig.json'],
+  prefixes: ['node_modules/'],
 };
 
 /** Reserved by the BorgIQ runtime for Python actors. */
@@ -206,6 +218,15 @@ export const BUNDLE_PATH_REGISTRY: Readonly<Record<BundleActorType, BundlePathSp
   HttpRequestActor: { category: 'tasks', folder: 'http-request', codeFiles: [] },
   InterfaceActor: { category: 'tasks', folder: 'interface', codeFiles: [] },
   InterfaceStatusActor: { category: 'tasks', folder: 'interface-status', codeFiles: [] },
+  JavaScriptActor: {
+    category: 'tasks',
+    folder: 'javascript',
+    codeFiles: [],
+    projectDir: true,
+    entrypoint: JS_ACTOR_ENTRYPOINT,
+    reservedPaths: JS_ACTOR_RESERVED_PATHS,
+    ignore: DENO_IGNORE,
+  },
   MessageProcessorActor: { category: 'tasks', folder: 'message-processor', codeFiles: [] },
   PythonActor: {
     category: 'tasks',

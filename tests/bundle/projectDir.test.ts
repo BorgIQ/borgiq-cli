@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DENO_RESERVED_PATHS, PYTHON_RESERVED_PATHS } from '../../src/lib/bundle/registry.js';
+import { DENO_RESERVED_PATHS, JS_ACTOR_RESERVED_PATHS, PYTHON_RESERVED_PATHS } from '../../src/lib/bundle/registry.js';
 import {
   MAX_CODE_DIR_FILES,
   MAX_CODE_DIR_TOTAL_BYTES,
@@ -31,6 +31,9 @@ describe('project-dir path helpers', () => {
   it('maps every project type to its code prefix and back', () => {
     expect(projectCodePrefix('DenoActor', TASK_ID)).toBe(`actors/tasks/deno/${TASK_ID}/code/`);
     expect(projectCodePrefix('PythonActor', TASK_ID)).toBe(`actors/tasks/python/${TASK_ID}/code/`);
+    expect(projectCodePrefix('JavaScriptActor', TASK_ID)).toBe(`actors/tasks/javascript/${TASK_ID}/code/`);
+    expect(splitProjectCodePath(`actors/tasks/javascript/${TASK_ID}/code/lib/x.ts`))
+      .toEqual({ actorType: 'JavaScriptActor', actorId: TASK_ID, projectPath: 'lib/x.ts' });
     expect(projectCodePrefix('UniversalTriggerActor', TASK_ID)).toBe(`actors/triggers/universal/${TASK_ID}/code/`);
 
     expect(splitProjectCodePath(`actors/tasks/deno/${TASK_ID}/code/lib/util.ts`))
@@ -54,6 +57,7 @@ describe('project-dir path helpers', () => {
     expect([...PROJECT_DIR_TYPES].sort()).toEqual([
       'DenoActor',
       'DenoTestActor',
+      'JavaScriptActor',
       'PythonActor',
       'ReactAppTriggerActor',
       'UniversalTriggerActor',
@@ -134,6 +138,16 @@ describe('matchReservedPath', () => {
     expect(matchReservedPath('handler.py', DENO_RESERVED_PATHS)).toBeNull();
     expect(matchReservedPath('main.py', PYTHON_RESERVED_PATHS)).toBeNull();
     expect(matchReservedPath('lib/borgiq/util.py', PYTHON_RESERVED_PATHS)).toBeNull();
+  });
+});
+
+describe('JavaScriptActor reserved paths', () => {
+  it('reserves what changes bundling, and leaves the Deno bootstrap\'s names free', () => {
+    expect(matchReservedPath('package.json', JS_ACTOR_RESERVED_PATHS)).toBe('package.json');
+    expect(matchReservedPath('TSConfig.json', JS_ACTOR_RESERVED_PATHS)).toBe('tsconfig.json');
+    expect(matchReservedPath('node_modules/x/index.js', JS_ACTOR_RESERVED_PATHS)).toBe('node_modules/');
+    expect(matchReservedPath('server.ts', JS_ACTOR_RESERVED_PATHS)).toBeNull();
+    expect(matchReservedPath('shared/util.ts', JS_ACTOR_RESERVED_PATHS)).toBeNull();
   });
 });
 
