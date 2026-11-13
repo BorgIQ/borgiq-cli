@@ -582,6 +582,10 @@ export async function validateYaml(
           const result = validateDenoActor(actorId, config, allMsgVars);
           errors.push(...result.errors);
           warnings.push(...result.warnings);
+        } else if (actor.type === "JavaScriptActor") {
+          const result = validateJavaScriptActor(actorId, config, allMsgVars);
+          errors.push(...result.errors);
+          warnings.push(...result.warnings);
         } else if (actor.type === "PythonActor") {
           const result = validatePythonActor(actorId, config, allMsgVars);
           errors.push(...result.errors);
@@ -966,6 +970,71 @@ function validatePythonActor(
     validateMsgVarReferences(actorId, code, allMsgVars, errors, warnings);
   }
 
+  return { errors, warnings };
+}
+
+/** every module specifier the code imports (static, side-effect, re-export and literal dynamic) */
+function importSpecifiers(code: string): string[] {
+  const found = new Set<string>();
+  const patterns = [
+    /\b(?:import|export)\s[^'";]*?\bfrom\s*["']([^"']+)["']/g,
+    /\bimport\s*["']([^"']+)["']/g,
+    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of code.matchAll(pattern)) found.add(match[1]);
+  }
+  return [...found];
+}
+
+const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+/** an `npm:`/`jsr:` specifier's version, or undefined when it names none */
+function packageVersion(specifier: string): string | undefined {
+  const rest = specifier.slice(4).replace(/^\//, "");
+  const head = rest.startsWith("@") ? rest.split("/").slice(0, 2).join("/") : rest.split("/")[0];
+  const at = head.lastIndexOf("@");
+  return at > 0 ? head.slice(at + 1) : undefined;
+}
+
+/**
+ * The JavaScriptActor: the DenoActor's checks (the same contract and SDK), plus what its bundler
+ * refuses before anything runs. It runs on workerd, not Deno: there is no `Deno`, every import is a
+ * relative file, `@borgiq/actors`, a `node:` built-in, or an `npm:`/`jsr:` package at an exact version.
+ */
+function validateJavaScriptActor(
+  actorId: string,
+  config: ActorConfiguration,
+  allMsgVars?: Set<string>,
+): { errors: string[]; warnings: string[] } {
+  const { errors, warnings: denoWarnings } = validateDenoActor(actorId, config, allMsgVars);
+  // the bundler refuses URL imports outright, so the Deno advice about deno.land does not apply
+  const warnings = denoWarnings.filter((w) => !w.includes("deno.land"));
+  const prefix = `Actor '${actorId}'`;
+  if (config?.options?.code) return { errors, warnings };
+  const code = actorSourceText(config);
+
+  if (/\bDeno\./.test(code)) {
+    errors.push(`${prefix}: 'Deno' does not exist in a JavaScriptActor (it runs on workerd). Use node: built-ins, e.g. \`import { readFileSync } from "node:fs"\`.`);
+  }
+  for (const specifier of importSpecifiers(code)) {
+    if (specifier.startsWith(".") || specifier === "@borgiq/actors" || specifier.startsWith("node:")) continue;
+    if (specifier.startsWith("npm:") || specifier.startsWith("jsr:")) {
+      const version = packageVersion(specifier);
+      if (!version || !EXACT_VERSION.test(version)) {
+        errors.push(`${prefix}: \`${specifier}\` must pin an exact version, e.g. \`${specifier.slice(0, 4)}name@1.2.3\` (ranges and tags are refused when the actor is built)`);
+      }
+      continue;
+    }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(specifier)) {
+      errors.push(`${prefix}: \`${specifier}\` cannot be imported: a JavaScriptActor imports packages as npm: or jsr: with an exact version, never from a URL`);
+      continue;
+    }
+    errors.push(`${prefix}: \`${specifier}\` is a bare import: write \`npm:${specifier}@<exact version>\`, or \`node:${specifier}\` for a Node.js built-in`);
+  }
+  if (config?.options && "allowFs" in config.options) {
+    warnings.push(`${prefix}: 'allowFs' does nothing in a JavaScriptActor: node:fs is an in-memory /tmp for each invocation`);
+  }
   return { errors, warnings };
 }
 

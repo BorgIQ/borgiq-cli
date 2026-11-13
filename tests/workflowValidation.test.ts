@@ -98,3 +98,43 @@ describe('validateYaml: multi-file code actors', () => {
     expect(result.errors).toEqual([]);
   });
 });
+
+describe('validateYaml: JavaScriptActor', () => {
+  const js = (content: string, options: Record<string, unknown> = {}) =>
+    validateYaml(workflow({ options, codeDir: [{ path: 'main.ts', content }] }, 'JavaScriptActor'));
+
+  it('accepts what its bundler accepts', async () => {
+    const result = await js([
+      'import { stashFile } from "@borgiq/actors";',
+      'import { readFileSync } from "node:fs";',
+      'import escape from "npm:escape-html@1.0.3";',
+      'import { join } from "jsr:@std/path@1.0.8/posix";',
+      'import { helper } from "./lib/helper.ts";',
+      'export default async function receive() { return { results: escape(join("a", "b")) }; }',
+    ].join('\n'), { allowNet: true, allowNetList: ['api.example.com'] });
+    expect(result.errors).toEqual([]);
+  });
+
+  it('runs the DenoActor checks: mountFile and stashFile need allowNet', async () => {
+    const result = await js('import { stashFile } from "@borgiq/actors";\nexport default async function receive() { await stashFile("x"); return { results: 1 }; }');
+    expect(result.errors).toEqual([expect.stringContaining('stashFile which requires network access')]);
+  });
+
+  it.each([
+    ['a floating npm: version', 'import x from "npm:escape-html";', 'must pin an exact version'],
+    ['a range', 'import x from "npm:escape-html@^1.0.3";', 'must pin an exact version'],
+    ['a jsr: tag', 'import { join } from "jsr:@std/path@latest";', 'must pin an exact version'],
+    ['an https: import', 'import x from "https://deno.land/x/y/mod.ts";', 'never from a URL'],
+    ['a bare import', 'import _ from "lodash";', 'is a bare import'],
+    ['a dynamic bare import', 'const m = await import("zod");', 'is a bare import'],
+    ['Deno', 'const t = await Deno.makeTempDir();', "'Deno' does not exist in a JavaScriptActor"],
+  ])('refuses %s', async (_name, line, text) => {
+    const result = await js(`${line}\nexport default async function receive() { return { results: 1 }; }`);
+    expect(result.errors).toEqual([expect.stringContaining(text)]);
+  });
+
+  it('warns that allowFs does nothing', async () => {
+    const result = await js('export default async function receive() { return { results: 1 }; }', { allowFs: true });
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining("'allowFs' does nothing")]));
+  });
+});
