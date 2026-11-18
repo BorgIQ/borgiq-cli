@@ -125,9 +125,10 @@ describe('validateYaml: JavaScriptActor', () => {
     ['a range', 'import x from "npm:escape-html@^1.0.3";', 'must pin an exact version'],
     ['a jsr: tag', 'import { join } from "jsr:@std/path@latest";', 'must pin an exact version'],
     ['an https: import', 'import x from "https://deno.land/x/y/mod.ts";', 'never from a URL'],
-    ['a bare import', 'import _ from "lodash";', 'is a bare import'],
-    ['a dynamic bare import', 'const m = await import("zod");', 'is a bare import'],
-    ['Deno', 'const t = await Deno.makeTempDir();', "'Deno' does not exist in a JavaScriptActor"],
+    ['a bare import', 'import _ from "lodash";', 'is a bare specifier'],
+    ['a dynamic bare import', 'const m = await import("zod");', 'is a bare specifier'],
+    ['a node: name workerd lacks', 'import WebSocket from "node:ws";', '`node:ws` is not a Node.js built-in module the JavaScript actor provides'],
+    ['an absolute path', 'import x from "/etc/passwd";', 'is an absolute path'],
   ])('refuses %s', async (_name, line, text) => {
     const result = await js(`${line}\nexport default async function receive() { return { results: 1 }; }`);
     expect(result.errors).toEqual([expect.stringContaining(text)]);
@@ -136,5 +137,128 @@ describe('validateYaml: JavaScriptActor', () => {
   it('warns that allowFs does nothing', async () => {
     const result = await js('export default async function receive() { return { results: 1 }; }', { allowFs: true });
     expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining("'allowFs' does nothing")]));
+  });
+  const receive = 'export default async function receive() { return { results: 1 }; }';
+  const files = (codeDir: Array<{ path: string; content: string }>) =>
+    validateYaml(workflow({ options: {}, codeDir }, 'JavaScriptActor'));
+
+  it('warns (does not refuse) on Deno. reached in code: it fails only if it runs', async () => {
+    const result = await js(`const t = await Deno.makeTempDir();\n${receive}`);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining("'Deno' does not exist in a JavaScriptActor")]));
+  });
+
+  it('warns on a guarded Deno use, and never errors', async () => {
+    const result = await js(`const v = typeof Deno !== "undefined" ? Deno.env.get("X") : process.env.X;\n${receive}`);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining("'Deno' does not exist")]));
+  });
+
+  it('ignores Deno. in comments, strings, template text and non-source files', async () => {
+    const result = await files([
+      {
+        path: 'main.ts',
+        content: [
+          '// ported from Deno.readFile',
+          '/* Deno.env.get("X") */',
+          'const s = "Deno.exit()";',
+          'const t = `call Deno.serve here`;',
+          receive,
+        ].join('\n'),
+      },
+      { path: 'README.md', content: 'Uses `Deno.readTextFile` in the original.' },
+    ]);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.filter((w) => w.includes('Deno'))).toEqual([]);
+  });
+
+  it('ignores imports in README.md, comments and string/template literals', async () => {
+    const result = await files([
+      {
+        path: 'main.ts',
+        content: [
+          '// import _ from "lodash";',
+          '/* import x from "https://deno.land/x/y/mod.ts"; */',
+          "const s = 'import y from \"zod\"';",
+          'const t = `import z from "left-pad"; ${1 + 1} await import("chalk")`;',
+          'const re = /import a from "b"/;',
+          receive,
+        ].join('\n'),
+      },
+      { path: 'README.md', content: '```ts\nimport _ from "lodash";\nimport x from "node:ws";\n```\n' },
+      { path: 'data.json', content: '{ "note": "import y from \\"zod\\"" }' },
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('still checks imports in a ${} expression and in every source file', async () => {
+    const result = await files([
+      { path: 'main.ts', content: `const m = \`\${await import("zod")}\`;\n${receive}` },
+      { path: 'lib/util.mjs', content: 'import _ from "lodash";\nexport const x = 1;\n' },
+    ]);
+    expect(result.errors).toEqual([
+      expect.stringContaining('`zod` is a bare specifier'),
+      expect.stringContaining('`lodash` is a bare specifier'),
+    ]);
+  });
+
+  it.each([
+    ['import type', 'import type { Schema } from "zod";'],
+    ['import type default', 'import type Lodash from "lodash";'],
+    ['import type namespace', 'import type * as Z from "zod";'],
+    ['every specifier type-marked', 'import { type A, type B } from "pkg";'],
+    ['export type', 'export type { Options } from "pkg";'],
+    ['export type *', 'export type * from "pkg";'],
+    ['export with type-marked specifiers', 'export { type A } from "pkg";'],
+  ])('skips a type-only import (%s): esbuild drops it before resolving', async (_name, line) => {
+    const result = await js(`${line}\n${receive}`);
+    expect(result.errors).toEqual([]);
+  });
+
+  it.each([
+    ['a value next to a type', 'import { type A, b } from "pkg";'],
+    ['a default named type', 'import type from "pkg";'],
+    ['the value `type`, renamed', 'import { type as t } from "pkg";'],
+  ])('checks an import that is not type-only (%s)', async (_name, line) => {
+    const result = await js(`${line}\n${receive}`);
+    expect(result.errors).toEqual([expect.stringContaining('`pkg` is a bare specifier')]);
+  });
+
+  it.each([
+    ['lodash/chunk', 'npm:lodash@<exact version>/chunk'],
+    ['@scope/pkg/sub/path', 'npm:@scope/pkg@<exact version>/sub/path'],
+    ['@scope/pkg', 'npm:@scope/pkg@<exact version>'],
+    ['lodash', 'npm:lodash@<exact version>'],
+  ])('puts the version on the package name in the hint for %s', async (specifier, pinned) => {
+    const result = await js(`import x from "${specifier}";\n${receive}`);
+    expect(result.errors).toEqual([
+      `Actor '${ACTOR_ID}': \`${specifier}\` is a bare specifier: import packages as \`${pinned}\``,
+    ]);
+  });
+
+  it.each([
+    ['fs', 'node:fs'],
+    ['fs/promises', 'node:fs/promises'],
+  ])('offers node: for a bare Node.js built-in workerd provides (%s)', async (specifier, node) => {
+    const result = await js(`import x from "${specifier}";\n${receive}`);
+    expect(result.errors).toEqual([expect.stringContaining(`(for the Node.js built-in, \`${node}\`)`)]);
+  });
+
+  it.each(['lodash', 'ws', 'test', 'sqlite'])('does not offer node: for %s (no bare workerd built-in)', async (specifier) => {
+    const result = await js(`import x from "${specifier}";\n${receive}`);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).not.toContain('node:');
+  });
+
+  it.each(['node:fs', 'node:fs/promises', 'node:crypto', 'node:test', 'node:sqlite'])('accepts %s, a built-in workerd provides', async (specifier) => {
+    const result = await js(`import * as m from "${specifier}";\n${receive}`);
+    expect(result.errors).toEqual([]);
+  });
+
+  it.each(['node:ws', 'node:sea', 'node:undici'])('refuses %s, which workerd does not provide', async (specifier) => {
+    const result = await js(`import m from "${specifier}";\n${receive}`);
+    expect(result.errors).toEqual([
+      `Actor '${ACTOR_ID}': \`${specifier}\` is not a Node.js built-in module the JavaScript actor provides`,
+    ]);
   });
 });
