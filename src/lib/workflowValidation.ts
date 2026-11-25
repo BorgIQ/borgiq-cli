@@ -981,14 +981,15 @@ const JS_SOURCE_FILE = /\.(?:ts|tsx|js|jsx|mjs|cjs|mts|cts)$/i;
  * A JavaScriptActor's source files: the `configuration.codeDir` files with a source extension,
  * or the single string a document written before multi-file support carries.
  */
-function jsActorSources(config: ActorConfiguration): string[] {
+function jsActorSources(config: ActorConfiguration): { path: string; content: string }[] {
   const codeDir = config?.codeDir;
   if (Array.isArray(codeDir)) {
-    return codeDir
-      .filter((file) => typeof file?.path === "string" && JS_SOURCE_FILE.test(file.path))
-      .map((file) => (typeof file.content === "string" ? file.content : ""));
+    return codeDir.flatMap((file) => {
+      if (typeof file?.path !== "string" || !JS_SOURCE_FILE.test(file.path)) return [];
+      return [{ path: file.path, content: typeof file.content === "string" ? file.content : "" }];
+    });
   }
-  return typeof config?.code === "string" ? [config.code] : [];
+  return typeof config?.code === "string" ? [{ path: JS_ACTOR_ENTRYPOINT, content: config.code }] : [];
 }
 
 /** words after which a `/` starts a regular expression rather than a division */
@@ -1177,34 +1178,44 @@ function validateJavaScriptActor(
 
   // the bundler does not refuse `Deno`: code that reaches it throws a ReferenceError at run time,
   // and a guarded use (`typeof Deno !== "undefined" ? … : …`) runs fine
-  if (sources.some(usesDenoGlobal)) {
+  if (sources.some(({ content }) => usesDenoGlobal(content))) {
     warnings.push(`${prefix}: 'Deno' does not exist in a JavaScriptActor (it runs on workerd): code that reaches \`Deno.\` throws a ReferenceError. Use node: built-ins, e.g. \`import { readFileSync } from "node:fs"\`.`);
   }
-  for (const specifier of new Set(sources.flatMap(importSpecifiers))) {
+  // The build resolves the full import graph. Imports outside the entrypoint are advisory.
+  const imports = new Map<string, string>();
+  for (const { path, content } of sources) {
+    for (const specifier of importSpecifiers(content)) {
+      if (path === JS_ACTOR_ENTRYPOINT || !imports.has(specifier)) imports.set(specifier, path);
+    }
+  }
+  for (const [specifier, path] of imports) {
+    const entrypoint = path === JS_ACTOR_ENTRYPOINT;
+    const diagnostics = entrypoint ? errors : warnings;
+    const location = entrypoint ? prefix : `${prefix} (${path}, if bundled)`;
     if (specifier.startsWith(".") || specifier === "@borgiq/actors") continue;
     if (specifier.startsWith("node:")) {
       if (!isWorkerdNodeModule(specifier)) {
-        errors.push(`${prefix}: \`${specifier}\` is not a Node.js built-in module the JavaScript actor provides`);
+        diagnostics.push(`${location}: \`${specifier}\` is not a Node.js built-in module the JavaScript actor provides`);
       }
       continue;
     }
     if (specifier.startsWith("npm:") || specifier.startsWith("jsr:")) {
       const version = packageVersion(specifier);
       if (!version || !EXACT_VERSION.test(version)) {
-        errors.push(`${prefix}: \`${specifier}\` must pin an exact version, e.g. \`${specifier.slice(0, 4)}name@1.2.3\` (ranges and tags are refused when the actor is built)`);
+        diagnostics.push(`${location}: \`${specifier}\` must pin an exact version, e.g. \`${specifier.slice(0, 4)}name@1.2.3\` (ranges and tags are refused when the actor is built)`);
       }
       continue;
     }
     if (/^[a-z][a-z0-9+.-]*:/i.test(specifier)) {
-      errors.push(`${prefix}: \`${specifier}\` cannot be imported: a JavaScriptActor imports packages as npm: or jsr: with an exact version, never from a URL`);
+      diagnostics.push(`${location}: \`${specifier}\` cannot be imported: a JavaScriptActor imports packages as npm: or jsr: with an exact version, never from a URL`);
       continue;
     }
     if (specifier.startsWith("/")) {
-      errors.push(`${prefix}: \`${specifier}\` is an absolute path: imports must stay within your own files`);
+      diagnostics.push(`${location}: \`${specifier}\` is an absolute path: imports must stay within your own files`);
       continue;
     }
     const builtin = isWorkerdNodeModule(specifier) ? ` (for the Node.js built-in, \`node:${specifier}\`)` : "";
-    errors.push(`${prefix}: \`${specifier}\` is a bare specifier: import packages as \`${pinnedForm(specifier)}\`${builtin}`);
+    diagnostics.push(`${location}: \`${specifier}\` is a bare specifier: import packages as \`${pinnedForm(specifier)}\`${builtin}`);
   }
   if (config?.options && "allowFs" in config.options) {
     warnings.push(`${prefix}: 'allowFs' does nothing in a JavaScriptActor: node:fs is an in-memory /tmp for each invocation`);

@@ -2,9 +2,7 @@
 // provides at the actor's pinned compatibility settings, NOT the ones the host process knows
 // (Node's or Bun's `isBuiltin()` would say yes to names workerd lacks, such as `ws`).
 //
-// Copied from borgiq-sandbox's packages/js-actor/src/build/node-modules.ts, which the actor's
-// bundler judges `node:` imports against. Keep the two in sync: when that list changes, change
-// this one the same way.
+// Keep this list in sync with the JavaScript actor bundler's `node:` module list.
 
 export const WORKERD_NODE_MODULES: readonly string[] = [
   "assert", "assert/strict", "async_hooks", "buffer", "child_process", "cluster", "console", "constants",

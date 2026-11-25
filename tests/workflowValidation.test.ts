@@ -191,15 +191,17 @@ describe('validateYaml: JavaScriptActor', () => {
     expect(result.errors).toEqual([]);
   });
 
-  it('still checks imports in a ${} expression and in every source file', async () => {
+  it('checks imports in a ${} expression and warns about unused source files', async () => {
     const result = await files([
       { path: 'main.ts', content: `const m = \`\${await import("zod")}\`;\n${receive}` },
       { path: 'lib/util.mjs', content: 'import _ from "lodash";\nexport const x = 1;\n' },
     ]);
     expect(result.errors).toEqual([
       expect.stringContaining('`zod` is a bare specifier'),
-      expect.stringContaining('`lodash` is a bare specifier'),
     ]);
+    expect(result.warnings).toContainEqual(
+      expect.stringContaining('(lib/util.mjs, if bundled): `lodash` is a bare specifier'),
+    );
   });
 
   it.each([
