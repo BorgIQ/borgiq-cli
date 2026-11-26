@@ -4,6 +4,7 @@ import {
   BIQ_ACTOR_TYPES,
   BUNDLE_PATH_REGISTRY,
   DENO_RESERVED_PATHS,
+  JS_ACTOR_RESERVED_PATHS,
   PYTHON_RESERVED_PATHS,
   actorFolderPath,
   isKnownActorType,
@@ -29,6 +30,7 @@ describe('BUNDLE_PATH_REGISTRY', () => {
     expect(withProjectDir).toEqual([
       'DenoActor',
       'DenoTestActor',
+      'JavaScriptActor',
       'PythonActor',
       'ReactAppTriggerActor',
       'UniversalTriggerActor',
@@ -45,6 +47,8 @@ describe('BUNDLE_PATH_REGISTRY', () => {
     }
     expect(BUNDLE_PATH_REGISTRY.PythonActor.entrypoint).toBe('main.py');
     expect(BUNDLE_PATH_REGISTRY.PythonActor.reservedPaths).toBe(PYTHON_RESERVED_PATHS);
+    expect(BUNDLE_PATH_REGISTRY.JavaScriptActor.entrypoint).toBe('main.ts');
+    expect(BUNDLE_PATH_REGISTRY.JavaScriptActor.reservedPaths).toBe(JS_ACTOR_RESERVED_PATHS);
 
     expect(BUNDLE_PATH_REGISTRY.ReactAppTriggerActor.entrypoint).toBeUndefined();
     expect(BUNDLE_PATH_REGISTRY.ReactAppTriggerActor.reservedPaths).toBeUndefined();

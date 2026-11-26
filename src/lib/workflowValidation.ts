@@ -24,10 +24,12 @@ import {
   BIQ_ACTOR_TYPES,
   DENO_ACTOR_ENTRYPOINT,
   DENO_TEST_ACTOR_ENTRYPOINT,
+  JS_ACTOR_ENTRYPOINT,
   PYTHON_ACTOR_ENTRYPOINT,
   UNIVERSAL_TRIGGER_ACTOR_ENTRYPOINT,
   type BundleActorType,
 } from "./bundle/registry.js";
+import { isWorkerdNodeModule } from "./workerdNodeModules.js";
 
 // ============================================================
 // Shared Interfaces
@@ -581,6 +583,10 @@ export async function validateYaml(
           const result = validateDenoActor(actorId, config, allMsgVars);
           errors.push(...result.errors);
           warnings.push(...result.warnings);
+        } else if (actor.type === "JavaScriptActor") {
+          const result = validateJavaScriptActor(actorId, config, allMsgVars);
+          errors.push(...result.errors);
+          warnings.push(...result.warnings);
         } else if (actor.type === "PythonActor") {
           const result = validatePythonActor(actorId, config, allMsgVars);
           errors.push(...result.errors);
@@ -653,6 +659,7 @@ type ActorConfiguration = NonNullable<
 const CODE_ACTOR_ENTRYPOINTS: Record<string, string> = {
   DenoActor: DENO_ACTOR_ENTRYPOINT,
   DenoTestActor: DENO_TEST_ACTOR_ENTRYPOINT,
+  JavaScriptActor: JS_ACTOR_ENTRYPOINT,
   UniversalTriggerActor: UNIVERSAL_TRIGGER_ACTOR_ENTRYPOINT,
   PythonActor: PYTHON_ACTOR_ENTRYPOINT,
 };
@@ -964,6 +971,255 @@ function validatePythonActor(
     validateMsgVarReferences(actorId, code, allMsgVars, errors, warnings);
   }
 
+  return { errors, warnings };
+}
+
+/** the codeDir paths a JavaScriptActor's bundler reads as code; anything else (README.md, data) is not scanned */
+const JS_SOURCE_FILE = /\.(?:ts|tsx|js|jsx|mjs|cjs|mts|cts)$/i;
+
+/**
+ * A JavaScriptActor's source files: the `configuration.codeDir` files with a source extension,
+ * or the single string a document written before multi-file support carries.
+ */
+function jsActorSources(config: ActorConfiguration): { path: string; content: string }[] {
+  const codeDir = config?.codeDir;
+  if (Array.isArray(codeDir)) {
+    return codeDir.flatMap((file) => {
+      if (typeof file?.path !== "string" || !JS_SOURCE_FILE.test(file.path)) return [];
+      return [{ path: file.path, content: typeof file.content === "string" ? file.content : "" }];
+    });
+  }
+  return typeof config?.code === "string" ? [{ path: JS_ACTOR_ENTRYPOINT, content: config.code }] : [];
+}
+
+/** words after which a `/` starts a regular expression rather than a division */
+const REGEX_AFTER_WORD = new Set([
+  "return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do",
+  "else", "yield", "await",
+]);
+
+/** whether a `/` appended to `out` would start a regex literal, judged by the token before it */
+function regexAllowed(out: string): boolean {
+  let k = out.length - 1;
+  while (k >= 0 && /\s/.test(out[k])) k--;
+  if (k < 0) return true;
+  if (!/[\w$]/.test(out[k])) return !/[)\]}"`]/.test(out[k]);
+  const end = k + 1;
+  while (k >= 0 && /[\w$]/.test(out[k])) k--;
+  return REGEX_AFTER_WORD.has(out.slice(k + 1, end));
+}
+
+/**
+ * `code` with comments removed, every quoted string replaced by `"<index>"` into `strings`, and
+ * template literal text dropped (its `${}` expressions are kept: they are code). Best-effort, like
+ * every check here: a regex literal is told from a division by the token before it, and a string
+ * never runs past the end of its line, so a misread costs one line at most.
+ */
+function maskSource(code: string): { masked: string; strings: string[] } {
+  const strings: string[] = [];
+  const n = code.length;
+  let out = "";
+  let i = 0;
+  let depth = 0;
+  // for each open `${`, the brace depth its closing `}` returns to
+  const interpolations: number[] = [];
+
+  const templateText = (): void => {
+    while (i < n) {
+      const c = code[i];
+      if (c === "\\") { i += 2; continue; }
+      if (c === "`") { i++; out += "`"; return; }
+      if (c === "$" && code[i + 1] === "{") { i += 2; out += "${"; interpolations.push(depth); depth++; return; }
+      if (c === "\n") out += "\n";
+      i++;
+    }
+  };
+
+  while (i < n) {
+    const c = code[i];
+    const next = code[i + 1];
+    if (c === "/" && next === "/") {
+      while (i < n && code[i] !== "\n") i++;
+      continue;
+    }
+    if (c === "/" && next === "*") {
+      const close = code.indexOf("*/", i + 2);
+      const stop = close === -1 ? n : close + 2;
+      out += code.slice(i, stop).replace(/[^\n]/g, "") + " ";
+      i = stop;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < n && code[j] !== c && code[j] !== "\n") j += code[j] === "\\" ? 2 : 1;
+      strings.push(code.slice(i + 1, Math.min(j, n)));
+      out += `"${strings.length - 1}"`;
+      i = code[j] === c ? j + 1 : j;
+      continue;
+    }
+    if (c === "`") {
+      i++;
+      out += "`";
+      templateText();
+      continue;
+    }
+    if (c === "/" && regexAllowed(out)) {
+      let j = i + 1;
+      let inClass = false;
+      while (j < n && code[j] !== "\n") {
+        const d = code[j];
+        if (d === "\\") { j += 2; continue; }
+        if (inClass) { if (d === "]") inClass = false; }
+        else if (d === "[") inClass = true;
+        else if (d === "/") break;
+        j++;
+      }
+      if (code[j] === "/") {
+        j++;
+        while (j < n && /[a-z]/i.test(code[j])) j++;
+        out += "0";
+        i = j;
+        continue;
+      }
+    }
+    if (c === "{") depth++;
+    if (c === "}") {
+      if (interpolations.length && interpolations[interpolations.length - 1] === depth - 1) {
+        interpolations.pop();
+        depth--;
+        out += "}";
+        i++;
+        templateText();
+        continue;
+      }
+      depth--;
+    }
+    out += c;
+    i++;
+  }
+  return { masked: out, strings };
+}
+
+/**
+ * Whether an import/export clause (the text between the keyword and `from`) is type-only, so
+ * TypeScript and esbuild drop the statement before anything resolves it: `import type X`,
+ * `import type { A }`, `export type * as N`, or braces whose every specifier is `type`-marked
+ * (`import { type A, type B }`). `import type from "x"` imports a default named `type`.
+ */
+function typeOnlyClause(clause: string): boolean {
+  const c = clause.trim();
+  if (/^type\s*[{*]/.test(c) || /^type\s+[\w$]/.test(c)) return true;
+  const braces = /^\{([^}]*)\}$/.exec(c);
+  if (!braces) return false;
+  const specifiers = braces[1].split(",").map((s) => s.trim()).filter(Boolean);
+  // `{ type as X }` is the value `type`, renamed
+  return specifiers.length > 0 &&
+    specifiers.every((s) => /^type\s+[\w$]/.test(s) && !/^type\s+as\s+[\w$]+$/.test(s));
+}
+
+/**
+ * Every module specifier the code imports at run time: static, side-effect, re-export and literal
+ * dynamic imports, outside comments and string/template literals, minus type-only ones.
+ */
+function importSpecifiers(code: string): string[] {
+  const { masked, strings } = maskSource(code);
+  const found = new Set<string>();
+  const statements = /(?<![.\w$])(import|export)\b((?:(?!(?<![.\w$])(?:import|export)\b)[^;"])*?)\bfrom\s*"(\d+)"/g;
+  for (const match of masked.matchAll(statements)) {
+    if (!typeOnlyClause(match[2])) found.add(strings[Number(match[3])]);
+  }
+  const bare = [/(?<![.\w$])import\s*"(\d+)"/g, /(?<![.\w$])import\s*\(\s*"(\d+)"/g];
+  for (const pattern of bare) {
+    for (const match of masked.matchAll(pattern)) found.add(strings[Number(match[1])]);
+  }
+  return [...found];
+}
+
+/** whether the code uses `Deno.` outside comments and string/template literals */
+function usesDenoGlobal(code: string): boolean {
+  return /(?<![.\w$])Deno\s*\??\./.test(maskSource(code).masked);
+}
+
+/** `lodash/chunk` → `npm:lodash@<exact version>/chunk`: the version belongs to the package name */
+function pinnedForm(bare: string): string {
+  const segments = bare.split("/");
+  const nameSegments = bare.startsWith("@") ? 2 : 1;
+  const name = segments.slice(0, nameSegments).join("/");
+  const subpath = segments.length > nameSegments ? `/${segments.slice(nameSegments).join("/")}` : "";
+  return `npm:${name}@<exact version>${subpath}`;
+}
+
+const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+/** an `npm:`/`jsr:` specifier's version, or undefined when it names none */
+function packageVersion(specifier: string): string | undefined {
+  const rest = specifier.slice(4).replace(/^\//, "");
+  const head = rest.startsWith("@") ? rest.split("/").slice(0, 2).join("/") : rest.split("/")[0];
+  const at = head.lastIndexOf("@");
+  return at > 0 ? head.slice(at + 1) : undefined;
+}
+
+/**
+ * The JavaScriptActor: the DenoActor's checks (the same contract and SDK), plus what its bundler
+ * refuses before anything runs. It runs on workerd, not Deno: there is no `Deno`, every import is a
+ * relative file, `@borgiq/actors`, a `node:` built-in, or an `npm:`/`jsr:` package at an exact version.
+ */
+function validateJavaScriptActor(
+  actorId: string,
+  config: ActorConfiguration,
+  allMsgVars?: Set<string>,
+): { errors: string[]; warnings: string[] } {
+  const { errors, warnings: denoWarnings } = validateDenoActor(actorId, config, allMsgVars);
+  // the bundler refuses URL imports outright, so the Deno advice about deno.land does not apply
+  const warnings = denoWarnings.filter((w) => !w.includes("deno.land"));
+  const prefix = `Actor '${actorId}'`;
+  if (config?.options?.code) return { errors, warnings };
+  const sources = jsActorSources(config);
+
+  // the bundler does not refuse `Deno`: code that reaches it throws a ReferenceError at run time,
+  // and a guarded use (`typeof Deno !== "undefined" ? … : …`) runs fine
+  if (sources.some(({ content }) => usesDenoGlobal(content))) {
+    warnings.push(`${prefix}: 'Deno' does not exist in a JavaScriptActor (it runs on workerd): code that reaches \`Deno.\` throws a ReferenceError. Use node: built-ins, e.g. \`import { readFileSync } from "node:fs"\`.`);
+  }
+  // The build resolves the full import graph. Imports outside the entrypoint are advisory.
+  const imports = new Map<string, string>();
+  for (const { path, content } of sources) {
+    for (const specifier of importSpecifiers(content)) {
+      if (path === JS_ACTOR_ENTRYPOINT || !imports.has(specifier)) imports.set(specifier, path);
+    }
+  }
+  for (const [specifier, path] of imports) {
+    const entrypoint = path === JS_ACTOR_ENTRYPOINT;
+    const diagnostics = entrypoint ? errors : warnings;
+    const location = entrypoint ? prefix : `${prefix} (${path}, if bundled)`;
+    if (specifier.startsWith(".") || specifier === "@borgiq/actors") continue;
+    if (specifier.startsWith("node:")) {
+      if (!isWorkerdNodeModule(specifier)) {
+        diagnostics.push(`${location}: \`${specifier}\` is not a Node.js built-in module the JavaScript actor provides`);
+      }
+      continue;
+    }
+    if (specifier.startsWith("npm:") || specifier.startsWith("jsr:")) {
+      const version = packageVersion(specifier);
+      if (!version || !EXACT_VERSION.test(version)) {
+        diagnostics.push(`${location}: \`${specifier}\` must pin an exact version, e.g. \`${specifier.slice(0, 4)}name@1.2.3\` (ranges and tags are refused when the actor is built)`);
+      }
+      continue;
+    }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(specifier)) {
+      diagnostics.push(`${location}: \`${specifier}\` cannot be imported: a JavaScriptActor imports packages as npm: or jsr: with an exact version, never from a URL`);
+      continue;
+    }
+    if (specifier.startsWith("/")) {
+      diagnostics.push(`${location}: \`${specifier}\` is an absolute path: imports must stay within your own files`);
+      continue;
+    }
+    const builtin = isWorkerdNodeModule(specifier) ? ` (for the Node.js built-in, \`node:${specifier}\`)` : "";
+    diagnostics.push(`${location}: \`${specifier}\` is a bare specifier: import packages as \`${pinnedForm(specifier)}\`${builtin}`);
+  }
+  if (config?.options && "allowFs" in config.options) {
+    warnings.push(`${prefix}: 'allowFs' does nothing in a JavaScriptActor: node:fs is an in-memory /tmp for each invocation`);
+  }
   return { errors, warnings };
 }
 

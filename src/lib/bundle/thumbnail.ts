@@ -3,9 +3,8 @@
  * platform accepts, and the conversions between image bytes and the inline `{ dataUrl }` form the
  * actor routes and the canvas export use.
  *
- * The limits mirror `packages/types/src/actorThumbnail.ts` in borgiq-platform, but the API is
- * the authority: they only feed best-effort warnings, never a refusal. The CLI never resizes or
- * re-encodes an image.
+ * The CLI uses the platform's limits for advisory warnings. The API enforces the limits.
+ * The CLI never resizes or re-encodes an image.
  */
 
 /** Hard cap on a stored thumbnail. */
