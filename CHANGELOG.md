@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.13.0...cli-v0.14.0) (2026-11-26)
+
+
+### Features
+
+* JavaScriptActor in canvas bundles and borgiq validate ([#98](https://github.com/BorgIQ/borgiq-cli/issues/98)) ([eefad8e](https://github.com/BorgIQ/borgiq-cli/commit/eefad8e09876d5c04db259c7499cdc2376df9903))
+
 ## [0.13.0](https://github.com/BorgIQ/borgiq-cli/compare/cli-v0.12.0...cli-v0.13.0) (2026-10-05)
 
 
